@@ -1,0 +1,28 @@
+{
+  "name": "askagent-x-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Extend every agent. Keep control.",
+  "packageManager": "pnpm@11.1.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm dev:prepare && pnpm -r --parallel --filter @askx/core --filter @askx/platform-adapters --filter @askx/module-skills --filter askagent-x --filter @askx/web dev",
+    "dev:prepare": "pnpm --filter @askx/core build && pnpm --filter @askx/platform-adapters build && pnpm --filter @askx/module-skills build && pnpm --filter askagent-x build",
+    "dev:cli": "pnpm dev:prepare && pnpm -r --parallel --filter @askx/core --filter @askx/platform-adapters --filter @askx/module-skills --filter askagent-x dev",
+    "dev:web": "pnpm --filter @askx/web dev",
+    "typecheck": "pnpm build && pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "check": "pnpm typecheck && pnpm test",
+    "askx": "node packages/cli/dist/index.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vitest": "^3.0.2"
+  }
+}

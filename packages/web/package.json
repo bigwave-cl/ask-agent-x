@@ -1,0 +1,26 @@
+{
+  "name": "@askx/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./server": {
+      "types": "./dist/server/server.d.ts",
+      "import": "./dist/server/server.js"
+    }
+  },
+  "scripts": {
+    "build": "nuxt build && tsup src/server.ts --format esm --dts --out-dir dist/server --clean",
+    "typecheck": "nuxt typecheck && tsc --noEmit -p tsconfig.server.json",
+    "test": "vitest run --passWithNoTests",
+    "dev": "NUXT_ASKX_SESSION_TOKEN=askx-local-dev nuxt dev --host 127.0.0.1 --port 4242"
+  },
+  "dependencies": {
+    "nuxt": "^4.4.8",
+    "vue": "^3.5.40",
+    "vue-router": "^5.2.0"
+  },
+  "devDependencies": {
+    "vue-tsc": "^3.2.5"
+  }
+}

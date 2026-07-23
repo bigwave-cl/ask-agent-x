@@ -1,0 +1,29 @@
+{
+  "name": "askagent-x",
+  "version": "0.1.0",
+  "description": "Extend every agent. Keep control.",
+  "type": "module",
+  "bin": {
+    "askx": "./dist/index.js"
+  },
+  "exports": "./dist/index.js",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.tsx --format esm --dts --clean",
+    "dev": "tsup src/index.tsx --format esm --dts --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@askx/core": "workspace:*",
+    "@askx/module-skills": "workspace:*",
+    "@askx/platform-adapters": "workspace:*",
+    "@askx/web": "workspace:*",
+    "commander": "^13.0.0",
+    "ink": "^7.1.0",
+    "react": "^19.2.7"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17"
+  }
+}
