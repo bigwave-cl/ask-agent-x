@@ -4,10 +4,17 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import DemoCopyButton from '../../components/DemoCopyButton.vue'
 import DemoSection from '../../components/DemoSection.vue'
+import DemoComponentMount from './DemoComponentMount.vue'
+import DemoMittEventHandler from './DemoMittEventHandler.vue'
 
 defineOptions({ name: 'DemoUtilsModule' })
 
-const openSections = reactive({ copyText: true, toast: true })
+const openSections = reactive({
+  copyText: true,
+  toast: true,
+  componentMount: false,
+  mittEventHandler: false,
+})
 const toast = useToast()
 const directCopyState = ref<'idle' | 'success' | 'error'>('idle')
 const targetCopyState = ref<'idle' | 'success' | 'error'>('idle')
@@ -68,7 +75,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="grid min-w-56 gap-2 rounded-xl border bg-card/80 p-4 font-mono text-[10px] text-muted-foreground">
           <span class="flex items-center gap-2"><Layers3 class="size-3.5 text-primary" />模块：Utils 工具集</span>
-          <span class="flex items-center gap-2"><Bell class="size-3.5 text-primary" />能力：Copy / Toast</span>
+          <span class="flex items-center gap-2"><Bell class="size-3.5 text-primary" />能力：Copy / Toast / Mount / Event</span>
         </div>
       </div>
     </article>
@@ -180,5 +187,9 @@ onBeforeUnmount(() => {
         </div>
       </article>
     </DemoSection>
+
+    <DemoComponentMount v-model="openSections.componentMount" />
+
+    <DemoMittEventHandler v-model="openSections.mittEventHandler" />
   </div>
 </template>

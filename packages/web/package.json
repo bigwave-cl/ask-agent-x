@@ -23,6 +23,7 @@
     "class-variance-authority": "^0.7.1",
     "clipboard": "^2.0.11",
     "clsx": "^2.1.1",
+    "mitt": "^3.0.1",
     "nuxt": "^4.4.8",
     "reka-ui": "^2.10.1",
     "shadcn-nuxt": "^2.8.0",
