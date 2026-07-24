@@ -2,6 +2,7 @@
 import { CloudCog, Code2, Command, LockKeyhole, Sparkles } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ScrollArea } from '@/components/ui/scroll-area'
 
 const route = useRoute()
 const localePath = useLocalePath()
@@ -19,7 +20,7 @@ function isActive(path: string) {
 </script>
 
 <template>
-  <div class="min-h-screen bg-background text-foreground">
+  <div class="grid h-svh grid-rows-[4rem_minmax(0,1fr)] overflow-hidden bg-background text-foreground">
     <header data-testid="workspace-header" class="sticky top-0 z-30 border-b bg-background/92 backdrop-blur-xl">
       <div class="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         <NuxtLink :to="localePath('/')" class="flex min-w-0 items-center gap-3" :aria-label="copy.home">
@@ -52,13 +53,15 @@ function isActive(path: string) {
       </div>
     </header>
 
-    <slot />
+    <ScrollArea type="always" class="h-full min-h-0" viewport-class="overscroll-contain" data-testid="workspace-scroll-area">
+      <slot />
 
-    <footer v-if="route.path !== localePath('/')" data-testid="workspace-footer" class="border-t bg-card/50">
-      <div class="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-        <span class="font-medium text-foreground">AskAgent X <span class="font-normal text-muted-foreground">/ 0.1.0</span></span>
-        <span class="flex items-center gap-1.5"><LockKeyhole class="size-3" />{{ copy.footer }}</span>
-      </div>
-    </footer>
+      <footer v-if="route.path !== localePath('/')" data-testid="workspace-footer" class="border-t bg-card/50">
+        <div class="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+          <span class="font-medium text-foreground">AskAgent X <span class="font-normal text-muted-foreground">/ 0.1.0</span></span>
+          <span class="flex items-center gap-1.5"><LockKeyhole class="size-3" />{{ copy.footer }}</span>
+        </div>
+      </footer>
+    </ScrollArea>
   </div>
 </template>
