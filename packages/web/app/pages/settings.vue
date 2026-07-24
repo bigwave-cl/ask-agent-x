@@ -1,6 +1,7 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'workspace' })
-useHead({ title: 'Settings · AskAgent X' })
+const { t } = useI18n()
+useHead(() => ({ title: t('meta.settings') }))
 </script>
 
 <template>

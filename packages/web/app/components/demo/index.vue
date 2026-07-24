@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
 import type { DemoSectionAnchor } from './components/DemoSectionAnchorRail.vue'
-import type { DemoLocale, DemoModuleId } from './catalog'
+import type { DemoModuleId } from './catalog'
 import type { LocationQueryRaw, LocationQueryValue } from 'vue-router'
 import { BookOpen } from '@lucide/vue'
 import DemoNavigation from './components/DemoNavigation.vue'
@@ -10,18 +10,9 @@ import { getDemoModule, demoModules } from './catalog'
 
 defineOptions({ name: 'LocalDemoShell' })
 
-const messages = {
-  'zh-CN': {
-    title: 'UI Demo', source: '当前源码', footer: 'AskAgent X · Local UI specimen', pipeline: 'components/ui → demo', loading: '正在载入 Demo 模块…', loadFailed: '模块载入失败，请刷新后重试。',
-  },
-  en: {
-    title: 'UI Demo', source: 'Active source', footer: 'AskAgent X · Local UI specimen', pipeline: 'components/ui → demo', loading: 'Loading demo module…', loadFailed: 'The module failed to load. Refresh and try again.',
-  },
-} as const
-
 const route = useRoute()
 const router = useRouter()
-const locale = ref<DemoLocale>('zh-CN')
+const localePath = useLocalePath()
 const activeModuleId = ref<DemoModuleId>(getModuleIdFromQuery())
 const activeComponent = shallowRef<Component | null>(null)
 const isLoading = ref(false)
@@ -30,7 +21,6 @@ const sectionAnchors = ref<DemoSectionAnchor[]>([])
 const resolvedSecKey = ref('')
 let activeLoadId = 0
 
-const copy = computed(() => messages[locale.value])
 const activeModule = computed(() => getDemoModule(activeModuleId.value))
 const demoSectionReady = computed(() => !isLoading.value && Boolean(activeComponent.value))
 
@@ -47,9 +37,7 @@ provide('registerDemoSectionAnchor', (anchor: DemoSectionAnchor) => {
 })
 
 useHead(() => ({
-  title: `${activeModule.value.title[locale.value]} · AskAgent X`,
-  htmlAttrs: { lang: locale.value },
-  bodyAttrs: { class: 'bg-background text-foreground' },
+  title: `${activeModule.value.title} · AskAgent X`,
 }))
 
 function getQueryValue(value?: LocationQueryValue | LocationQueryValue[]) {
@@ -63,7 +51,7 @@ function getModuleIdFromQuery(): DemoModuleId {
 function updateModuleQuery(moduleId: DemoModuleId) {
   const query: LocationQueryRaw = { ...route.query, module: moduleId }
   delete query.secKey
-  return router.replace({ path: '/demo', query })
+  return router.replace({ path: localePath('/demo'), query })
 }
 
 async function selectModule(moduleId: DemoModuleId, updateQuery = true) {
@@ -111,7 +99,6 @@ onMounted(() => {
 
     <main class="relative mx-auto grid min-h-screen max-w-[1680px] grid-cols-1 pt-16 lg:grid-cols-[19rem_minmax(0,1fr)] lg:pt-0">
       <DemoNavigation
-        v-model:locale="locale"
         :modules="demoModules"
         :active-module-id="activeModuleId"
         @select="selectModule"
@@ -120,32 +107,32 @@ onMounted(() => {
       <section class="relative min-w-0 px-4 pb-12 pt-7 sm:px-6 lg:px-10 lg:pb-16 lg:pt-12 xl:px-14">
         <header class="mb-7 grid gap-5 border-b pb-7 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
           <div>
-            <div class="flex items-center gap-2 font-mono text-[10px] tracking-[0.14em] text-primary"><span>{{ activeModule.index }}</span><span class="h-px w-10 bg-primary/45" />{{ activeModule.groupLabel[locale] }}</div>
-            <h1 class="mt-4 text-4xl font-semibold tracking-[-0.05em] sm:text-5xl">{{ activeModule.title[locale] }}</h1>
-            <p class="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">{{ activeModule.description[locale] }}</p>
+            <div class="flex items-center gap-2 font-mono text-[10px] tracking-[0.14em] text-primary"><span>{{ activeModule.index }}</span><span class="h-px w-10 bg-primary/45" />{{ activeModule.groupLabel }}</div>
+            <h1 class="mt-4 text-4xl font-semibold tracking-[-0.05em] sm:text-5xl">{{ activeModule.title }}</h1>
+            <p class="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">{{ activeModule.description }}</p>
           </div>
           <div class="w-fit max-w-full rounded-lg border border-dashed bg-card px-3 py-2 font-mono text-[10px] text-muted-foreground">
-            <span class="mr-2 text-primary">{{ copy.source }}</span><span class="break-all">{{ activeModule.sourcePath }}</span>
+            <span class="mr-2 text-primary">当前源码</span><span class="break-all">{{ activeModule.sourcePath }}</span>
           </div>
         </header>
 
         <section class="relative min-h-[32rem] overflow-hidden rounded-2xl border bg-card/80 shadow-[0_24px_90px_rgba(0,0,0,0.08)] backdrop-blur-sm" :aria-busy="isLoading">
           <div v-if="isLoading" class="grid min-h-[32rem] content-start gap-5 p-5 sm:p-7" aria-live="polite">
-            <span class="font-mono text-[10px] text-primary">{{ copy.loading }}</span>
+            <span class="font-mono text-[10px] text-primary">正在载入 Demo 模块…</span>
             <div class="h-40 animate-pulse rounded-2xl border bg-muted/60" />
             <div class="grid gap-3 sm:grid-cols-2"><div v-for="item in 4" :key="item" class="h-24 animate-pulse rounded-xl bg-muted/45" /></div>
           </div>
-          <div v-else-if="loadFailed" class="grid min-h-[32rem] place-items-center p-8 text-center text-sm text-muted-foreground">{{ copy.loadFailed }}</div>
-          <component :is="activeComponent" v-else-if="activeComponent" :locale="locale" />
+          <div v-else-if="loadFailed" class="grid min-h-[32rem] place-items-center p-8 text-center text-sm text-muted-foreground">模块载入失败，请刷新后重试。</div>
+          <component :is="activeComponent" v-else-if="activeComponent" />
         </section>
 
         <footer class="mt-6 flex flex-wrap items-center justify-between gap-3 font-mono text-[10px] text-muted-foreground">
-          <span>{{ copy.footer }}</span>
-          <span class="inline-flex items-center gap-1.5"><BookOpen class="size-3" />{{ copy.pipeline }}</span>
+          <span>AskAgent X · Local UI specimen</span>
+          <span class="inline-flex items-center gap-1.5"><BookOpen class="size-3" />components/ui → demo</span>
         </footer>
       </section>
     </main>
 
-    <DemoSectionAnchorRail :anchors="sectionAnchors" :locale="locale" />
+    <DemoSectionAnchorRail :anchors="sectionAnchors" />
   </div>
 </template>

@@ -3,9 +3,19 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineNuxtConfig({
   compatibilityDate: '2026-07-16',
   devtools: { enabled: true },
-  modules: ['shadcn-nuxt'],
+  modules: ['shadcn-nuxt', '@nuxtjs/i18n'],
   css: ['~/assets/css/main.css'],
   watch: ['../core/dist/**'],
+  i18n: {
+    defaultLocale: 'zh-CN',
+    strategy: 'prefix_except_default',
+    detectBrowserLanguage: false,
+    locales: [
+      { code: 'zh-CN', language: 'zh-CN', name: '简体中文', file: 'zh-CN.json' },
+      { code: 'en', language: 'en', name: 'English', file: 'en.json' },
+    ],
+    vueI18n: './i18n.config.ts',
+  },
   shadcn: {
     prefix: '',
     componentDir: '@/components/ui',
@@ -22,10 +32,7 @@ export default defineNuxtConfig({
   },
   app: {
     head: {
-      htmlAttrs: { lang: 'zh-CN' },
-      title: 'AskAgent X · Local Control',
       meta: [
-        { name: 'description', content: 'AskAgent X local extension control surface' },
         { name: 'theme-color', content: '#F5F6F8' },
       ],
     },

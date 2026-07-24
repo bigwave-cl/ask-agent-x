@@ -5,48 +5,21 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { parseSessionCredential } from '@/lib/session-credential'
 
-interface LoginCopy {
-  welcomeEyebrow: string
-  welcomeTitle: string
-  welcomeDescription: string
-  tokenLabel: string
-  tokenPlaceholder: string
-  unlock: string
-  unlocking: string
-  tokenHelpTitle: string
-  tokenHelpDescription: string
-  copyCommand: string
-  commandCopied: string
-  authLocal: string
-  authPrivate: string
-  authNoStorage: string
-  home: string
-  productTagline: string
-  localOnly: string
-  demoNav: string
-  demoPublic: string
-  footer: string
-  credentialHint: string
-  detectedToken: string
-  detectedUrl: string
-  detectedUrlMissing: string
-  paste: string
-  pasted: string
-  pasteDenied: string
-  showToken: string
-  hideToken: string
-  terminalLabel: string
-  secureChannel: string
-}
-
 const props = defineProps<{
   modelValue: string
-  copy: LoginCopy
   authError: string
   authenticating: boolean
   tokenCommand: string
   commandCopied: boolean
 }>()
+
+const localePath = useLocalePath()
+const commonMessages = useMessageSection('common')
+const authMessages = useMessageSection('auth')
+const copy = computed(() => ({
+  ...commonMessages.value,
+  ...authMessages.value,
+}))
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
@@ -60,9 +33,9 @@ let pasteTimer: ReturnType<typeof setTimeout> | undefined
 
 const credential = computed(() => parseSessionCredential(props.modelValue))
 const credentialStatus = computed(() => {
-  if (credential.value.kind === 'url') return { label: props.copy.detectedUrl, tone: 'url' }
-  if (credential.value.kind === 'url-without-token') return { label: props.copy.detectedUrlMissing, tone: 'error' }
-  if (credential.value.kind === 'token') return { label: props.copy.detectedToken, tone: 'token' }
+  if (credential.value.kind === 'url') return { label: copy.value.detectedUrl, tone: 'url' }
+  if (credential.value.kind === 'url-without-token') return { label: copy.value.detectedUrlMissing, tone: 'error' }
+  if (credential.value.kind === 'token') return { label: copy.value.detectedToken, tone: 'token' }
   return null
 })
 
@@ -118,10 +91,10 @@ onBeforeUnmount(() => {
     <div class="session-login__beam" aria-hidden="true" />
 
     <header class="session-login__header">
-      <a href="#" class="session-login__brand" :aria-label="copy.home">
+      <NuxtLink :to="localePath('/')" class="session-login__brand" :aria-label="copy.home">
         <BrandMark class="size-10 shrink-0" />
         <span><strong>AskAgent X</strong><small>{{ copy.productTagline }}</small></span>
-      </a>
+      </NuxtLink>
       <Badge variant="outline" class="session-login__local"><span />127.0.0.1 · {{ copy.localOnly }}</Badge>
     </header>
 
@@ -145,10 +118,12 @@ onBeforeUnmount(() => {
           <span>{{ copy.authNoStorage }}</span>
         </div>
 
-        <Button as="a" href="/demo" variant="soft" size="lg" class="session-login__demo" data-testid="open-public-demo">
-          <BookOpen />
-          <span><strong>{{ copy.demoNav }}</strong><small>{{ copy.demoPublic }}</small></span>
-          <span aria-hidden="true">↗</span>
+        <Button as-child variant="soft" size="lg" class="session-login__demo" data-testid="open-public-demo">
+          <NuxtLink :to="localePath('/demo')">
+            <BookOpen />
+            <span><strong>{{ copy.demoNav }}</strong><small>{{ copy.demoPublic }}</small></span>
+            <span aria-hidden="true">↗</span>
+          </NuxtLink>
         </Button>
       </section>
 
@@ -209,7 +184,7 @@ onBeforeUnmount(() => {
           </Button>
         </form>
 
-        <div class="session-login__divider"><span>CLI HANDSHAKE</span></div>
+        <div class="session-login__divider"><span>{{ copy.cliHandshake }}</span></div>
 
         <section class="session-login__command">
           <div><strong>{{ copy.tokenHelpTitle }}</strong><span>{{ copy.tokenHelpDescription }}</span></div>

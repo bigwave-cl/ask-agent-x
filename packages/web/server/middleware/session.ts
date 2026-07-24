@@ -1,20 +1,16 @@
-export default defineEventHandler((event) => {
-  const path = getRequestURL(event).pathname
-  const legacyDemoModule = ({
-    '/demo/overview': 'overview',
-    '/demo/button': 'button',
-    '/demo/components': 'button',
-    '/demo/theming': 'theming',
-  } as const)[path as '/demo/overview' | '/demo/button' | '/demo/components' | '/demo/theming']
+import { legacyDemoRedirectLocation, localizePath, parseLocalizedPath } from '../utils/locale-path.js'
 
-  if (legacyDemoModule && event.method === 'GET') {
-    const query = new URLSearchParams(getRequestURL(event).searchParams)
-    query.set('module', legacyDemoModule)
-    query.delete('token')
-    return sendRedirect(event, `/demo?${query.toString()}`, 302)
+export default defineEventHandler((event) => {
+  const requestUrl = getRequestURL(event)
+  const requestPath = requestUrl.pathname
+  const localized = parseLocalizedPath(requestPath)
+  const legacyDemoLocation = legacyDemoRedirectLocation(requestUrl)
+
+  if (legacyDemoLocation && event.method === 'GET') {
+    return sendRedirect(event, legacyDemoLocation, 302)
   }
 
-  const isPublicDemo = path === '/demo' || path.startsWith('/demo/')
+  const isPublicDemo = localized.path === '/demo' || localized.path.startsWith('/demo/')
   if (isPublicDemo) return
 
   const config = useRuntimeConfig(event)
@@ -27,21 +23,25 @@ export default defineEventHandler((event) => {
     throw createError({ statusCode: 403, statusMessage: 'Origin not allowed' })
   }
 
-  if (path === '/api/session' && event.method === 'POST') return
+  if (requestPath === '/api/session' && event.method === 'POST') return
 
   const token = getQuery(event).token ?? getRequestHeader(event, 'x-askx-token') ?? getCookie(event, 'askx_session')
   if (token === sessionToken) {
     if (getQuery(event).token === sessionToken) {
       setCookie(event, 'askx_session', sessionToken, { httpOnly: true, sameSite: 'strict', path: '/' })
     }
-    if (path === '/login' && event.method === 'GET') return sendRedirect(event, '/', 302)
+    if (localized.path === '/login' && event.method === 'GET') {
+      return sendRedirect(event, localizePath('/', localized.locale), 302)
+    }
     return
   }
 
-  if (path.startsWith('/api/')) {
+  if (requestPath.startsWith('/api/')) {
     throw createError({ statusCode: 401, statusMessage: 'Invalid local session' })
   }
 
-  const isPublicAsset = path.startsWith('/_nuxt/') || path.startsWith('/__nuxt') || /\.[a-z0-9]+$/i.test(path)
-  if (!isPublicAsset && path !== '/login') return sendRedirect(event, '/login', 302)
+  const isPublicAsset = requestPath.startsWith('/_nuxt/') || requestPath.startsWith('/__nuxt') || /\.[a-z0-9]+$/i.test(requestPath)
+  if (!isPublicAsset && localized.path !== '/login') {
+    return sendRedirect(event, localizePath('/login', localized.locale), 302)
+  }
 })

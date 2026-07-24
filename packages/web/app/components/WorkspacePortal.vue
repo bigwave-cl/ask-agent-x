@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
-import type { AskXLocale, AskXThemeColor } from '@askx/core'
+import type { AskXThemeColor } from '@askx/core'
 import { ArrowUpRight, CloudCog, Command, Palette, ShieldCheck, Sparkles } from '@lucide/vue'
 
 type PortalDestination = 'skills' | 'theme' | 'settings'
 
 const props = defineProps<{
-  locale: AskXLocale
   enabledCount: number
   revision?: number
   backupEnabled: boolean
@@ -17,28 +16,8 @@ const emit = defineEmits<{
   select: [destination: PortalDestination]
 }>()
 
-const messages = {
-  en: {
-    eyebrow: 'LOCAL AGENT ORBIT',
-    title: 'Choose where to begin.',
-    description: 'Three paths, one shared workspace. Shape capabilities, tune the atmosphere, or manage the system beneath it all.',
-    skillsTitle: 'Skills', skillsDescription: 'Discover, organize, and connect reusable capabilities across every local Agent.', skillsMeta: '{count} Agents in orbit',
-    themeTitle: 'Themes', themeDescription: 'Tune color, contrast, and motion until the workspace feels unmistakably yours.', themeMeta: '3 visual directions',
-    settingsTitle: 'Settings', settingsDescription: 'Control platforms, backups, language, and the shared configuration revision.', settingsMeta: 'Revision #{revision}',
-    enter: 'Enter', connected: 'Local session connected', protected: 'Backup protection on', private: 'Private to this device',
-  },
-  'zh-CN': {
-    eyebrow: '本地 AGENT 轨道',
-    title: '选择你要进入的空间。',
-    description: '三条路径，共享同一个工作台。编排能力、塑造氛围，或管理支撑一切的系统设置。',
-    skillsTitle: 'Skills', skillsDescription: '发现、整理并连接可复用能力，让每个本地 Agent 共享同一套技能网络。', skillsMeta: '{count} 个 Agent 在轨',
-    themeTitle: '主题', themeDescription: '调整色彩、明暗与动态，让工作台拥有真正属于你的气质。', themeMeta: '3 种视觉方向',
-    settingsTitle: '设置', settingsDescription: '管理平台、备份、语言，以及 CLI 与 Web 共同使用的配置版本。', settingsMeta: '当前版本 #{revision}',
-    enter: '进入', connected: '本地会话已连接', protected: '备份保护已开启', private: '仅保留在当前设备',
-  },
-} as const
-
-const copy = computed(() => messages[props.locale])
+const { t } = useI18n()
+const copy = useMessageSection('portal')
 const particleColor = computed(() => props.themeColor === 'rose' ? '#e7659f' : '#31bbc5')
 
 const portals = computed<Array<{
@@ -54,7 +33,7 @@ const portals = computed<Array<{
     index: '01',
     title: copy.value.skillsTitle,
     description: copy.value.skillsDescription,
-    meta: copy.value.skillsMeta.replace('{count}', String(props.enabledCount)),
+    meta: t('portal.skillsMeta', { count: props.enabledCount }),
     icon: Command,
   },
   {
@@ -70,7 +49,7 @@ const portals = computed<Array<{
     index: '03',
     title: copy.value.settingsTitle,
     description: copy.value.settingsDescription,
-    meta: copy.value.settingsMeta.replace('{revision}', String(props.revision ?? '—')),
+    meta: t('portal.settingsMeta', { revision: props.revision ?? '—' }),
     icon: CloudCog,
   },
 ])
@@ -101,7 +80,7 @@ const portals = computed<Array<{
         <p>{{ copy.description }}</p>
       </section>
 
-      <section class="portal-list" aria-label="Workspace destinations">
+      <section class="portal-list" :aria-label="copy.destinations">
         <button
           v-for="portal in portals"
           :key="portal.id"

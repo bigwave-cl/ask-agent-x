@@ -11,17 +11,12 @@ export interface DemoSectionAnchor {
 
 const props = defineProps<{
   anchors: DemoSectionAnchor[]
-  locale: 'zh-CN' | 'en'
 }>()
 
 const route = useRoute()
 const router = useRouter()
 const activeSecKeys = ref<string[]>([])
 const hoveredSecKey = ref('')
-
-const labels = computed(() => props.locale === 'zh-CN'
-  ? { navigation: '章节导航', jump: '跳转到', top: '回到顶部' }
-  : { navigation: 'Section navigation', jump: 'Jump to', top: 'Back to top' })
 
 function sectionElement(secKey: string) {
   return document.getElementById(secKey)
@@ -81,7 +76,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <nav v-if="anchors.length" class="fixed bottom-24 right-3 top-24 z-30 hidden w-10 flex-col items-center justify-center lg:flex" :aria-label="labels.navigation">
+  <nav v-if="anchors.length" class="fixed bottom-24 right-3 top-24 z-30 hidden w-10 flex-col items-center justify-center lg:flex" aria-label="章节导航">
     <div class="flex max-h-[60vh] flex-col items-end py-2" @mouseleave="hoveredSecKey = ''">
       <button
         v-for="(anchor, index) in anchors"
@@ -89,7 +84,7 @@ onBeforeUnmount(() => {
         type="button"
         class="group relative flex h-4 w-10 items-center justify-end pr-1"
         :data-sec-key="anchor.secKey"
-        :aria-label="`${labels.jump} ${anchor.title}`"
+        :aria-label="`跳转到 ${anchor.title}`"
         :title="anchor.title"
         @mouseenter="hoveredSecKey = anchor.secKey"
         @focus="hoveredSecKey = anchor.secKey"
@@ -108,8 +103,8 @@ onBeforeUnmount(() => {
     square
     shape="pill"
     class="fixed bottom-6 right-4 z-30 hidden shadow-[0_12px_32px_color-mix(in_oklab,var(--primary)_22%,transparent)] lg:inline-flex"
-    :aria-label="labels.top"
-    :title="labels.top"
+    aria-label="回到顶部"
+    title="回到顶部"
     @click="scrollToTop"
   >
     <ArrowUp />

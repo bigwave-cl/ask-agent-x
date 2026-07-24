@@ -35,70 +35,7 @@ const agents: Array<{ id: ManagedPlatformId; name: string; mark: string; note: s
   { id: 'cursor', name: 'Cursor', mark: 'CU', note: '~/.cursor/skills' },
 ]
 
-const messages = {
-  en: {
-    welcomeEyebrow: 'Private local workspace', welcomeTitle: 'Welcome to AskAgent X.', welcomeDescription: 'Enter the token for the active local UI session to continue. The token stays in an HttpOnly session cookie and is never stored in browser storage.',
-    tokenLabel: 'Session token', tokenPlaceholder: 'Token or http://…/?token=…', unlock: 'Open workspace', unlocking: 'Verifying…', invalidToken: 'That token is invalid or the UI session has expired.', tokenRequired: 'Enter a token to continue.', tokenUrlMissing: 'This URL does not contain a token parameter.',
-    tokenHelpTitle: 'Get the token from the CLI', tokenHelpDescription: 'Open another terminal in the project and run:', copyCommand: 'Copy command', commandCopied: 'Command copied',
-    credentialHint: 'Paste token or startup URL', detectedToken: 'Token detected', detectedUrl: 'Startup URL detected', detectedUrlMissing: 'URL has no token parameter', paste: 'Paste', pasted: 'Pasted', pasteDenied: 'Use ⌘V', showToken: 'Show token', hideToken: 'Hide token', terminalLabel: 'LOCAL SESSION HANDSHAKE', secureChannel: 'SECURE CHANNEL',
-    authLocal: 'Loopback only', authPrivate: 'HttpOnly session', authNoStorage: 'No browser storage',
-    home: 'AskAgent X home', productTagline: 'Local extension workspace', localOnly: 'Local only', demoNav: 'UI Demo', demoPublic: 'Explore the public UI demo without a token.',
-    overview: 'Overview', sharedSettings: 'Shared settings', modules: 'Modules', skillsNav: 'Skills', themeNav: 'Themes', settingsNav: 'Settings', backToPortal: 'Back to portal',
-    skillsPageTitle: 'Skills orbit', skillsPageDescription: 'A focused view of the reusable capabilities shared by every enabled Agent.',
-    themePageTitle: 'Workspace atmosphere', themePageDescription: 'Choose a shared accent color, then preview the light and dark appearance locally.',
-    themeMist: 'Mineral mist', themeMistDescription: 'Bright surfaces, cyan energy and generous clarity.', themeNight: 'Deep orbit', themeNightDescription: 'A focused dark canvas with luminous details.', themeSystem: 'Follow system', themeSystemDescription: 'Match the appearance preference of this device.', themePreviewOnly: 'Local preview',
-    themeColorTitle: 'Theme color', themeColorDescription: 'This accent is shared by the Web and CLI.', themeCyan: 'Ion cyan', themeCyanDescription: 'Clear, technical and energetic.', themeRose: 'Signal rose', themeRoseDescription: 'Expressive warmth with a precise edge.',
-    pageEyebrow: 'Agent extension control', pageTitle: 'One workspace for every local agent.',
-    pageDescription: 'Manage shared settings, platform connections, and Skills topology from a calm, versioned control surface.',
-    connected: 'Connected', connecting: 'Connecting', agentsEnabled: 'Agents enabled', agentsEnabledHint: 'platforms share one Skills policy',
-    currentRevision: 'Current revision', currentRevisionHint: 'conflict-safe shared state', safetyGuard: 'Safety guard', safetyGuardOn: 'Backup before every link', safetyGuardOff: 'Backup is currently disabled',
-    settingsTitle: 'Workspace settings', settingsDescription: 'Changes are stored in ~/.askx/config.json and synchronized with the CLI.',
-    platformsTitle: 'Agent platforms', platformsDescription: 'Choose the local agents managed by this workspace.', enabled: 'Enabled', off: 'Off',
-    backupTitle: 'Backup before linking', backupDescription: 'Keep a durable copy before AskAgent X changes a platform link.', recommended: 'Recommended',
-    languageTitle: 'Interface language', languageDescription: 'This preference is shared by the Web and CLI.', chinese: '简体中文', english: 'English',
-    save: 'Save changes', saving: 'Saving…', unsaved: 'Unsaved changes', allSaved: 'All changes saved',
-    syncTitle: 'Shared state', syncDescription: 'The Web watches the same revision used by every CLI command.', revision: 'Revision', source: 'Last source', configPath: 'Config path', polling: 'Sync interval', pollingValue: '1.2 seconds',
-    skillsTitle: 'Skills topology', skillsDescription: 'Read-only discovery is available now. Transactional changes unlock after the safety chain is complete.', readOnly: 'Read only', runDetection: 'Run detection', comingSoon: 'Available in a later milestone',
-    pipelineDetect: 'Detect', pipelinePlan: 'Plan', pipelineConsent: 'Consent', pipelineApply: 'Apply', pipelineVerify: 'Verify', pipelineRollback: 'Rollback',
-    footer: 'No telemetry. Settings stay on this device.',
-    feedbackConnecting: 'Connecting to shared settings…', feedbackConnected: 'Shared settings connected', feedbackSynced: '{source} update synced to Web',
-    feedbackExternal: 'Revision #{revision} detected; reload before saving', feedbackMinPlatform: 'Keep at least one Agent platform',
-    feedbackUnsaved: 'Unsaved Web settings', feedbackSaved: 'WEB saved · revision #{revision}', feedbackReadFailed: 'Failed to read settings',
-    feedbackConflict: 'Settings changed elsewhere; reloading…',
-  },
-  'zh-CN': {
-    welcomeEyebrow: '私有本地工作台', welcomeTitle: '欢迎使用 AskAgent X。', welcomeDescription: '输入当前本地 UI 会话的 token 后继续。token 只用于建立 HttpOnly 会话，不会写入浏览器存储。',
-    tokenLabel: '会话 token', tokenPlaceholder: 'Token 或 http://…/?token=…', unlock: '进入工作台', unlocking: '验证中…', invalidToken: 'token 无效，或当前 UI 会话已经结束。', tokenRequired: '请输入 token 后继续。', tokenUrlMissing: '这个 URL 中没有 token 参数。',
-    tokenHelpTitle: '通过 CLI 获取 token', tokenHelpDescription: '在项目目录中打开另一个终端并运行：', copyCommand: '复制命令', commandCopied: '已复制命令',
-    credentialHint: '粘贴 token 或完整启动 URL', detectedToken: '已识别 Token', detectedUrl: '已识别启动 URL', detectedUrlMissing: 'URL 缺少 token 参数', paste: '粘贴', pasted: '已粘贴', pasteDenied: '请按 ⌘V', showToken: '显示 token', hideToken: '隐藏 token', terminalLabel: '本地会话握手', secureChannel: '安全通道',
-    authLocal: '仅限本机回环地址', authPrivate: 'HttpOnly 会话', authNoStorage: '不写入浏览器存储',
-    home: 'AskAgent X 首页', productTagline: '本地扩展工作台', localOnly: '仅限本地', demoNav: 'UI Demo', demoPublic: '无需 Token，先浏览公开 UI Demo。',
-    overview: '概览', sharedSettings: '共享设置', modules: '模块', skillsNav: 'Skills', themeNav: '主题', settingsNav: '设置', backToPortal: '返回入口',
-    skillsPageTitle: 'Skills 轨道', skillsPageDescription: '集中查看每个已启用 Agent 共享的可复用能力与安全处理链路。',
-    themePageTitle: '工作台氛围', themePageDescription: '选择 Web 与 CLI 共享的主题色，并在本地即时预览明暗外观。',
-    themeMist: '矿物薄雾', themeMistDescription: '明亮表面、青色能量与充足的留白。', themeNight: '深空轨道', themeNightDescription: '沉浸式暗色画布，保留清晰的发光细节。', themeSystem: '跟随系统', themeSystemDescription: '自动匹配当前设备的外观偏好。', themePreviewOnly: '本地预览',
-    themeColorTitle: '主题色', themeColorDescription: '这项强调色由 Web 和 CLI 共同使用。', themeCyan: '离子青', themeCyanDescription: '清晰、理性，同时保持充足的能量感。', themeRose: '信号玫红', themeRoseDescription: '更具表达力的暖色，但依旧保持精准。',
-    pageEyebrow: 'Agent 扩展控制', pageTitle: '一个工作台，管理所有本地 Agent。',
-    pageDescription: '在清晰、可追踪的控制界面中管理共享设置、平台连接与 Skills 拓扑。',
-    connected: '已连接', connecting: '连接中', agentsEnabled: '已启用 Agent', agentsEnabledHint: '个平台共享同一套 Skills 策略',
-    currentRevision: '当前版本', currentRevisionHint: '冲突安全的共享状态', safetyGuard: '安全保护', safetyGuardOn: '每次挂接前自动备份', safetyGuardOff: '当前已关闭挂接前备份',
-    settingsTitle: '工作台设置', settingsDescription: '变更保存到 ~/.askx/config.json，并与 CLI 双向同步。',
-    platformsTitle: 'Agent 平台', platformsDescription: '选择由当前工作台管理的本地 Agent。', enabled: '已启用', off: '关闭',
-    backupTitle: '挂接前备份', backupDescription: 'AskAgent X 修改平台链接前保留一份长期副本。', recommended: '推荐',
-    languageTitle: '界面语言', languageDescription: '这个偏好由 Web 和 CLI 共同使用。', chinese: '简体中文', english: 'English',
-    save: '保存更改', saving: '保存中…', unsaved: '存在未保存更改', allSaved: '所有更改已保存',
-    syncTitle: '共享状态', syncDescription: 'Web 持续监听每一条 CLI 命令所使用的同一份 revision。', revision: '版本', source: '最近来源', configPath: '配置路径', polling: '同步间隔', pollingValue: '1.2 秒',
-    skillsTitle: 'Skills 拓扑', skillsDescription: '当前已开放只读检测。安全链路完整后将开放事务化变更。', readOnly: '只读', runDetection: '运行检测', comingSoon: '后续里程碑开放',
-    pipelineDetect: '发现', pipelinePlan: '计划', pipelineConsent: '授权', pipelineApply: '应用', pipelineVerify: '验证', pipelineRollback: '回滚',
-    footer: '无遥测，所有设置仅保留在当前设备。',
-    feedbackConnecting: '正在连接共享设置…', feedbackConnected: '共享设置已连接', feedbackSynced: '{source} 更新已同步到 Web',
-    feedbackExternal: '检测到 revision #{revision}，保存前请重新载入', feedbackMinPlatform: '至少保留一个 Agent 平台',
-    feedbackUnsaved: '存在未保存的 Web 设置', feedbackSaved: 'WEB 保存完成 · revision #{revision}', feedbackReadFailed: '读取设置失败',
-    feedbackConflict: '设置已被其他入口更新，正在重新载入…',
-  },
-} as const
-
-type MessageKey = keyof typeof messages.en
+type FeedbackKey = 'feedbackConnecting' | 'feedbackConnected' | 'feedbackSynced' | 'feedbackExternal' | 'feedbackMinPlatform' | 'feedbackUnsaved' | 'feedbackSaved' | 'feedbackReadFailed' | 'feedbackSaveFailed' | 'feedbackConflict'
 type AuthState = 'checking' | 'authenticated' | 'unauthenticated'
 type WorkspaceView = 'home' | 'skills' | 'theme' | 'settings'
 type VisualTheme = 'light' | 'dark' | 'system'
@@ -113,6 +50,10 @@ const props = withDefaults(defineProps<{
 
 const tokenCommand = 'pnpm askx ui token'
 const pipelineKeys = ['pipelineDetect', 'pipelinePlan', 'pipelineConsent', 'pipelineApply', 'pipelineVerify', 'pipelineRollback'] as const
+const localePath = useLocalePath()
+const { locale, setLocale: setI18nLocale, t } = useI18n()
+const commonMessages = useMessageSection('common')
+const workspaceMessages = useMessageSection('workspace')
 const settings = ref<AskXConfig | null>(null)
 const authState = ref<AuthState>('checking')
 const workspaceView = computed(() => props.view)
@@ -130,34 +71,28 @@ const draft = reactive<{ backupBeforeLink: boolean; platforms: ManagedPlatformId
 const loading = ref(true)
 const saving = ref(false)
 const dirty = ref(false)
-const feedbackKey = ref<MessageKey>('feedbackConnecting')
+const feedbackKey = ref<FeedbackKey>('feedbackConnecting')
 const feedbackArgs = ref<Record<string, string | number>>({})
 let refreshTimer: ReturnType<typeof setInterval> | undefined
 
-const copy = computed(() => messages[draft.locale])
-const { locale: workspaceLocale } = useWorkspaceUi()
-const feedback = computed(() => {
-  const template: string = copy.value[feedbackKey.value]
-  return Object.entries(feedbackArgs.value).reduce<string>(
-    (value, [key, replacement]) => value.replace(`{${key}}`, String(replacement)),
-    template,
-  )
-})
+const copy = computed(() => ({
+  ...commonMessages.value,
+  ...workspaceMessages.value,
+}))
+const feedback = computed(() => t(`workspace.${feedbackKey.value}`, feedbackArgs.value))
 const enabledCount = computed(() => draft.platforms.length)
 const syncProgress = computed(() => settings.value ? 100 : 20)
 
-useHead(() => ({ htmlAttrs: { lang: draft.locale }, bodyAttrs: { class: 'bg-background text-foreground' } }))
-
-watch(() => draft.locale, (locale) => {
-  workspaceLocale.value = locale
-}, { immediate: true })
-
-function setFeedback(key: MessageKey, args: Record<string, string | number> = {}) {
+function setFeedback(key: FeedbackKey, args: Record<string, string | number> = {}) {
   feedbackKey.value = key
   feedbackArgs.value = args
 }
 
-function applySettings(next: AskXConfig, key: MessageKey, args: Record<string, string | number> = {}) {
+async function syncI18nLocale(nextLocale: AskXLocale) {
+  if (locale.value !== nextLocale) await setI18nLocale(nextLocale)
+}
+
+async function applySettings(next: AskXConfig, key: FeedbackKey, args: Record<string, string | number> = {}) {
   settings.value = next
   draft.locale = next.locale
   draft.themeColor = next.themeColor
@@ -166,6 +101,7 @@ function applySettings(next: AskXConfig, key: MessageKey, args: Record<string, s
   dirty.value = false
   applyThemeColor(next.themeColor)
   setFeedback(key, args)
+  await syncI18nLocale(next.locale)
 }
 
 function errorStatus(error: unknown): number | undefined {
@@ -191,14 +127,15 @@ async function checkSession() {
     await $fetch('/api/session')
     authState.value = 'authenticated'
     if (props.login) {
-      await navigateTo('/', { replace: true })
+      const next = await $fetch<AskXConfig>('/api/settings')
+      await navigateTo(localePath('/', next.locale), { replace: true })
       return
     }
     await refreshSettings(true)
     startRefreshTimer()
   } catch {
     authState.value = 'unauthenticated'
-    if (!props.login) await navigateTo('/login', { replace: true })
+    if (!props.login) await navigateTo(localePath('/login'), { replace: true })
   } finally {
     removeTokenFromAddressBar()
   }
@@ -207,11 +144,11 @@ async function checkSession() {
 async function authenticate() {
   const credential = parseSessionCredential(tokenInput.value)
   if (credential.kind === 'empty') {
-    authError.value = copy.value.tokenRequired
+    authError.value = t('auth.tokenRequired')
     return
   }
   if (credential.kind === 'url-without-token') {
-    authError.value = copy.value.tokenUrlMissing
+    authError.value = t('auth.tokenUrlMissing')
     return
   }
 
@@ -221,11 +158,10 @@ async function authenticate() {
     await $fetch('/api/session', { method: 'POST', body: { token: credential.token } })
     tokenInput.value = ''
     authState.value = 'authenticated'
-    await navigateTo('/', { replace: true })
-    await refreshSettings(true)
-    startRefreshTimer()
+    const next = await $fetch<AskXConfig>('/api/settings')
+    await navigateTo(localePath('/', next.locale), { replace: true })
   } catch {
-    authError.value = copy.value.invalidToken
+    authError.value = t('auth.invalidToken')
   } finally {
     authenticating.value = false
   }
@@ -252,8 +188,9 @@ async function refreshSettings(initial = false, force = false) {
     if (force || !settings.value || next.revision !== settings.value.revision) {
       if (dirty.value && settings.value) {
         setFeedback('feedbackExternal', { revision: next.revision })
+        await syncI18nLocale(next.locale)
       } else {
-        applySettings(next, initial ? 'feedbackConnected' : 'feedbackSynced', { source: next.updatedBy.toUpperCase() })
+        await applySettings(next, initial ? 'feedbackConnected' : 'feedbackSynced', { source: next.updatedBy.toUpperCase() })
       }
     }
   } catch (error) {
@@ -261,7 +198,7 @@ async function refreshSettings(initial = false, force = false) {
       authState.value = 'unauthenticated'
       if (refreshTimer) clearInterval(refreshTimer)
       refreshTimer = undefined
-      if (!props.login) await navigateTo('/login', { replace: true })
+      if (!props.login) await navigateTo(localePath('/login'), { replace: true })
     } else {
       setFeedback('feedbackReadFailed')
     }
@@ -290,15 +227,36 @@ function setBackup(value: boolean) {
   setFeedback('feedbackUnsaved')
 }
 
-function setLocale(locale: AskXLocale) {
-  if (draft.locale === locale) return
-  draft.locale = locale
-  dirty.value = true
-  setFeedback('feedbackUnsaved')
-}
-
-function handleLocaleChange(value: unknown) {
-  if (value === 'zh-CN' || value === 'en') setLocale(value)
+async function handleLocaleChange(value: unknown) {
+  if ((value !== 'zh-CN' && value !== 'en') || !settings.value || value === draft.locale || saving.value) return
+  saving.value = true
+  try {
+    const updated = await $fetch<AskXConfig>('/api/settings', {
+      method: 'PUT',
+      body: {
+        revision: settings.value.revision,
+        patch: {
+          locale: value,
+          themeColor: draft.themeColor,
+          skills: {
+            backupBeforeLink: draft.backupBeforeLink,
+            platforms: draft.platforms,
+          },
+        },
+      },
+    })
+    await applySettings(updated, 'feedbackSaved', { revision: updated.revision })
+  } catch (error) {
+    if (errorStatus(error) === 409) {
+      dirty.value = false
+      await refreshSettings(false, true)
+      setFeedback('feedbackConflict')
+    } else {
+      setFeedback('feedbackSaveFailed')
+    }
+  } finally {
+    saving.value = false
+  }
 }
 
 function setVisualTheme(theme: VisualTheme) {
@@ -340,18 +298,22 @@ async function saveSettings() {
         },
       },
     })
-    applySettings(updated, 'feedbackSaved', { revision: updated.revision })
-  } catch {
-    dirty.value = false
-    await refreshSettings(false, true)
-    setFeedback('feedbackConflict')
+    await applySettings(updated, 'feedbackSaved', { revision: updated.revision })
+  } catch (error) {
+    if (errorStatus(error) === 409) {
+      dirty.value = false
+      await refreshSettings(false, true)
+      setFeedback('feedbackConflict')
+    } else {
+      setFeedback('feedbackSaveFailed')
+    }
   } finally {
     saving.value = false
   }
 }
 
 function openWorkspacePage(destination: WorkspaceView) {
-  return navigateTo(destination === 'home' ? '/' : `/${destination}`)
+  return navigateTo(localePath(destination === 'home' ? '/' : `/${destination}`))
 }
 
 onMounted(checkSession)
@@ -379,7 +341,6 @@ onBeforeUnmount(() => {
   <SessionLogin
     v-else-if="authState === 'unauthenticated'"
     :model-value="tokenInput"
-    :copy="copy"
     :auth-error="authError"
     :authenticating="authenticating"
     :token-command="tokenCommand"
@@ -392,7 +353,6 @@ onBeforeUnmount(() => {
   <div v-else class="min-h-[calc(100vh-4rem)] bg-background text-foreground">
     <WorkspacePortal
       v-if="workspaceView === 'home'"
-      :locale="draft.locale"
       :enabled-count="enabledCount"
       :revision="settings?.revision"
       :backup-enabled="draft.backupBeforeLink"
@@ -403,7 +363,7 @@ onBeforeUnmount(() => {
     <main v-else-if="workspaceView === 'skills'" class="mx-auto grid min-h-[calc(100vh-4rem)] max-w-7xl content-start gap-8 px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
       <section class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
         <div class="max-w-3xl">
-          <Button as-child variant="ghost" size="sm" class="mb-4 -ml-2 text-muted-foreground"><NuxtLink to="/"><ChevronRight class="rotate-180" />{{ copy.backToPortal }}</NuxtLink></Button>
+          <Button as-child variant="ghost" size="sm" class="mb-4 -ml-2 text-muted-foreground"><NuxtLink :to="localePath('/')"><ChevronRight class="rotate-180" />{{ copy.backToPortal }}</NuxtLink></Button>
           <Badge variant="secondary" class="mb-4 text-primary"><Command data-icon="inline-start" />{{ copy.skillsNav }}</Badge>
           <h1 class="text-balance text-3xl font-semibold tracking-[-0.04em] sm:text-5xl">{{ copy.skillsPageTitle }}</h1>
           <p class="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">{{ copy.skillsPageDescription }}</p>
@@ -432,7 +392,7 @@ onBeforeUnmount(() => {
     <main v-else-if="workspaceView === 'theme'" class="mx-auto grid min-h-[calc(100vh-4rem)] max-w-7xl content-start gap-8 px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
       <section class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div class="max-w-3xl">
-          <Button as-child variant="ghost" size="sm" class="mb-4 -ml-2 text-muted-foreground"><NuxtLink to="/"><ChevronRight class="rotate-180" />{{ copy.backToPortal }}</NuxtLink></Button>
+          <Button as-child variant="ghost" size="sm" class="mb-4 -ml-2 text-muted-foreground"><NuxtLink :to="localePath('/')"><ChevronRight class="rotate-180" />{{ copy.backToPortal }}</NuxtLink></Button>
           <Badge variant="secondary" class="mb-4 text-primary"><Sparkles data-icon="inline-start" />{{ copy.themePreviewOnly }}</Badge>
           <h1 class="text-balance text-3xl font-semibold tracking-[-0.04em] sm:text-5xl">{{ copy.themePageTitle }}</h1>
           <p class="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">{{ copy.themePageDescription }}</p>
@@ -576,6 +536,7 @@ onBeforeUnmount(() => {
                 variant="outline"
                 :model-value="draft.locale"
                 class="w-full sm:w-auto"
+                :disabled="saving || loading"
                 @update:model-value="handleLocaleChange"
               >
                 <ToggleGroupItem value="zh-CN" class="flex-1 sm:flex-none" data-testid="locale-zh-CN"><Globe2 class="size-3.5" />{{ copy.chinese }}</ToggleGroupItem>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'workspace' })
-useHead({ title: 'Skills · AskAgent X' })
+const { t } = useI18n()
+useHead(() => ({ title: t('meta.skills') }))
 </script>
 
 <template>

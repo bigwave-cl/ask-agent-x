@@ -22,7 +22,7 @@
 - `app/` 使用 Vue Composition API 和 TypeScript；通用视觉能力拆成组件，不继续扩大单文件页面。
 - 优先复用 `app/components/ui` 中的 shadcn-vue 组件；新增组件保持键盘可用、语义化标签和清晰焦点态。
 - 颜色从 `app/assets/css/main.css` 的 PG DS/shadcn token 获取，不在业务组件中扩散无语义品牌色。
-- 新增界面文案同时提供 `zh-CN` 和 `en`；CLI/Web 共享的偏好必须写回 Core 配置。
+- Web 工作台用户文案统一通过 `@nuxtjs/i18n` 管理，并同时提供 `zh-CN` 和 `en`；公开 Demo 可以生成 locale 路由，但固定使用中文静态文案，不解析翻译资源，也不提供独立语言切换入口。禁止在组件内新增双语 `messages` 对象或独立 locale 状态。CLI/Web 共享的偏好必须写回 Core 配置。
 - Three.js、复杂动画和其他大体积浏览器能力使用客户端懒加载；页面隐藏或 `prefers-reduced-motion` 时暂停/降级。
 - 不从外部 CDN 加载字体或运行时代码；本地 UI 应能离线工作。
 
