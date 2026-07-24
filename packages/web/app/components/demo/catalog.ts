@@ -1,6 +1,6 @@
 import type { Component } from 'vue'
 
-export type DemoModuleId = 'overview' | 'button' | 'theming'
+export type DemoModuleId = 'overview' | 'components' | 'theming'
 
 export interface DemoModule {
   id: DemoModuleId
@@ -25,13 +25,13 @@ export const demoModules: DemoModule[] = [
     loader: () => import('./modules/overview/index.vue'),
   },
   {
-    id: 'button',
+    id: 'components',
     index: '01',
     group: 'components',
     groupLabel: '基础组件',
-    title: 'Button 按钮',
-    description: '直接预览和调试 components/ui/button 的项目定制样式。',
-    sourcePath: 'app/components/demo/modules/components/DemoButton.vue',
+    title: '基础组件',
+    description: '集中预览 Button、Radio、Checkbox 等 components/ui 项目组件。',
+    sourcePath: 'app/components/demo/modules/components/index.vue',
     loader: () => import('./modules/components/index.vue'),
   },
   {
@@ -47,5 +47,6 @@ export const demoModules: DemoModule[] = [
 ]
 
 export function getDemoModule(moduleId?: string | null) {
-  return demoModules.find(module => module.id === moduleId) ?? demoModules[0]!
+  const resolvedModuleId = moduleId === 'button' || moduleId === 'choice' ? 'components' : moduleId
+  return demoModules.find(module => module.id === resolvedModuleId) ?? demoModules[0]!
 }

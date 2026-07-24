@@ -19,7 +19,7 @@ const localePath = useLocalePath()
           <h3 class="mt-5 max-w-4xl text-3xl font-semibold leading-[1.05] tracking-[-0.055em] sm:text-5xl">把 UI 目录变成可以浏览的产品说明书。</h3>
           <p class="mt-5 max-w-3xl text-sm leading-6 text-muted-foreground">Demo 是组件的真实运行环境，也是设计验收、交互调试和 Agent 源码导航的共同入口。它不会复制组件，也不会建立第二套设计系统。</p>
           <div class="mt-7 flex flex-wrap gap-2">
-            <Button as-child size="xl"><NuxtLink :to="{ path: localePath('/demo'), query: { module: 'button' } }">查看 Button<ArrowRight /></NuxtLink></Button>
+            <Button as-child size="xl"><NuxtLink :to="{ path: localePath('/demo'), query: { module: 'components' } }">查看基础组件<ArrowRight /></NuxtLink></Button>
             <Button as-child variant="outline" size="xl"><NuxtLink :to="{ path: localePath('/demo'), query: { module: 'theming' } }">主题规范<Braces /></NuxtLink></Button>
           </div>
         </div>

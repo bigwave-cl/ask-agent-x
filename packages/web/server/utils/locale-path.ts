@@ -8,8 +8,8 @@ export interface LocalizedPath {
 
 const legacyDemoModules: Record<string, string> = {
   '/demo/overview': 'overview',
-  '/demo/button': 'button',
-  '/demo/components': 'button',
+  '/demo/button': 'components',
+  '/demo/components': 'components',
   '/demo/theming': 'theming',
 }
 

@@ -23,13 +23,13 @@ describe('localized Web paths', () => {
 
   it('redirects localized legacy Demo routes and strips token values', () => {
     expect(legacyDemoRedirectLocation(new URL('http://127.0.0.1/demo/button?foo=1&token=secret')))
-      .toBe('/demo?foo=1&module=button')
+      .toBe('/demo?foo=1&module=components')
     expect(legacyDemoRedirectLocation(new URL('http://127.0.0.1/en/demo/theming?secKey=color')))
       .toBe('/en/demo?secKey=color&module=theming')
   })
 
   it('ignores current and unknown Demo paths', () => {
-    expect(legacyDemoRedirectLocation(new URL('http://127.0.0.1/demo?module=button'))).toBeUndefined()
+    expect(legacyDemoRedirectLocation(new URL('http://127.0.0.1/demo?module=components'))).toBeUndefined()
     expect(legacyDemoRedirectLocation(new URL('http://127.0.0.1/fr/demo/button'))).toBeUndefined()
   })
 })

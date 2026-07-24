@@ -10,7 +10,7 @@ defineOptions({ name: 'DemoButton' })
 
 type DemoButtonVariant = NonNullable<ButtonVariants['variant']>
 
-const openSections = reactive({ variants: true, sizes: false, icon: false, usage: false })
+const isOpen = defineModel<boolean>({ default: false })
 const loading = ref(false)
 
 const variantRows: Array<{ variant: DemoButtonVariant, name: string, usage: string }> = [
@@ -42,7 +42,8 @@ function runLoadingDemo() {
 </script>
 
 <template>
-  <div class="grid gap-3 p-3 sm:p-5 lg:p-6" data-testid="button-demo">
+  <DemoSection v-model="isOpen" sec-key="components-button" title="Button 按钮" description="完整查看 Variant、Size、Shape、图标、加载态和迁移边界。">
+    <div class="grid gap-6 rounded-2xl border bg-background p-3 sm:p-5" data-testid="button-demo">
     <article class="relative overflow-hidden rounded-2xl border bg-background p-6 sm:p-8">
       <div class="pointer-events-none absolute -right-20 -top-24 size-72 rounded-full bg-primary/12 blur-3xl" />
       <div class="relative">
@@ -55,7 +56,8 @@ function runLoadingDemo() {
       </div>
     </article>
 
-    <DemoSection v-model="openSections.variants" sec-key="button-variants" title="Variant 与交互状态" description="语义只由 variant 表达；将鼠标移入按钮即可检查真实 Hover，按下可检查 Active。">
+    <section class="grid gap-2" data-demo-subsection="button-variants">
+      <div class="px-1"><h4 class="text-base font-semibold">Variant 与交互状态</h4><p class="mt-1 text-xs leading-5 text-muted-foreground">语义只由 variant 表达；将鼠标移入按钮即可检查真实 Hover，按下可检查 Active。</p></div>
       <article class="grid gap-3 rounded-2xl border bg-background p-3 sm:p-5" data-testid="button-variants-section">
         <div class="grid gap-2">
           <div
@@ -78,9 +80,10 @@ function runLoadingDemo() {
           </div>
         </div>
       </article>
-    </DemoSection>
+    </section>
 
-    <DemoSection v-model="openSections.sizes" sec-key="button-sizes-shapes" title="Size、Shape 与 Square" description="项目规格提供 52 / 48 / 40 / 36 四档尺寸，形状和 1:1 图标按钮不再写业务 class。">
+    <section class="grid gap-2" data-demo-subsection="button-sizes-shapes">
+      <div class="px-1"><h4 class="text-base font-semibold">Size、Shape 与 Square</h4><p class="mt-1 text-xs leading-5 text-muted-foreground">项目规格提供 52 / 48 / 40 / 36 四档尺寸，形状和 1:1 图标按钮不再写业务 class。</p></div>
       <article class="grid gap-4 rounded-2xl border bg-background p-4 sm:p-5" data-testid="button-sizes-section">
         <div class="flex flex-wrap items-center justify-between gap-3"><p class="text-xs text-muted-foreground">点击右侧复制按钮获取对应 Vue 用法。</p><Badge variant="outline" class="font-mono text-[10px]">默认：48 / regular</Badge></div>
         <div class="grid gap-3 rounded-xl border bg-card p-4 md:grid-cols-2 xl:grid-cols-4">
@@ -94,9 +97,10 @@ function runLoadingDemo() {
           <div class="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-4"><code class="mr-auto text-[11px] text-muted-foreground">square</code><Button size="48" square aria-label="打开工具"><Grid2X2 /></Button><Button size="48" square shape="pill" aria-label="打开工具"><Grid2X2 /></Button></div>
         </div>
       </article>
-    </DemoSection>
+    </section>
 
-    <DemoSection v-model="openSections.icon" sec-key="button-icon-loading" title="Icon 与 Loading" description="图标继续使用默认插槽组合；加载态由业务控制，但尺寸、间距与禁用反馈由 Button 统一管理。">
+    <section class="grid gap-2" data-demo-subsection="button-icon-loading">
+      <div class="px-1"><h4 class="text-base font-semibold">Icon 与 Loading</h4><p class="mt-1 text-xs leading-5 text-muted-foreground">图标继续使用默认插槽组合；加载态由业务控制，但尺寸、间距与禁用反馈由 Button 统一管理。</p></div>
       <article class="grid gap-4 rounded-2xl border bg-background p-4 sm:p-5" data-testid="button-loading-section">
         <div class="grid gap-3 md:grid-cols-2">
           <div class="flex min-h-36 flex-wrap items-center justify-center gap-3 rounded-xl border bg-card p-5">
@@ -112,9 +116,10 @@ function runLoadingDemo() {
         </div>
         <div class="flex justify-end"><DemoCopyButton text='<Button :disabled="loading"><LoaderCircle v-if="loading" class="animate-spin" />Generate</Button>' label="复制代码" copied-label="已复制" variant="outlined" /></div>
       </article>
-    </DemoSection>
+    </section>
 
-    <DemoSection v-model="openSections.usage" sec-key="button-usage" title="使用方式与迁移边界" description="新风格直接从 components/ui/button 导入；已有 default、outline、soft 和旧尺寸继续兼容。">
+    <section class="grid gap-2" data-demo-subsection="button-usage">
+      <div class="px-1"><h4 class="text-base font-semibold">使用方式与迁移边界</h4><p class="mt-1 text-xs leading-5 text-muted-foreground">新风格直接从 components/ui/button 导入；已有 default、outline、soft 和旧尺寸继续兼容。</p></div>
       <article class="grid gap-3 rounded-2xl border bg-background p-4 sm:grid-cols-3 sm:p-5" data-testid="button-usage-section">
         <div v-for="item in [
           { index: '01', title: '直接扩展 shadcn', text: 'Button.vue 只负责属性透传，样式表仍集中在 buttonVariants；没有额外组件层。' },
@@ -124,6 +129,7 @@ function runLoadingDemo() {
           <span class="font-mono text-[10px] text-primary">{{ item.index }}</span><h4 class="mt-6 text-sm font-semibold">{{ item.title }}</h4><p class="mt-2 text-xs leading-5 text-muted-foreground">{{ item.text }}</p>
         </div>
       </article>
-    </DemoSection>
-  </div>
+    </section>
+    </div>
+  </DemoSection>
 </template>
