@@ -3,6 +3,7 @@ import { BookOpen, Check, ClipboardPaste, Copy, Eye, EyeOff, KeyRound, Link2, Lo
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { parseSessionCredential } from '@/lib/session-credential'
 
 const props = defineProps<{
@@ -75,7 +76,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="relative isolate min-h-screen overflow-hidden bg-ds-auth-bg text-ds-auth-text max-[880px]:overflow-auto">
+  <ScrollArea class="h-svh bg-ds-auth-bg text-ds-auth-text" viewport-class="overscroll-contain" aria-label="登录页面">
+    <div class="relative isolate min-h-svh overflow-hidden">
     <ClientOnly>
       <LazyAntigravityBackground
         class="-z-3 opacity-48"
@@ -200,5 +202,6 @@ onBeforeUnmount(() => {
         </section>
       </section>
     </main>
-  </div>
+    </div>
+  </ScrollArea>
 </template>

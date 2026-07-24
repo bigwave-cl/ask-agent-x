@@ -30,7 +30,7 @@ export const demoModules: DemoModule[] = [
     group: 'components',
     groupLabel: '基础组件',
     title: '基础组件',
-    description: '集中预览 Button、Radio、Checkbox 等 components/ui 项目组件。',
+    description: '集中预览 Button、Radio、Checkbox、ScrollArea 等 components/ui 项目组件。',
     sourcePath: 'app/components/demo/modules/components/index.vue',
     loader: () => import('./modules/components/index.vue'),
   },

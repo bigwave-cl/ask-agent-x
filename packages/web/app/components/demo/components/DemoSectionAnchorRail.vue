@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { Ref } from 'vue'
 import { ArrowUp } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 
@@ -17,6 +18,8 @@ const route = useRoute()
 const router = useRouter()
 const activeSecKeys = ref<string[]>([])
 const hoveredSecKey = ref('')
+const scrollViewport = inject<Readonly<Ref<HTMLElement | null>>>('demoScrollViewport', ref(null))
+let observedViewport: HTMLElement | null = null
 
 function sectionElement(secKey: string) {
   return document.getElementById(secKey)
@@ -24,15 +27,18 @@ function sectionElement(secKey: string) {
 
 function updateActiveSections() {
   if (!import.meta.client) return
+  const viewportRect = scrollViewport.value?.getBoundingClientRect()
+  const viewportTop = viewportRect?.top ?? 0
+  const viewportBottom = viewportRect?.bottom ?? window.innerHeight
   const visible = props.anchors.filter(({ secKey }) => {
     const rect = sectionElement(secKey)?.getBoundingClientRect()
-    return rect && rect.bottom > 96 && rect.top < window.innerHeight - 72
+    return rect && rect.bottom > viewportTop + 96 && rect.top < viewportBottom - 72
   })
   if (visible.length) {
     activeSecKeys.value = visible.map(anchor => anchor.secKey)
     return
   }
-  const previous = props.anchors.filter(anchor => (sectionElement(anchor.secKey)?.getBoundingClientRect().top ?? 1) <= 220).at(-1)
+  const previous = props.anchors.filter(anchor => (sectionElement(anchor.secKey)?.getBoundingClientRect().top ?? 1) <= viewportTop + 220).at(-1)
   activeSecKeys.value = previous ? [previous.secKey] : props.anchors[0] ? [props.anchors[0].secKey] : []
 }
 
@@ -60,17 +66,22 @@ async function scrollToAnchor(secKey: string) {
 
 async function scrollToTop() {
   await setSecKey()
-  document.getElementById('demo-page-top-anchor')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  scrollViewport.value?.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 watch(() => props.anchors.map(anchor => anchor.secKey).join(','), () => nextTick(updateActiveSections))
+watch(scrollViewport, (viewport) => {
+  observedViewport?.removeEventListener('scroll', updateActiveSections)
+  observedViewport = viewport
+  observedViewport?.addEventListener('scroll', updateActiveSections, { passive: true })
+  nextTick(updateActiveSections)
+}, { flush: 'post' })
 onMounted(() => {
   updateActiveSections()
-  window.addEventListener('scroll', updateActiveSections, { passive: true })
   window.addEventListener('resize', updateActiveSections)
 })
 onBeforeUnmount(() => {
-  window.removeEventListener('scroll', updateActiveSections)
+  observedViewport?.removeEventListener('scroll', updateActiveSections)
   window.removeEventListener('resize', updateActiveSections)
 })
 </script>

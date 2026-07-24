@@ -15,6 +15,7 @@ const isOpen = defineModel<boolean>({ default: false })
 const route = useRoute()
 const sectionRef = ref<HTMLElement | null>(null)
 const isDemoSectionReady = inject<Readonly<Ref<boolean>>>('demoSectionReady', ref(true))
+const scrollViewport = inject<Readonly<Ref<HTMLElement | null>>>('demoScrollViewport', ref(null))
 const notifyDemoSecKeyReady = inject<(secKey: string) => void>('notifyDemoSecKeyReady', () => {})
 const registerAnchor = inject<(anchor: { secKey: string, title: string }) => () => void>('registerDemoSectionAnchor', () => () => {})
 let unregisterAnchor: (() => void) | undefined
@@ -43,13 +44,27 @@ function clearCorrectionTimers() {
   correctionTimers.splice(0).forEach(timer => clearTimeout(timer))
 }
 
+function scrollElementToTop(element: HTMLElement, behavior: ScrollBehavior) {
+  const viewport = scrollViewport.value
+  if (!viewport) {
+    element.scrollIntoView({ block: 'start', behavior })
+    return
+  }
+  const viewportRect = viewport.getBoundingClientRect()
+  const elementRect = element.getBoundingClientRect()
+  viewport.scrollTo({
+    top: viewport.scrollTop + elementRect.top - viewportRect.top - 20,
+    behavior,
+  })
+}
+
 function scrollToSection() {
   if (!import.meta.client) return
   clearCorrectionTimers()
   nextTick(() => {
     ;[0, 100, 240].forEach((delay, index, delays) => {
       correctionTimers.push(setTimeout(() => {
-        sectionRef.value?.scrollIntoView({ block: 'start', behavior: 'auto' })
+        if (sectionRef.value) scrollElementToTop(sectionRef.value, 'auto')
         if (index === delays.length - 1) notifyDemoSecKeyReady(props.secKey)
       }, delay))
     })
