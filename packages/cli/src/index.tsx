@@ -1,8 +1,18 @@
 #!/usr/bin/env node
-import { defaultContext, ModuleRegistry, type AskXModule, type DetectionIssue } from '@askx/core'
+import {
+  defaultContext,
+  ModuleRegistry,
+  SettingsStore,
+  type AskXConfig,
+  type AskXLocale,
+  type AskXModule,
+  type AskXThemeColor,
+  type DetectionIssue,
+  type ManagedPlatformId,
+} from '@askx/core'
 import { SkillsModule, type SkillsTopology } from '@askx/module-skills'
 import { detectPlatforms, type PlatformDetection } from '@askx/platform-adapters'
-import { startUi } from '@askx/web/server'
+import { readUiSessionToken, startUi } from '@askx/web/server'
 import { Command } from 'commander'
 import { Box, render, Text } from 'ink'
 import type { ReactNode } from 'react'
@@ -10,6 +20,50 @@ import type { ReactNode } from 'react'
 const accent = '#d7ff3f'
 const registry = new ModuleRegistry()
 registry.register(new SkillsModule())
+const settingsStore = new SettingsStore(defaultContext().dataDir)
+const activeLocale = (await settingsStore.read()).locale
+
+const messages = {
+  en: {
+    builtInModules: 'built-in modules', doctor: 'doctor', skillsScan: 'skills scan', skillsStatus: 'skills status',
+    status: 'Status', ready: 'ready', blocked: 'blocked', notFound: 'not found', ok: 'ok', warning: 'warning',
+    noIssues: 'No topology issues detected.', skills: 'Skills', conflicts: 'conflicts', brokenLinks: 'broken links', fingerprint: 'Fingerprint',
+    localUi: 'local ui', serverReady: 'Nuxt server ready', stop: 'Press Ctrl+C to stop.',
+    settings: 'settings', settingsUpdated: 'settings updated', revision: 'REVISION', source: 'SOURCE', platforms: 'Platforms', backup: 'Backup', language: 'Language', themeColor: 'Theme', updated: 'Updated',
+    writeLocked: 'Write operations are intentionally locked in the foundation release.',
+    appDescription: 'Extend every agent. Keep control.', modulesDescription: 'Inspect built-in AskAgent X modules',
+    doctorDescription: 'Detect Agent installations, paths, versions and link eligibility', jsonDescription: 'Print machine-readable JSON',
+    skillsDescription: 'Inspect and manage Skills topology', scanDescription: 'Read-only scan of all known Skill roots', statusDescription: 'Show current read-only Skills status',
+    settingsDescription: 'Read or update shared CLI/Web settings', settingsShowDescription: 'Show the current shared settings', settingsSetDescription: 'Update shared settings',
+    backupArgument: 'on or off', backupDescription: 'Enable or disable backup before linking', backupError: 'Backup must be "on" or "off"',
+    platformsArgument: 'codex, claude and/or cursor', platformsDescription: 'Set enabled Agent platforms', platformsError: 'Platforms must contain codex, claude and/or cursor',
+    languageArgument: 'zh-CN or en', languageDescription: 'Set the shared CLI/Web language', languageError: 'Language must be "zh-CN" or "en"',
+    themeArgument: 'cyan or rose', themeDescription: 'Set the shared CLI/Web theme color', themeError: 'Theme color must be "cyan" or "rose"',
+    uiDescription: 'Start the local Nuxt management interface', portDescription: 'Local port', invalidPort: 'Invalid port', tokenDescription: 'Print the active local UI token', noToken: 'No active UI session. Start "pnpm dev" or "askx ui" first.',
+    manageBackups: 'Manage Skills backups', placeholder: 'foundation placeholder',
+  },
+  'zh-CN': {
+    builtInModules: '内置模块', doctor: '环境诊断', skillsScan: 'Skills 扫描', skillsStatus: 'Skills 状态',
+    status: '状态', ready: '就绪', blocked: '受阻', notFound: '未发现', ok: '正常', warning: '警告',
+    noIssues: '未检测到拓扑问题。', skills: '个 Skills', conflicts: '个冲突', brokenLinks: '个失效链接', fingerprint: '指纹',
+    localUi: '本地界面', serverReady: 'Nuxt 服务已就绪', stop: '按 Ctrl+C 停止。',
+    settings: '共享设置', settingsUpdated: '设置已更新', revision: '版本', source: '来源', platforms: '平台', backup: '备份', language: '语言', themeColor: '主题色', updated: '更新时间',
+    writeLocked: '基础版本暂未开放写入操作。',
+    appDescription: '扩展每一个 Agent，控制始终在你手中。', modulesDescription: '查看 AskAgent X 内置模块',
+    doctorDescription: '检测 Agent 安装、路径、版本与链接条件', jsonDescription: '输出机器可读的 JSON',
+    skillsDescription: '检查和管理 Skills 拓扑', scanDescription: '只读扫描所有已知的 Skill 根目录', statusDescription: '显示当前只读 Skills 状态',
+    settingsDescription: '读取或更新 CLI/Web 共享设置', settingsShowDescription: '显示当前共享设置', settingsSetDescription: '更新共享设置',
+    backupArgument: 'on 或 off', backupDescription: '启用或关闭挂接前备份', backupError: '备份参数必须是 "on" 或 "off"',
+    platformsArgument: 'codex、claude 和/或 cursor', platformsDescription: '设置启用的 Agent 平台', platformsError: '平台必须包含 codex、claude 和/或 cursor',
+    languageArgument: 'zh-CN 或 en', languageDescription: '设置 CLI/Web 共享语言', languageError: '语言必须是 "zh-CN" 或 "en"',
+    themeArgument: 'cyan 或 rose', themeDescription: '设置 CLI/Web 共享主题色', themeError: '主题色必须是 "cyan" 或 "rose"',
+    uiDescription: '启动本地 Nuxt 管理界面', portDescription: '本地端口', invalidPort: '无效端口', tokenDescription: '输出当前本地 UI token', noToken: '没有活动的 UI 会话，请先运行 "pnpm dev" 或 "askx ui"。',
+    manageBackups: '管理 Skills 备份', placeholder: '基础占位命令',
+  },
+} as const
+
+type MessageKey = keyof typeof messages.en
+const t = (locale: AskXLocale, key: MessageKey): string => messages[locale][key]
 
 function Frame({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -23,14 +77,15 @@ function Frame({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-function State({ value }: { value: 'ready' | 'blocked' | 'not found' | 'ok' | 'warning' }) {
+function State({ value, locale }: { value: 'ready' | 'blocked' | 'not found' | 'ok' | 'warning'; locale: AskXLocale }) {
   const color = value === 'ready' || value === 'ok' ? 'green' : value === 'blocked' || value === 'warning' ? 'yellow' : 'gray'
-  return <Text color={color}>● {value}</Text>
+  const key = value === 'not found' ? 'notFound' : value
+  return <Text color={color}>● {t(locale, key)}</Text>
 }
 
-function ModulesView({ modules }: { modules: AskXModule[] }) {
+function ModulesView({ modules, locale }: { modules: AskXModule[]; locale: AskXLocale }) {
   return (
-    <Frame title="built-in modules">
+    <Frame title={t(locale, 'builtInModules')}>
       {modules.map((module, index) => (
         <Box key={module.id} gap={2}>
           <Text color={accent}>{String(index + 1).padStart(2, '0')}</Text>
@@ -42,16 +97,16 @@ function ModulesView({ modules }: { modules: AskXModule[] }) {
   )
 }
 
-function DoctorView({ detections }: { detections: PlatformDetection[] }) {
+function DoctorView({ detections, locale }: { detections: PlatformDetection[]; locale: AskXLocale }) {
   return (
-    <Frame title="doctor">
+    <Frame title={t(locale, 'doctor')}>
       {detections.map((platform) => {
         const state = platform.installed ? (platform.linkSupported ? 'ready' : 'blocked') : 'not found'
         return (
           <Box key={platform.id} flexDirection="column" marginBottom={1}>
             <Box gap={2}>
               <Text bold>{platform.name.padEnd(16)}</Text>
-              <State value={state} />
+              <State value={state} locale={locale} />
               {platform.version ? <Text dimColor>{platform.version}</Text> : null}
             </Box>
             <Text dimColor>  {platform.skillsDir}</Text>
@@ -63,8 +118,8 @@ function DoctorView({ detections }: { detections: PlatformDetection[] }) {
   )
 }
 
-function IssueList({ issues }: { issues: DetectionIssue[] }) {
-  if (!issues.length) return <Text color="green">No topology issues detected.</Text>
+function IssueList({ issues, locale }: { issues: DetectionIssue[]; locale: AskXLocale }) {
+  if (!issues.length) return <Text color="green">{t(locale, 'noIssues')}</Text>
   return (
     <Box flexDirection="column" marginTop={1}>
       {issues.map((issue) => <Text key={`${issue.code}:${issue.path ?? issue.message}`} color="yellow">! {issue.message}{issue.path ? ` (${issue.path})` : ''}</Text>)}
@@ -72,10 +127,10 @@ function IssueList({ issues }: { issues: DetectionIssue[] }) {
   )
 }
 
-function SkillsScanView({ topology, issues, status }: { topology: SkillsTopology; issues: DetectionIssue[]; status: 'ok' | 'warning' | 'blocked' }) {
+function SkillsScanView({ topology, issues, status, locale }: { topology: SkillsTopology; issues: DetectionIssue[]; status: 'ok' | 'warning' | 'blocked'; locale: AskXLocale }) {
   return (
-    <Frame title="skills scan">
-      <Box marginBottom={1} gap={1}><Text>Status</Text><State value={status} /></Box>
+    <Frame title={t(locale, 'skillsScan')}>
+      <Box marginBottom={1} gap={1}><Text>{t(locale, 'status')}</Text><State value={status} locale={locale} /></Box>
       {topology.roots.map((root) => (
         <Box key={root.path} gap={1}>
           <Text color={root.exists ? 'green' : 'gray'}>{root.exists ? '✓' : '·'}</Text>
@@ -84,21 +139,21 @@ function SkillsScanView({ topology, issues, status }: { topology: SkillsTopology
         </Box>
       ))}
       <Box marginTop={1} gap={2}>
-        <Text><Text color={accent}>{topology.skills.length}</Text> Skills</Text>
-        <Text><Text color={topology.conflicts.length ? 'yellow' : 'green'}>{topology.conflicts.length}</Text> conflicts</Text>
-        <Text><Text color={topology.brokenLinks.length ? 'red' : 'green'}>{topology.brokenLinks.length}</Text> broken links</Text>
+        <Text><Text color={accent}>{topology.skills.length}</Text> {t(locale, 'skills')}</Text>
+        <Text><Text color={topology.conflicts.length ? 'yellow' : 'green'}>{topology.conflicts.length}</Text> {t(locale, 'conflicts')}</Text>
+        <Text><Text color={topology.brokenLinks.length ? 'red' : 'green'}>{topology.brokenLinks.length}</Text> {t(locale, 'brokenLinks')}</Text>
       </Box>
-      <IssueList issues={issues} />
+      <IssueList issues={issues} locale={locale} />
     </Frame>
   )
 }
 
-function StatusView({ status, issues, fingerprint }: { status: 'ok' | 'warning' | 'blocked'; issues: DetectionIssue[]; fingerprint: string }) {
+function StatusView({ status, issues, fingerprint, locale }: { status: 'ok' | 'warning' | 'blocked'; issues: DetectionIssue[]; fingerprint: string; locale: AskXLocale }) {
   return (
-    <Frame title="skills status">
-      <Box gap={1}><Text>Status</Text><State value={status} /></Box>
-      <Text dimColor>Fingerprint  {fingerprint.slice(0, 16)}…</Text>
-      <IssueList issues={issues} />
+    <Frame title={t(locale, 'skillsStatus')}>
+      <Box gap={1}><Text>{t(locale, 'status')}</Text><State value={status} locale={locale} /></Box>
+      <Text dimColor>{t(locale, 'fingerprint')}  {fingerprint.slice(0, 16)}…</Text>
+      <IssueList issues={issues} locale={locale} />
     </Frame>
   )
 }
@@ -107,72 +162,152 @@ function NoticeView({ title, message }: { title: string; message: string }) {
   return <Frame title={title}><Text color="yellow">◆ {message}</Text></Frame>
 }
 
-function UiView({ url }: { url: string }) {
+function UiView({ url, locale }: { url: string; locale: AskXLocale }) {
   return (
-    <Frame title="local ui">
-      <Text color="green">● Nuxt server ready</Text>
+    <Frame title={t(locale, 'localUi')}>
+      <Text color="green">● {t(locale, 'serverReady')}</Text>
       <Text>{url}</Text>
-      <Text dimColor>Press Ctrl+C to stop.</Text>
+      <Text dimColor>{t(locale, 'stop')}</Text>
+    </Frame>
+  )
+}
+
+function SettingsView({ settings, changed = false }: { settings: AskXConfig; changed?: boolean }) {
+  const locale = settings.locale
+  return (
+    <Frame title={t(locale, changed ? 'settingsUpdated' : 'settings')}>
+      <Box gap={2}>
+        <Text dimColor>{t(locale, 'revision').toUpperCase()}</Text><Text color={accent}>#{settings.revision}</Text>
+        <Text dimColor>{t(locale, 'source').toUpperCase()}</Text><Text>{settings.updatedBy.toUpperCase()}</Text>
+      </Box>
+      <Box marginTop={1} flexDirection="column">
+        <Text>{t(locale, 'platforms').padEnd(10)} <Text color={accent}>{settings.skills.platforms.join(' · ')}</Text></Text>
+        <Text>{t(locale, 'backup').padEnd(10)} <Text color={settings.skills.backupBeforeLink ? 'green' : 'yellow'}>{settings.skills.backupBeforeLink ? 'ON' : 'OFF'}</Text></Text>
+        <Text>{t(locale, 'language').padEnd(10)} <Text color={accent}>{settings.locale}</Text></Text>
+        <Text>{t(locale, 'themeColor').padEnd(10)} <Text color={accent}>{settings.themeColor}</Text></Text>
+      </Box>
+      <Text dimColor>{t(locale, 'updated')} {settings.updatedAt}</Text>
     </Frame>
   )
 }
 
 const program = new Command()
-program.name('askx').description('Extend every agent. Keep control.').version('0.1.0')
+program.name('askx').description(t(activeLocale, 'appDescription')).version('0.1.0')
 
-const modules = program.command('modules').description('Inspect built-in AskAgent X modules')
+const modules = program.command('modules').description(t(activeLocale, 'modulesDescription'))
 modules.command('list').action(() => {
-  render(<ModulesView modules={registry.list()} />)
+  render(<ModulesView modules={registry.list()} locale={activeLocale} />)
 })
 
 program
   .command('doctor')
-  .description('Detect Agent installations, paths, versions and link eligibility')
-  .option('--json', 'Print machine-readable JSON')
+  .description(t(activeLocale, 'doctorDescription'))
+  .option('--json', t(activeLocale, 'jsonDescription'))
   .action(async ({ json }: { json?: boolean }) => {
     const detections = await detectPlatforms()
     if (json) console.log(JSON.stringify(detections, null, 2))
-    else render(<DoctorView detections={detections} />)
+    else render(<DoctorView detections={detections} locale={activeLocale} />)
   })
 
-const skills = program.command('skills').description('Inspect and manage Skills topology')
+const skills = program.command('skills').description(t(activeLocale, 'skillsDescription'))
 skills
   .command('scan')
-  .description('Read-only scan of all known Skill roots')
-  .option('--json', 'Print machine-readable JSON')
+  .description(t(activeLocale, 'scanDescription'))
+  .option('--json', t(activeLocale, 'jsonDescription'))
   .action(async ({ json }: { json?: boolean }) => {
     const report = await registry.get('skills').detect(defaultContext())
     if (json) console.log(JSON.stringify(report, null, 2))
-    else render(<SkillsScanView topology={report.data as SkillsTopology} issues={report.issues} status={report.status} />)
+    else render(<SkillsScanView topology={report.data as SkillsTopology} issues={report.issues} status={report.status} locale={activeLocale} />)
   })
 
-skills.command('status').description('Show current read-only Skills status').action(async () => {
+skills.command('status').description(t(activeLocale, 'statusDescription')).action(async () => {
   const report = await registry.get('skills').detect(defaultContext())
-  render(<StatusView status={report.status} issues={report.issues} fingerprint={report.fingerprint} />)
+  render(<StatusView status={report.status} issues={report.issues} fingerprint={report.fingerprint} locale={activeLocale} />)
 })
 
 function unavailable(command: Command): void {
   command.action(() => {
-    render(<NoticeView title={command.name()} message="Write operations are intentionally locked in the foundation release." />)
+    render(<NoticeView title={command.name()} message={t(activeLocale, 'writeLocked')} />)
     process.exitCode = 2
   })
 }
 
 for (const name of ['sync', 'link', 'unlink', 'update']) {
-  unavailable(skills.command(name).description(`${name} Skills (foundation placeholder)`))
+  unavailable(skills.command(name).description(`${name} Skills (${t(activeLocale, 'placeholder')})`))
 }
-const backups = skills.command('backups').description('Manage Skills backups')
+const backups = skills.command('backups').description(t(activeLocale, 'manageBackups'))
 for (const name of ['list', 'restore', 'remove']) unavailable(backups.command(name))
 
-program
+const settings = program.command('settings').description(t(activeLocale, 'settingsDescription'))
+settings
+  .command('show')
+  .description(t(activeLocale, 'settingsShowDescription'))
+  .option('--json', t(activeLocale, 'jsonDescription'))
+  .action(async ({ json }: { json?: boolean }) => {
+    const current = await settingsStore.read()
+    if (json) console.log(JSON.stringify(current, null, 2))
+    else render(<SettingsView settings={current} />)
+  })
+
+const settingsSet = settings.command('set').description(t(activeLocale, 'settingsSetDescription'))
+settingsSet
+  .command('backup')
+  .argument('<value>', t(activeLocale, 'backupArgument'))
+  .description(t(activeLocale, 'backupDescription'))
+  .action(async (value: string) => {
+    if (!['on', 'off'].includes(value)) throw new Error(t(activeLocale, 'backupError'))
+    const updated = await settingsStore.update({ skills: { backupBeforeLink: value === 'on' } }, { source: 'cli' })
+    render(<SettingsView settings={updated} changed />)
+  })
+
+settingsSet
+  .command('platforms')
+  .argument('<platforms...>', t(activeLocale, 'platformsArgument'))
+  .description(t(activeLocale, 'platformsDescription'))
+  .action(async (values: string[]) => {
+    const platforms = [...new Set(values.flatMap((value) => value.split(',')).filter(Boolean))]
+    const allowed = new Set<ManagedPlatformId>(['codex', 'claude', 'cursor'])
+    if (!platforms.length || platforms.some((platform) => !allowed.has(platform as ManagedPlatformId))) {
+      throw new Error(t(activeLocale, 'platformsError'))
+    }
+    const updated = await settingsStore.update(
+      { skills: { platforms: platforms as ManagedPlatformId[] } },
+      { source: 'cli' },
+    )
+    render(<SettingsView settings={updated} changed />)
+  })
+
+settingsSet
+  .command('language')
+  .argument('<locale>', t(activeLocale, 'languageArgument'))
+  .description(t(activeLocale, 'languageDescription'))
+  .action(async (locale: string) => {
+    if (!['zh-CN', 'en'].includes(locale)) throw new Error(t(activeLocale, 'languageError'))
+    const updated = await settingsStore.update({ locale: locale as AskXLocale }, { source: 'cli' })
+    render(<SettingsView settings={updated} changed />)
+  })
+
+settingsSet
+  .command('theme')
+  .argument('<color>', t(activeLocale, 'themeArgument'))
+  .description(t(activeLocale, 'themeDescription'))
+  .action(async (color: string) => {
+    if (!['cyan', 'rose'].includes(color)) throw new Error(t(activeLocale, 'themeError'))
+    const updated = await settingsStore.update({ themeColor: color as AskXThemeColor }, { source: 'cli' })
+    render(<SettingsView settings={updated} changed />)
+  })
+
+const ui = program
   .command('ui')
-  .description('Start the local Nuxt management interface')
-  .option('-p, --port <port>', 'Local port', '4242')
+  .description(t(activeLocale, 'uiDescription'))
+  .option('-p, --port <port>', t(activeLocale, 'portDescription'), '4242')
+
+ui
   .action(async ({ port }: { port: string }) => {
     const parsedPort = Number.parseInt(port, 10)
-    if (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535) throw new Error(`Invalid port: ${port}`)
+    if (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535) throw new Error(`${t(activeLocale, 'invalidPort')}: ${port}`)
     const server = await startUi({ port: parsedPort })
-    const ink = render(<UiView url={server.url} />)
+    const ink = render(<UiView url={server.url} locale={activeLocale} />)
     const close = async () => {
       ink.unmount()
       await server.close()
@@ -180,6 +315,29 @@ program
     }
     process.once('SIGINT', close)
     process.once('SIGTERM', close)
+  })
+
+ui
+  .command('token')
+  .description(t(activeLocale, 'tokenDescription'))
+  .action(async () => {
+    const activeToken = await readUiSessionToken()
+    if (activeToken) {
+      console.log(activeToken)
+      return
+    }
+
+    const developmentToken = 'askx-local-dev'
+    try {
+      const response = await fetch(`http://127.0.0.1:4242/api/health?token=${developmentToken}`)
+      if (response.ok) {
+        console.log(developmentToken)
+        return
+      }
+    } catch {
+      // The local development server is not running.
+    }
+    throw new Error(t(activeLocale, 'noToken'))
   })
 
 await program.parseAsync()

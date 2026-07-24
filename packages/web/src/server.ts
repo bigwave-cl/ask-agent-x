@@ -1,12 +1,54 @@
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { once } from 'node:events'
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { defaultContext } from '@askx/core'
 
 export interface UiServerOptions {
   port?: number
   host?: '127.0.0.1'
+}
+
+interface UiSessionRecord {
+  token: string
+  pid: number
+  port: number
+  createdAt: string
+}
+
+const sessionPath = join(defaultContext().dataDir, 'ui-session.json')
+
+async function writeSession(record: UiSessionRecord): Promise<void> {
+  await mkdir(dirname(sessionPath), { recursive: true, mode: 0o700 })
+  await writeFile(sessionPath, `${JSON.stringify(record, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
+}
+
+async function clearSession(token: string): Promise<void> {
+  try {
+    const current = JSON.parse(await readFile(sessionPath, 'utf8')) as UiSessionRecord
+    if (current.token === token) await unlink(sessionPath)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return
+  }
+}
+
+export async function readUiSessionToken(): Promise<string | null> {
+  try {
+    const session = JSON.parse(await readFile(sessionPath, 'utf8')) as UiSessionRecord
+    if (!session.token || !Number.isInteger(session.pid)) return null
+    try {
+      process.kill(session.pid, 0)
+      return session.token
+    } catch {
+      await clearSession(session.token)
+      return null
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    return null
+  }
 }
 
 export async function startUi(options: UiServerOptions = {}): Promise<{ url: string; close: () => Promise<void> }> {
@@ -44,12 +86,16 @@ export async function startUi(options: UiServerOptions = {}): Promise<{ url: str
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
 
+  await writeSession({ token, pid: child.pid ?? process.pid, port, createdAt: new Date().toISOString() })
+  child.once('exit', () => void clearSession(token))
+
   return {
     url,
     close: async () => {
       if (child.exitCode !== null) return
       child.kill('SIGTERM')
       await once(child, 'exit')
+      await clearSession(token)
     },
   }
 }

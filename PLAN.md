@@ -72,6 +72,8 @@ interface AskXModule {
 
 - `askx modules list`：查看已安装模块。
 - `askx doctor`：统一检测 Agent 版本、路径、权限和事务状态。
+- `askx settings show|set`：CLI 与 Web 共享设置，使用 revision 防止并发覆盖。
+- `askx settings set theme cyan|rose`：切换 CLI/Web 共享主题色。
 - `askx skills scan [--json]`：只读检测 Skill 拓扑。
 - `askx skills status`：显示冲突、未同步、已挂接、漂移和可恢复状态。
 - `askx skills sync`：解决冲突并汇总到统一源。
@@ -80,6 +82,7 @@ interface AskXModule {
 - `askx skills update`：重新生成并应用挂接计划。
 - `askx skills backups list|restore|remove`：管理备份。
 - `askx ui`：启动仅监听 `127.0.0.1` 的管理界面。
+- `askx ui token`：输出当前活动 UI 会话 token，用于欢迎登录页验证。
 
 ### Web UI
 
@@ -87,6 +90,7 @@ interface AskXModule {
 - Skills 模块提供“检测、冲突处理、同步、平台选择、备份、确认、执行、验证”向导。
 - 操作面板支持按 Skill 更新、取消、恢复和查看实际平台可见性。
 - 所有界面操作调用与 CLI 相同的 core，不能绕过同步凭证、用户授权或事务保护。
+- 未建立会话时仅展示欢迎登录页；设置 API 保持 401，token 验证成功后写入 HttpOnly Cookie。
 
 ### 数据布局
 
