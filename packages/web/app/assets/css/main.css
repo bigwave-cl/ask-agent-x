@@ -184,13 +184,23 @@ html.dark.theme-rose {
   --color-ds-brand-default: var(--ds-color-brand-default);
   --color-ds-brand-hover: var(--ds-color-brand-hover);
   --color-ds-brand-active: var(--ds-color-brand-active);
+  --color-ds-brand-focus: var(--ds-color-brand-focus);
+  --color-ds-brand-disabled: var(--ds-color-brand-disabled);
+  --color-ds-bg-page: var(--ds-color-bg-page);
   --color-ds-text-primary: var(--ds-color-text-primary);
   --color-ds-text-secondary: var(--ds-color-text-secondary);
   --color-ds-text-tertiary: var(--ds-color-text-tertiary);
+  --color-ds-text-helper: var(--ds-color-text-helper);
+  --color-ds-text-disabled: var(--ds-color-text-disabled);
   --color-ds-text-inverse: var(--ds-color-text-inverse);
   --color-ds-text-white: var(--ds-color-text-white);
   --color-ds-text-brand: var(--ds-color-text-brand);
   --color-ds-bg-surface: var(--ds-color-bg-surface);
+  --color-ds-bg-surface-subtle: var(--ds-color-bg-surface-subtle);
+  --color-ds-bg-surface-raised: var(--ds-color-bg-surface-raised);
+  --color-ds-bg-surface-elevated: var(--ds-color-bg-surface-elevated);
+  --color-ds-bg-inverse: var(--ds-color-bg-inverse);
+  --color-ds-border-subtle-5: var(--ds-color-border-subtle-5);
   --color-ds-border-subtle-10: var(--ds-color-border-subtle-10);
   --color-ds-border-subtle-20: var(--ds-color-border-subtle-20);
   --color-ds-fill-bw-transparent-3: var(--ds-color-fill-bw-transparent-3);
@@ -198,11 +208,23 @@ html.dark.theme-rose {
   --color-ds-fill-bw-transparent-10: var(--ds-color-fill-bw-transparent-10);
   --color-ds-fill-bw-transparent-20: var(--ds-color-fill-bw-transparent-20);
   --color-ds-fill-brand-transparent-5: var(--ds-color-fill-brand-transparent-5);
+  --color-ds-fill-brand-transparent-8: var(--ds-color-fill-brand-transparent-8);
   --color-ds-fill-brand-transparent-10: var(--ds-color-fill-brand-transparent-10);
   --color-ds-fill-brand-transparent-20: var(--ds-color-fill-brand-transparent-20);
+  --color-ds-success-default: var(--ds-color-success-default);
+  --color-ds-success-soft: var(--ds-color-success-soft);
+  --color-ds-warning-default: var(--ds-color-warning-default);
+  --color-ds-warning-soft: var(--ds-color-warning-soft);
   --color-ds-danger-default: var(--ds-color-danger-default);
   --color-ds-danger-hover: var(--ds-color-danger-hover);
   --color-ds-danger-active: var(--ds-color-danger-active);
+  --color-ds-auth-bg: var(--ds-color-auth-bg);
+  --color-ds-auth-surface: var(--ds-color-auth-surface);
+  --color-ds-auth-border: var(--ds-color-auth-border);
+  --color-ds-auth-text: var(--ds-color-auth-text);
+  --color-ds-auth-muted: var(--ds-color-auth-muted);
+  --color-ds-auth-grid: var(--ds-color-auth-grid);
+  --color-portal-accent: var(--portal-accent);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -220,6 +242,20 @@ html.dark.theme-rose {
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+}
+
+@theme {
+  --animate-portal-drift: portal-drift 16s ease-in-out infinite alternate;
+  --animate-node-pulse: node-pulse 2.2s ease-in-out infinite;
+
+  @keyframes portal-drift {
+    from { transform: translate3d(-2%, -1%, 0) rotate(-2deg); }
+    to { transform: translate3d(3%, 2%, 0) rotate(2deg); }
+  }
+
+  @keyframes node-pulse {
+    50% { opacity: 0.45; transform: scale(0.65); }
+  }
 }
 
 @layer base {

@@ -210,21 +210,5 @@ onBeforeUnmount(cleanup)
 </script>
 
 <template>
-  <div ref="container" class="antigravity-background" aria-hidden="true" />
+  <div ref="container" class="pointer-events-none absolute inset-0 min-h-[34rem] overflow-hidden [&_canvas]:block [&_canvas]:size-full" aria-hidden="true" />
 </template>
-
-<style scoped>
-.antigravity-background {
-  position: absolute;
-  inset: 0;
-  min-height: 34rem;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.antigravity-background :deep(canvas) {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-</style>

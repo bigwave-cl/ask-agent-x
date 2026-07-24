@@ -20,6 +20,12 @@ const { t } = useI18n()
 const copy = useMessageSection('portal')
 const particleColor = computed(() => props.themeColor === 'rose' ? '#e7659f' : '#31bbc5')
 
+const portalCardTone: Record<PortalDestination, string> = {
+  skills: '[--portal-accent:var(--ds-color-brand-default)] min-[801px]:rotate-[-0.7deg]',
+  theme: '[--portal-accent:var(--chart-3)] min-[801px]:translate-y-3 min-[801px]:rotate-[0.8deg]',
+  settings: '[--portal-accent:var(--chart-4)] min-[801px]:rotate-[-0.2deg]',
+}
+
 const portals = computed<Array<{
   id: PortalDestination
   index: string
@@ -56,7 +62,7 @@ const portals = computed<Array<{
 </script>
 
 <template>
-  <main class="portal-shell">
+  <main class="relative isolate min-h-[calc(100vh-4rem)] overflow-hidden [background:radial-gradient(circle_at_20%_5%,color-mix(in_srgb,var(--ds-color-brand-default)_14%,transparent),transparent_34rem),linear-gradient(145deg,var(--background)_15%,color-mix(in_srgb,var(--ds-color-bg-surface-raised)_76%,var(--background))_100%)]">
     <ClientOnly>
       <LazyAntigravityBackground
         :count="190"
@@ -67,329 +73,50 @@ const portals = computed<Array<{
       />
     </ClientOnly>
 
-    <div class="portal-aurora" aria-hidden="true" />
-    <div class="portal-grid" aria-hidden="true" />
+    <div class="pointer-events-none absolute -inset-[20%] -z-1 animate-portal-drift opacity-70 blur-[28px] motion-reduce:animate-none [background:radial-gradient(ellipse_at_23%_38%,rgb(100_224_231_/_22%),transparent_27%),radial-gradient(ellipse_at_73%_25%,rgb(255_194_116_/_14%),transparent_23%),radial-gradient(ellipse_at_72%_83%,rgb(242_103_162_/_10%),transparent_22%)]" aria-hidden="true" />
+    <div class="pointer-events-none absolute inset-0 -z-1 opacity-20 [background-image:radial-gradient(circle,color-mix(in_srgb,var(--foreground)_28%,transparent)_0.7px,transparent_0.8px)] [background-size:22px_22px] [mask-image:linear-gradient(to_bottom,transparent,black_22%,black_74%,transparent)]" aria-hidden="true" />
 
-    <div class="portal-content">
-      <section class="portal-intro">
-        <Badge variant="outline" class="portal-eyebrow">
+    <div class="relative z-1 mx-auto min-h-[calc(100vh-4rem)] w-[min(100%-2rem,80rem)] pb-7 pt-14 min-[801px]:pt-[clamp(3rem,7vh,5.5rem)]">
+      <section class="mx-auto max-w-[58rem] text-center">
+        <Badge variant="outline" class="h-7 gap-1.5 border-primary/30 bg-card/70 text-ds-text-brand shadow-[0_10px_40px_rgb(47_189_199_/_8%)] backdrop-blur-[14px]">
           <Sparkles class="size-3" />
           {{ copy.eyebrow }}
         </Badge>
-        <h1>{{ copy.title }}</h1>
-        <p>{{ copy.description }}</p>
+        <h1 class="mt-6 text-balance text-[clamp(2.65rem,6.5vw,5.7rem)] font-semibold leading-[0.98] tracking-[-0.065em]">{{ copy.title }}</h1>
+        <p class="mx-auto mt-5 max-w-2xl text-pretty text-[clamp(0.9rem,1.5vw,1.05rem)] leading-7 text-muted-foreground">{{ copy.description }}</p>
       </section>
 
-      <section class="portal-list" :aria-label="copy.destinations">
+      <section class="mt-[clamp(2.5rem,5vh,3.6rem)] grid gap-[clamp(0.9rem,2vw,1.35rem)] min-[801px]:grid-cols-3 min-[801px]:[perspective:1200px]" :aria-label="copy.destinations">
         <button
           v-for="portal in portals"
           :key="portal.id"
           type="button"
-          class="portal-card"
-          :class="`portal-card--${portal.id}`"
+          class="group relative flex min-h-60 flex-col overflow-hidden rounded-[1.55rem] border border-[color-mix(in_srgb,var(--portal-accent)_22%,var(--border))] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--card)_86%,transparent),color-mix(in_srgb,var(--card)_64%,transparent))] p-[1.35rem] text-left text-foreground shadow-[0_22px_70px_rgb(18_47_51_/_8%),inset_0_1px_rgb(255_255_255_/_76%)] outline-none transition-[transform,border-color,box-shadow] duration-[260ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] [backdrop-filter:blur(18px)_saturate(1.15)] hover:z-2 hover:border-[color-mix(in_srgb,var(--portal-accent)_52%,var(--border))] hover:shadow-[0_32px_90px_color-mix(in_srgb,var(--portal-accent)_15%,transparent),inset_0_1px_rgb(255_255_255_/_80%)] hover:[transform:translateY(-0.65rem)_rotate(0)_scale(1.012)] focus-visible:z-2 focus-visible:border-[color-mix(in_srgb,var(--portal-accent)_52%,var(--border))] focus-visible:shadow-[0_32px_90px_color-mix(in_srgb,var(--portal-accent)_15%,transparent),inset_0_1px_rgb(255_255_255_/_80%)] focus-visible:[transform:translateY(-0.65rem)_rotate(0)_scale(1.012)] motion-reduce:transition-none min-[801px]:min-h-72"
+          :class="portalCardTone[portal.id]"
           :data-testid="`portal-${portal.id}`"
           @click="emit('select', portal.id)"
         >
-          <span class="portal-card__glow" aria-hidden="true" />
-          <span class="portal-card__topline">
-            <span class="portal-card__index">{{ portal.index }}</span>
-            <span class="portal-card__icon"><component :is="portal.icon" /></span>
+          <span class="absolute -right-20 -top-24 size-52 rounded-full bg-portal-accent opacity-20 blur-[26px] transition-[opacity,transform] duration-[400ms] group-hover:translate-x-[-1.5rem] group-hover:translate-y-6 group-hover:scale-115 group-hover:opacity-35 motion-reduce:transition-none" aria-hidden="true" />
+          <span class="relative flex items-center justify-between gap-4">
+            <span class="font-mono text-[0.68rem] tracking-[0.13em] text-muted-foreground">{{ portal.index }}</span>
+            <span class="grid size-[2.8rem] rotate-4 place-items-center rounded-[0.9rem] border border-[color-mix(in_srgb,var(--portal-accent)_27%,transparent)] bg-[color-mix(in_srgb,var(--portal-accent)_10%,var(--card))] text-[color-mix(in_srgb,var(--portal-accent)_82%,var(--foreground))] transition-transform duration-[260ms] group-hover:rotate-[-4deg] group-hover:scale-108 motion-reduce:transition-none"><component :is="portal.icon" class="size-[1.15rem]" /></span>
           </span>
-          <span class="portal-card__body">
-            <strong>{{ portal.title }}</strong>
-            <span>{{ portal.description }}</span>
+          <span class="relative mt-auto grid gap-3 py-[2.5rem_1.8rem]">
+            <strong class="text-[clamp(1.65rem,2.4vw,2.2rem)] font-semibold tracking-[-0.045em]">{{ portal.title }}</strong>
+            <span class="max-w-xs text-[0.82rem] leading-[1.65] text-muted-foreground">{{ portal.description }}</span>
           </span>
-          <span class="portal-card__footer">
+          <span class="relative flex items-center justify-between gap-4 border-t border-foreground/8 pt-4 text-[0.7rem] text-muted-foreground">
             <span>{{ portal.meta }}</span>
-            <span class="portal-card__action">{{ copy.enter }}<ArrowUpRight /></span>
+            <span class="inline-flex items-center gap-1.5 font-medium text-foreground">{{ copy.enter }}<ArrowUpRight class="size-3.5 transition-transform duration-180 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 motion-reduce:transition-none" /></span>
           </span>
         </button>
       </section>
 
-      <footer class="portal-status">
-        <span><i class="portal-status__dot" />{{ copy.connected }}</span>
-        <span v-if="backupEnabled"><ShieldCheck />{{ copy.protected }}</span>
-        <span>{{ copy.private }}</span>
+      <footer class="mt-9 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-[0.68rem] text-muted-foreground">
+        <span class="inline-flex items-center gap-1.5"><i class="size-1.5 rounded-full bg-success shadow-[0_0_0_4px_var(--success-soft)]" />{{ copy.connected }}</span>
+        <span v-if="backupEnabled" class="inline-flex items-center gap-1.5"><ShieldCheck class="size-3 text-success" />{{ copy.protected }}</span>
+        <span class="inline-flex items-center gap-1.5">{{ copy.private }}</span>
       </footer>
     </div>
   </main>
 </template>
-
-<style scoped>
-.portal-shell {
-  position: relative;
-  min-height: calc(100vh - 4rem);
-  overflow: hidden;
-  isolation: isolate;
-  background:
-    radial-gradient(circle at 20% 5%, color-mix(in srgb, var(--ds-color-brand-default) 14%, transparent), transparent 34rem),
-    linear-gradient(145deg, var(--background) 15%, color-mix(in srgb, var(--ds-color-bg-surface-raised) 76%, var(--background)) 100%);
-}
-
-.portal-aurora {
-  position: absolute;
-  inset: -20%;
-  z-index: -1;
-  opacity: 0.72;
-  background:
-    radial-gradient(ellipse at 23% 38%, rgba(100, 224, 231, 0.22), transparent 27%),
-    radial-gradient(ellipse at 73% 25%, rgba(255, 194, 116, 0.14), transparent 23%),
-    radial-gradient(ellipse at 72% 83%, rgba(242, 103, 162, 0.1), transparent 22%);
-  filter: blur(28px);
-  animation: portal-drift 16s ease-in-out infinite alternate;
-}
-
-.portal-grid {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  opacity: 0.22;
-  background-image: radial-gradient(circle, color-mix(in srgb, var(--foreground) 28%, transparent) 0.7px, transparent 0.8px);
-  background-size: 22px 22px;
-  mask-image: linear-gradient(to bottom, transparent, black 22%, black 74%, transparent);
-}
-
-.portal-content {
-  position: relative;
-  z-index: 1;
-  width: min(100% - 2rem, 80rem);
-  min-height: calc(100vh - 4rem);
-  margin-inline: auto;
-  padding: clamp(3rem, 7vh, 5.5rem) 0 1.75rem;
-}
-
-.portal-intro {
-  max-width: 58rem;
-  margin-inline: auto;
-  text-align: center;
-}
-
-.portal-eyebrow {
-  height: 1.75rem;
-  gap: 0.4rem;
-  border-color: color-mix(in srgb, var(--ds-color-brand-default) 30%, transparent);
-  background: color-mix(in srgb, var(--card) 72%, transparent);
-  color: var(--ds-color-text-brand);
-  box-shadow: 0 10px 40px rgba(47, 189, 199, 0.08);
-  backdrop-filter: blur(14px);
-}
-
-.portal-intro h1 {
-  margin: 1.5rem 0 0;
-  font-size: clamp(2.65rem, 6.5vw, 5.7rem);
-  font-weight: 620;
-  letter-spacing: -0.065em;
-  line-height: 0.98;
-  text-wrap: balance;
-}
-
-.portal-intro p {
-  max-width: 40rem;
-  margin: 1.35rem auto 0;
-  color: var(--muted-foreground);
-  font-size: clamp(0.9rem, 1.5vw, 1.05rem);
-  line-height: 1.75;
-  text-wrap: pretty;
-}
-
-.portal-list {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: clamp(0.9rem, 2vw, 1.35rem);
-  margin-top: clamp(2.5rem, 5vh, 3.6rem);
-  perspective: 1200px;
-}
-
-.portal-card {
-  --portal-accent: var(--ds-color-brand-default);
-  position: relative;
-  display: flex;
-  min-height: 18rem;
-  overflow: hidden;
-  flex-direction: column;
-  padding: 1.35rem;
-  color: var(--foreground);
-  text-align: left;
-  border: 1px solid color-mix(in srgb, var(--portal-accent) 22%, var(--border));
-  border-radius: 1.55rem;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--card) 86%, transparent), color-mix(in srgb, var(--card) 64%, transparent));
-  box-shadow: 0 22px 70px rgba(18, 47, 51, 0.08), inset 0 1px rgba(255, 255, 255, 0.76);
-  backdrop-filter: blur(18px) saturate(1.15);
-  transform: translateZ(0) rotate(-0.7deg);
-  transition: transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color 260ms ease, box-shadow 260ms ease;
-}
-
-.portal-card--theme {
-  --portal-accent: #efab63;
-  transform: translateY(0.75rem) rotate(0.8deg);
-}
-
-.portal-card--settings {
-  --portal-accent: #e2679e;
-  transform: rotate(-0.2deg);
-}
-
-.portal-card:hover,
-.portal-card:focus-visible {
-  z-index: 2;
-  border-color: color-mix(in srgb, var(--portal-accent) 52%, var(--border));
-  box-shadow: 0 32px 90px color-mix(in srgb, var(--portal-accent) 15%, transparent), inset 0 1px rgba(255, 255, 255, 0.8);
-  transform: translateY(-0.65rem) rotate(0deg) scale(1.012);
-  outline: none;
-}
-
-.portal-card__glow {
-  position: absolute;
-  top: -6rem;
-  right: -5rem;
-  width: 13rem;
-  height: 13rem;
-  border-radius: 999px;
-  opacity: 0.2;
-  background: var(--portal-accent);
-  filter: blur(26px);
-  transition: opacity 260ms ease, transform 400ms ease;
-}
-
-.portal-card:hover .portal-card__glow {
-  opacity: 0.34;
-  transform: translate(-1.5rem, 1.5rem) scale(1.15);
-}
-
-.portal-card__topline,
-.portal-card__footer {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.portal-card__index {
-  color: var(--muted-foreground);
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  letter-spacing: 0.13em;
-}
-
-.portal-card__icon {
-  display: grid;
-  width: 2.8rem;
-  height: 2.8rem;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--portal-accent) 27%, transparent);
-  border-radius: 0.9rem;
-  color: color-mix(in srgb, var(--portal-accent) 82%, var(--foreground));
-  background: color-mix(in srgb, var(--portal-accent) 10%, var(--card));
-  transform: rotate(4deg);
-  transition: transform 260ms ease;
-}
-
-.portal-card:hover .portal-card__icon {
-  transform: rotate(-4deg) scale(1.08);
-}
-
-.portal-card__icon :deep(svg) {
-  width: 1.15rem;
-  height: 1.15rem;
-}
-
-.portal-card__body {
-  position: relative;
-  display: grid;
-  gap: 0.8rem;
-  margin-top: auto;
-  padding-block: 2.5rem 1.8rem;
-}
-
-.portal-card__body strong {
-  font-size: clamp(1.65rem, 2.4vw, 2.2rem);
-  font-weight: 620;
-  letter-spacing: -0.045em;
-}
-
-.portal-card__body > span {
-  max-width: 19rem;
-  color: var(--muted-foreground);
-  font-size: 0.82rem;
-  line-height: 1.65;
-}
-
-.portal-card__footer {
-  padding-top: 1rem;
-  border-top: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
-  color: var(--muted-foreground);
-  font-size: 0.7rem;
-}
-
-.portal-card__action {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  color: var(--foreground);
-  font-weight: 560;
-}
-
-.portal-card__action :deep(svg) {
-  width: 0.85rem;
-  height: 0.85rem;
-  transition: transform 180ms ease;
-}
-
-.portal-card:hover .portal-card__action :deep(svg) {
-  transform: translate(2px, -2px);
-}
-
-.portal-status {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem 1.5rem;
-  margin-top: 2.2rem;
-  color: var(--muted-foreground);
-  font-size: 0.68rem;
-}
-
-.portal-status span {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.portal-status :deep(svg) {
-  width: 0.8rem;
-  height: 0.8rem;
-  color: var(--success);
-}
-
-.portal-status__dot {
-  width: 0.38rem;
-  height: 0.38rem;
-  border-radius: 999px;
-  background: var(--success);
-  box-shadow: 0 0 0 4px var(--success-soft);
-}
-
-@keyframes portal-drift {
-  from { transform: translate3d(-2%, -1%, 0) rotate(-2deg); }
-  to { transform: translate3d(3%, 2%, 0) rotate(2deg); }
-}
-
-@media (max-width: 800px) {
-  .portal-content { padding-top: 3.5rem; }
-  .portal-list { grid-template-columns: 1fr; margin-top: 2.7rem; }
-  .portal-card,
-  .portal-card--theme,
-  .portal-card--settings { min-height: 15rem; transform: none; }
-  .portal-card__body { padding-block: 2.6rem 1.8rem; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .portal-aurora { animation: none; }
-  .portal-card,
-  .portal-card__glow,
-  .portal-card__icon,
-  .portal-card__action :deep(svg) { transition: none; }
-}
-</style>
