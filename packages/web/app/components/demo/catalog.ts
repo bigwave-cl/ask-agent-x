@@ -1,11 +1,11 @@
 import type { Component } from 'vue'
 
-export type DemoModuleId = 'overview' | 'components' | 'theming'
+export type DemoModuleId = 'overview' | 'components' | 'theming' | 'utils'
 
 export interface DemoModule {
   id: DemoModuleId
   index: string
-  group: 'guide' | 'components' | 'foundation'
+  group: 'guide' | 'components' | 'foundation' | 'utils'
   groupLabel: string
   title: string
   description: string
@@ -44,9 +44,23 @@ export const demoModules: DemoModule[] = [
     sourcePath: 'app/components/demo/modules/theming/index.vue',
     loader: () => import('./modules/theming/index.vue'),
   },
+  {
+    id: 'utils',
+    index: '03',
+    group: 'utils',
+    groupLabel: 'Utils 工具集',
+    title: 'Utils 工具集',
+    description: '集中验证复制、反馈与后续通用组合式能力。',
+    sourcePath: 'app/components/demo/modules/utils/index.vue',
+    loader: () => import('./modules/utils/index.vue'),
+  },
 ]
 
 export function getDemoModule(moduleId?: string | null) {
-  const resolvedModuleId = moduleId === 'button' || moduleId === 'choice' ? 'components' : moduleId
+  const resolvedModuleId = moduleId === 'button' || moduleId === 'choice'
+    ? 'components'
+    : moduleId === 'copy-text'
+      ? 'utils'
+      : moduleId
   return demoModules.find(module => module.id === resolvedModuleId) ?? demoModules[0]!
 }

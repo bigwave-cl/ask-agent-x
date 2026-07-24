@@ -22,16 +22,13 @@ const props = withDefaults(defineProps<{
 const copied = ref(false)
 let resetTimer: ReturnType<typeof setTimeout> | undefined
 
-async function handleCopy() {
+async function handleCopy(event: MouseEvent) {
   if (!import.meta.client) return
-  try {
-    await navigator.clipboard.writeText(props.text)
-    copied.value = true
-    if (resetTimer) clearTimeout(resetTimer)
-    resetTimer = setTimeout(() => { copied.value = false }, 1400)
-  } catch {
-    copied.value = false
-  }
+  const targetElement = event.currentTarget instanceof Element ? event.currentTarget : undefined
+  copied.value = await useCopyText({ text: props.text, el: targetElement })
+  if (!copied.value) return
+  if (resetTimer) clearTimeout(resetTimer)
+  resetTimer = setTimeout(() => { copied.value = false }, 1400)
 }
 
 onBeforeUnmount(() => resetTimer && clearTimeout(resetTimer))

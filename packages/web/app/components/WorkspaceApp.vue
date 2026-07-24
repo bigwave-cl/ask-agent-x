@@ -74,6 +74,7 @@ const dirty = ref(false)
 const feedbackKey = ref<FeedbackKey>('feedbackConnecting')
 const feedbackArgs = ref<Record<string, string | number>>({})
 let refreshTimer: ReturnType<typeof setInterval> | undefined
+let commandCopyTimer: ReturnType<typeof setTimeout> | undefined
 
 const copy = computed(() => ({
   ...commonMessages.value,
@@ -173,13 +174,10 @@ function updateTokenInput(value: string) {
 }
 
 async function copyTokenCommand() {
-  try {
-    await navigator.clipboard.writeText(tokenCommand)
-    commandCopied.value = true
-    setTimeout(() => { commandCopied.value = false }, 1600)
-  } catch {
-    commandCopied.value = false
-  }
+  commandCopied.value = await useCopyText(tokenCommand)
+  if (!commandCopied.value) return
+  if (commandCopyTimer) clearTimeout(commandCopyTimer)
+  commandCopyTimer = setTimeout(() => { commandCopied.value = false }, 1600)
 }
 
 async function refreshSettings(initial = false, force = false) {
@@ -320,6 +318,7 @@ onMounted(checkSession)
 
 onBeforeUnmount(() => {
   if (refreshTimer) clearInterval(refreshTimer)
+  if (commandCopyTimer) clearTimeout(commandCopyTimer)
 })
 </script>
 
