@@ -20,13 +20,18 @@ const props = withDefaults(defineProps<{
 })
 
 const copied = ref(false)
+const toast = useToast()
 let resetTimer: ReturnType<typeof setTimeout> | undefined
 
 async function handleCopy(event: MouseEvent) {
   if (!import.meta.client) return
   const targetElement = event.currentTarget instanceof Element ? event.currentTarget : undefined
   copied.value = await useCopyText({ text: props.text, el: targetElement })
-  if (!copied.value) return
+  if (!copied.value) {
+    toast.error('复制失败，请重试')
+    return
+  }
+  toast.success(props.copiedLabel)
   if (resetTimer) clearTimeout(resetTimer)
   resetTimer = setTimeout(() => { copied.value = false }, 1400)
 }

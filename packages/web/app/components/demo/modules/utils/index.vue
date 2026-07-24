@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Braces, Check, ClipboardCopy, Layers3, MousePointerClick } from '@lucide/vue'
+import { Bell, Braces, Check, CircleAlert, CircleCheck, ClipboardCopy, Info, Layers3, MousePointerClick, TriangleAlert } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import DemoCopyButton from '../../components/DemoCopyButton.vue'
@@ -7,7 +7,8 @@ import DemoSection from '../../components/DemoSection.vue'
 
 defineOptions({ name: 'DemoUtilsModule' })
 
-const openSections = reactive({ copyText: true })
+const openSections = reactive({ copyText: true, toast: true })
+const toast = useToast()
 const directCopyState = ref<'idle' | 'success' | 'error'>('idle')
 const targetCopyState = ref<'idle' | 'success' | 'error'>('idle')
 let directResetTimer: ReturnType<typeof setTimeout> | undefined
@@ -35,6 +36,8 @@ function scheduleReset(kind: 'direct' | 'target') {
 async function copyDirectly() {
   const copied = await useCopyText('bg-ds-brand-default')
   directCopyState.value = copied ? 'success' : 'error'
+  if (copied) toast.success('Token 已复制')
+  else toast.error('复制失败，请重试')
   scheduleReset('direct')
 }
 
@@ -42,6 +45,8 @@ async function copyFromTarget(event: MouseEvent) {
   const targetElement = event.currentTarget instanceof Element ? event.currentTarget : undefined
   const copied = await useCopyText({ text: 'pnpm askx ui token', el: targetElement })
   targetCopyState.value = copied ? 'success' : 'error'
+  if (copied) toast.success('命令已复制')
+  else toast.error('复制失败，请重试')
   scheduleReset('target')
 }
 
@@ -63,7 +68,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="grid min-w-56 gap-2 rounded-xl border bg-card/80 p-4 font-mono text-[10px] text-muted-foreground">
           <span class="flex items-center gap-2"><Layers3 class="size-3.5 text-primary" />模块：Utils 工具集</span>
-          <span class="flex items-center gap-2"><ClipboardCopy class="size-3.5 text-primary" />返回：Promise&lt;boolean&gt;</span>
+          <span class="flex items-center gap-2"><Bell class="size-3.5 text-primary" />能力：Copy / Toast</span>
         </div>
       </div>
     </article>
@@ -126,6 +131,52 @@ onBeforeUnmount(() => {
         <div class="flex flex-col gap-3 rounded-xl bg-muted/45 p-4 sm:flex-row sm:items-center sm:justify-between">
           <p class="text-xs leading-5 text-muted-foreground">DemoCopyButton 与工作台命令复制已经统一消费该 composable。</p>
           <DemoCopyButton :text="targetCopyCode" label="复制完整用法" copied-label="已复制" variant="ghost" />
+        </div>
+      </article>
+    </DemoSection>
+
+    <DemoSection
+      v-model="openSections.toast"
+      title="useToast"
+      description="统一全局反馈入口，并透传 Sonner 的描述、时长、操作按钮与生命周期配置。"
+      sec-key="utils-toast"
+    >
+      <article class="grid gap-5 rounded-2xl border bg-background p-5 sm:p-7">
+        <header class="flex flex-col gap-3 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <Badge variant="outline" class="font-mono"><Bell />COMPOSABLE</Badge>
+            <h4 class="mt-4 text-2xl font-semibold tracking-[-0.04em]">反馈语义保持明确。</h4>
+          </div>
+          <code class="w-fit rounded-lg bg-muted px-3 py-2 font-mono text-[10px] text-muted-foreground">app/composables/useToast.ts</code>
+        </header>
+
+        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <Button variant="outlined" size="40" @click="toast.show('设置已更新', { description: '本地配置已写入当前设备。' })">
+            <Bell />默认提示
+          </Button>
+          <Button variant="outlined" size="40" @click="toast.success('同步完成', { description: 'CLI 与 Web 已使用相同配置。' })">
+            <CircleCheck class="text-success" />成功
+          </Button>
+          <Button variant="outlined" size="40" @click="toast.info('发现新版本', { description: '可在准备好后执行更新。' })">
+            <Info class="text-ds-brand-default" />信息
+          </Button>
+          <Button variant="outlined" size="40" @click="toast.warning('配置即将过期', { description: '请检查当前 Token 是否仍然有效。' })">
+            <TriangleAlert class="text-warning" />警告
+          </Button>
+          <Button variant="outlined" size="40" @click="toast.error('保存失败', { description: '配置发生冲突，请重新加载后再试。' })">
+            <CircleAlert class="text-destructive" />错误
+          </Button>
+        </div>
+
+        <div class="flex flex-col gap-3 rounded-xl bg-muted/45 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <p class="text-xs leading-5 text-muted-foreground">Toaster 全局挂载一次；业务只调用 composable，不关心容器与主题样式。</p>
+          <Button
+            variant="ghost"
+            size="36"
+            @click="toast.info('操作可撤销', { action: { label: '撤销', onClick: () => toast.success('已撤销') } })"
+          >
+            显示操作按钮
+          </Button>
         </div>
       </article>
     </DemoSection>
