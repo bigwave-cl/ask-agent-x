@@ -4,6 +4,13 @@ export default defineNuxtConfig({
   compatibilityDate: '2026-07-16',
   devtools: { enabled: true },
   modules: ['shadcn-nuxt', '@nuxtjs/i18n'],
+  components: [
+    { path: '~/components/common', prefix: 'Cs', extensions: ['vue'] },
+    { path: '~/components/ui', extensions: ['vue'] },
+    { path: '~/components/business', prefix: 'Bus', extensions: ['vue'] },
+    { path: '~/components/demo', prefix: 'Demo', extensions: ['vue'] },
+    { path: '~/components', pathPrefix: false, pattern: '*.vue', extensions: ['vue'] },
+  ],
   css: ['~/assets/css/main.css'],
   watch: ['../core/dist/**'],
   i18n: {

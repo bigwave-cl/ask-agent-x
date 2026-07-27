@@ -1,10 +1,9 @@
 @import "@fontsource-variable/geist";
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "shadcn-vue/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
-@custom-variant data-horizontal (&[data-orientation="horizontal"]);
-@custom-variant data-vertical (&[data-orientation="vertical"]);
 
 :root {
   color-scheme: light;
