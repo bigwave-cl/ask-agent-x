@@ -5,10 +5,11 @@ import DemoButton from './DemoButton.vue'
 import DemoChoice from './DemoChoice.vue'
 import DemoResponsiveOverlay from './DemoResponsiveOverlay.vue'
 import DemoScrollArea from './DemoScrollArea.vue'
+import DemoSelect from './DemoSelect.vue'
 
 defineOptions({ name: 'DemoComponentsModule' })
 
-const openSections = reactive({ button: true, choice: false, responsiveOverlay: false, scrollArea: false })
+const openSections = reactive({ button: true, choice: false, responsiveOverlay: false, scrollArea: false, select: false })
 </script>
 
 <template>
@@ -23,13 +24,14 @@ const openSections = reactive({ button: true, choice: false, responsiveOverlay: 
         </div>
         <div class="grid min-w-56 gap-2 rounded-xl border bg-card/80 p-4 font-mono text-[10px] text-muted-foreground">
           <span class="flex items-center gap-2"><Layers3 class="size-3.5 text-primary" />模块：基础组件</span>
-          <span class="flex items-center gap-2"><Braces class="size-3.5 text-primary" />Section：Button / Choice / ScrollArea / ResponsiveOverlay</span>
+          <span class="flex items-center gap-2"><Braces class="size-3.5 text-primary" />Section：Button / Choice / Select / ScrollArea / ResponsiveOverlay</span>
         </div>
       </div>
     </article>
 
     <DemoButton v-model="openSections.button" />
     <DemoChoice v-model="openSections.choice" />
+    <DemoSelect v-model="openSections.select" />
     <DemoScrollArea v-model="openSections.scrollArea" />
     <DemoResponsiveOverlay v-model="openSections.responsiveOverlay" />
   </div>

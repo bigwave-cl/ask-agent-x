@@ -6,6 +6,7 @@ import {
   responsiveOverlayClasses,
 } from './overlayOptions'
 import { resolveResponsiveOverlayPresentation } from './types'
+import { resolveResponsiveOverlayViewport } from './useResponsiveOverlayViewport'
 
 describe('ResponsiveOverlay presentation', () => {
   it('uses a stable pending state before hydration', () => {
@@ -18,6 +19,18 @@ describe('ResponsiveOverlay presentation', () => {
     expect(resolveResponsiveOverlayPresentation(true, true, 'popover')).toBe('popover')
     expect(resolveResponsiveOverlayPresentation(true, false, 'dialog')).toBe('drawer')
     expect(resolveResponsiveOverlayPresentation(true, false, 'popover')).toBe('drawer')
+  })
+})
+
+describe('ResponsiveOverlay viewport', () => {
+  it('keeps SSR pending before resolving the client viewport', () => {
+    expect(resolveResponsiveOverlayViewport(false, false)).toBe('pending')
+    expect(resolveResponsiveOverlayViewport(false, true)).toBe('pending')
+  })
+
+  it('resolves desktop and mobile after mounting', () => {
+    expect(resolveResponsiveOverlayViewport(true, true)).toBe('desktop')
+    expect(resolveResponsiveOverlayViewport(true, false)).toBe('mobile')
   })
 })
 

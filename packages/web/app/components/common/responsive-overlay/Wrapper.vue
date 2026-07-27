@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useMediaQuery } from '@vueuse/core'
 import ResponsiveOverlayDrawer from './Drawer.vue'
 import { responsiveOverlayShellDefaults } from './overlayOptions'
 import type {
@@ -7,7 +6,7 @@ import type {
   ResponsiveOverlaySlotProps,
   ResponsiveOverlayWrapperProps,
 } from './types'
-import { resolveResponsiveOverlayPresentation } from './types'
+import { useResponsiveOverlayViewport } from './useResponsiveOverlayViewport'
 
 defineOptions({ name: 'ResponsiveOverlayWrapper' })
 
@@ -37,10 +36,11 @@ defineSlots<{
   'top-left'?: (props: ResponsiveOverlaySlotProps) => unknown
 }>()
 
-const mounted = ref(false)
-const desktopMedia = useMediaQuery(() => props.desktopQuery)
+const { viewport } = useResponsiveOverlayViewport(() => props.desktopQuery)
 const presentation = computed<ResponsiveOverlayPresentation>(() => (
-  resolveResponsiveOverlayPresentation(mounted.value, desktopMedia.value, props.desktopMode)
+  viewport.value === 'pending'
+    ? 'pending'
+    : viewport.value === 'desktop' ? props.desktopMode : 'drawer'
 ))
 const slotProps = computed<ResponsiveOverlaySlotProps>(() => ({
   close: closeOverlay,
@@ -61,10 +61,6 @@ function closeOverlay() {
 function toggleOverlay() {
   open.value = !open.value
 }
-
-onMounted(() => {
-  mounted.value = true
-})
 
 defineExpose({ close: closeOverlay, open: openOverlay, presentation, toggle: toggleOverlay })
 </script>
