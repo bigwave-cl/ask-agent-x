@@ -28,6 +28,7 @@ import type {
 } from './types'
 import {
   findResponsiveSelectOption,
+  getResponsiveSelectDrawerOptions,
   resolveResponsiveSelectCommit,
 } from './types'
 
@@ -65,6 +66,7 @@ const attrs = useAttrs()
 const selectedOption = computed(() => findResponsiveSelectOption(props.options, modelValue.value))
 const hasValue = computed(() => modelValue.value !== undefined && modelValue.value !== '')
 const accessibleDescription = computed(() => props.description ?? props.placeholder)
+const selectDrawerOptions = computed(() => getResponsiveSelectDrawerOptions(props.drawer))
 const { isMobile, isPending } = useResponsiveOverlayViewport(() => props.desktopQuery)
 const valueSlotProps = (isMobile: boolean): ResponsiveSelectValueSlotProps => ({
   isMobile,
@@ -135,7 +137,7 @@ function clearSelection(event: MouseEvent) {
     v-model:open="open"
     :title="title"
     :description="accessibleDescription"
-    :drawer="drawer"
+    :drawer="selectDrawerOptions"
     :close-label="closeLabel"
     :show-header="true"
   >

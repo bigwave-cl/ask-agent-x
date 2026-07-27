@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   findResponsiveSelectOption,
+  getResponsiveSelectDrawerOptions,
+  responsiveSelectHiddenDrawerHandleClass,
   resolveResponsiveSelectCommit,
 } from './types'
 
@@ -41,5 +43,21 @@ describe('ResponsiveSelect selection contract', () => {
     if (result.accepted) onChange(result)
 
     expect(onChange).toHaveBeenCalledOnce()
+  })
+
+  it('hides the mobile handle and restricts dragging to an absent handle', () => {
+    const drawer = getResponsiveSelectDrawerOptions({
+      root: { direction: 'bottom', handleOnly: false },
+      content: { class: 'max-h-96' },
+    })
+
+    expect(drawer.root).toMatchObject({
+      direction: 'bottom',
+      handleOnly: true,
+    })
+    expect(drawer.content?.class).toEqual([
+      responsiveSelectHiddenDrawerHandleClass,
+      'max-h-96',
+    ])
   })
 })

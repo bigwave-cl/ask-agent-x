@@ -54,6 +54,23 @@ export interface ResponsiveSelectCommitResult {
   option: ResponsiveSelectOption | null
 }
 
+export const responsiveSelectHiddenDrawerHandleClass = '[&>div:first-child]:hidden'
+
+export function getResponsiveSelectDrawerOptions(
+  drawer?: ResponsiveOverlayDrawerOptions,
+): ResponsiveOverlayDrawerOptions {
+  return {
+    root: {
+      ...drawer?.root,
+      handleOnly: true,
+    },
+    content: {
+      ...drawer?.content,
+      class: [responsiveSelectHiddenDrawerHandleClass, drawer?.content?.class],
+    },
+  }
+}
+
 export function findResponsiveSelectOption(
   options: ResponsiveSelectOption[],
   value: string | undefined,
