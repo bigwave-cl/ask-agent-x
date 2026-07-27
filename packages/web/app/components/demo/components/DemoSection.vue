@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { Ref } from 'vue'
-import { ChevronDown } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 
 defineOptions({ name: 'DemoSection' })
@@ -123,7 +122,7 @@ onBeforeUnmount(() => {
           <span v-if="description" class="mt-1 block whitespace-normal text-xs font-normal leading-5 text-muted-foreground">{{ description }}</span>
           <span class="mt-3 block h-1 w-20 rounded-full bg-gradient-to-r" :class="accentClass" aria-hidden="true" />
         </span>
-        <ChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform duration-200" :class="isOpen ? 'rotate-180' : ''" />
+        <Icon name="askx-navigation:chevron-down" class="size-4 shrink-0 text-muted-foreground transition-transform duration-200" :class="isOpen ? 'rotate-180' : ''" />
       </span>
     </Button>
 

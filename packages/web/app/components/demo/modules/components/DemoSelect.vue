@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Bot, Languages, ListFilter, MapPin, Sparkles } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import type { ResponsiveSelectChangeEvent, ResponsiveSelectOption } from '@/components/common/responsive-select/types'
 import DemoCopyButton from '../../components/DemoCopyButton.vue'
@@ -48,7 +47,7 @@ function recordChange(event: ResponsiveSelectChangeEvent) {
         <div class="pointer-events-none absolute -right-16 -top-24 size-72 rounded-full bg-primary/12 blur-3xl" />
         <div class="relative flex flex-wrap items-end justify-between gap-6">
           <div>
-            <Badge variant="soft"><Sparkles />SHADCN / RESPONSIVE</Badge>
+            <Badge variant="soft"><Icon name="askx-status:star" />SHADCN / RESPONSIVE</Badge>
             <h3 class="mt-6 max-w-3xl text-3xl font-semibold sm:text-5xl">同一份选择，在合适的容器里发生。</h3>
             <p class="mt-4 max-w-3xl text-sm leading-6 text-muted-foreground">桌面端保留 Select 的键盘导航、typeahead 与定位能力；移动端根据统一断点规则切换为 Drawer，并共享同一份选项和 model。</p>
           </div>
@@ -106,10 +105,10 @@ function recordChange(event: ResponsiveSelectChangeEvent) {
               @change="recordChange"
             >
               <template #value="{ option, placeholder }">
-                <span class="inline-flex min-w-0 items-center gap-2"><Bot class="size-4 shrink-0 text-primary" /><span class="truncate">{{ option?.label ?? placeholder }}</span></span>
+                <span class="inline-flex min-w-0 items-center gap-2"><Icon name="askx-objects:agent" class="size-4 shrink-0 text-primary" /><span class="truncate">{{ option?.label ?? placeholder }}</span></span>
               </template>
               <template #item="{ option }">
-                <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground"><Bot class="size-4" /></span>
+                <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground"><Icon name="askx-objects:agent" class="size-4" /></span>
                 <span class="grid min-w-0 flex-1 gap-0.5 text-left"><strong class="text-sm">{{ option.label }}</strong><span class="text-xs leading-5 text-muted-foreground">{{ option.description }}</span></span>
               </template>
             </CsResponsiveSelect>
@@ -124,15 +123,15 @@ function recordChange(event: ResponsiveSelectChangeEvent) {
         </div>
         <article class="grid gap-4 rounded-2xl border bg-card p-4 sm:grid-cols-3 sm:p-5">
           <div class="grid content-start gap-2">
-            <span class="inline-flex items-center gap-2 text-xs font-medium"><MapPin class="size-4 text-primary" />可清除节点</span>
+            <span class="inline-flex items-center gap-2 text-xs font-medium"><Icon name="askx-objects:map" class="size-4 text-primary" />可清除节点</span>
             <CsResponsiveSelect v-model="region" clearable title="选择服务节点" placeholder="请选择节点" close-label="关闭节点选择" clear-label="清除节点" empty-text="暂无服务节点" :options="regionOptions" @change="recordChange" />
           </div>
           <div class="grid content-start gap-2">
-            <span class="inline-flex items-center gap-2 text-xs font-medium"><ListFilter class="size-4 text-primary" />空列表</span>
+            <span class="inline-flex items-center gap-2 text-xs font-medium"><Icon name="askx-actions:adjust" class="size-4 text-primary" />空列表</span>
             <CsResponsiveSelect title="选择执行器" placeholder="暂无执行器" close-label="关闭执行器选择" clear-label="清除执行器" empty-text="暂无可用执行器" :options="[]" />
           </div>
           <div class="grid content-start gap-2">
-            <span class="inline-flex items-center gap-2 text-xs font-medium"><Languages class="size-4 text-primary" />整体禁用</span>
+            <span class="inline-flex items-center gap-2 text-xs font-medium"><Icon name="askx-objects:language" class="size-4 text-primary" />整体禁用</span>
             <CsResponsiveSelect disabled title="选择语言" placeholder="不可修改" close-label="关闭语言选择" clear-label="清除语言" empty-text="暂无语言" :options="languageOptions" />
           </div>
         </article>

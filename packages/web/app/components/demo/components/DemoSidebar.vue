@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { DemoModule, DemoModuleId } from '../catalog'
-import { ArrowUpRight, Check, LockKeyhole } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
@@ -40,16 +39,16 @@ const localePath = useLocalePath()
       >
         <span class="pt-0.5 font-mono text-[10px] text-muted-foreground">{{ module.index }}</span>
         <span class="min-w-0"><strong class="block text-sm">{{ module.title }}</strong><small class="mt-1.5 block text-[11px] leading-4 text-muted-foreground">{{ module.description }}</small></span>
-        <Check v-if="module.id === activeModuleId" class="mt-0.5 size-3.5 text-primary" />
+        <Icon name="askx-status:check" v-if="module.id === activeModuleId" class="mt-0.5 size-3.5 text-primary" />
       </button>
     </nav>
 
     <div class="mt-auto grid gap-3 pt-8">
       <div class="rounded-xl border border-dashed bg-muted/35 p-3">
-        <div class="flex items-center gap-2 text-[11px] font-medium"><LockKeyhole class="size-3.5 text-primary" />无需登录</div>
+        <div class="flex items-center gap-2 text-[11px] font-medium"><Icon name="askx-status:lock" class="size-3.5 text-primary" />无需登录</div>
         <p class="mt-1.5 text-[10px] leading-4 text-muted-foreground">仅展示 UI，不访问受保护 API</p>
       </div>
-      <Button as-child variant="soft" size="sm" class="w-full"><NuxtLink :to="localePath('/login')">进入工作台<ArrowUpRight /></NuxtLink></Button>
+      <Button as-child variant="soft" size="sm" class="w-full"><NuxtLink :to="localePath('/login')">进入工作台<Icon name="askx-actions:external-link" /></NuxtLink></Button>
     </div>
   </div>
 </template>

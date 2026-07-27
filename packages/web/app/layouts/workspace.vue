@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { CloudCog, Code2, Command, LockKeyhole, Sparkles } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -33,16 +32,16 @@ function isActive(path: string) {
 
         <nav class="hidden items-center gap-1 md:flex" :aria-label="copy.overview">
           <Button as-child variant="ghost" size="sm">
-            <NuxtLink :to="localePath('/demo')"><Code2 data-icon="inline-start" />{{ copy.demoNav }}</NuxtLink>
+            <NuxtLink :to="localePath('/demo')"><Icon name="askx-objects:model" data-icon="inline-start" />{{ copy.demoNav }}</NuxtLink>
           </Button>
           <Button as-child :variant="isActive('/skills') ? 'secondary' : 'ghost'" size="sm">
-            <NuxtLink :to="localePath('/skills')"><Command data-icon="inline-start" />{{ copy.skillsNav }}</NuxtLink>
+            <NuxtLink :to="localePath('/skills')"><Icon name="askx-objects:agent" data-icon="inline-start" />{{ copy.skillsNav }}</NuxtLink>
           </Button>
           <Button as-child :variant="isActive('/theme') ? 'secondary' : 'ghost'" size="sm">
-            <NuxtLink :to="localePath('/theme')"><Sparkles data-icon="inline-start" />{{ copy.themeNav }}</NuxtLink>
+            <NuxtLink :to="localePath('/theme')"><Icon name="askx-status:star" data-icon="inline-start" />{{ copy.themeNav }}</NuxtLink>
           </Button>
           <Button as-child :variant="isActive('/settings') ? 'secondary' : 'ghost'" size="sm">
-            <NuxtLink :to="localePath('/settings')"><CloudCog data-icon="inline-start" />{{ copy.settingsNav }}</NuxtLink>
+            <NuxtLink :to="localePath('/settings')"><Icon name="askx-actions:settings" data-icon="inline-start" />{{ copy.settingsNav }}</NuxtLink>
           </Button>
         </nav>
 
@@ -59,7 +58,7 @@ function isActive(path: string) {
       <footer v-if="route.path !== localePath('/')" data-testid="workspace-footer" class="border-t bg-card/50">
         <div class="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
           <span class="font-medium text-foreground">AskAgent X <span class="font-normal text-muted-foreground">/ 0.1.0</span></span>
-          <span class="flex items-center gap-1.5"><LockKeyhole class="size-3" />{{ copy.footer }}</span>
+          <span class="flex items-center gap-1.5"><Icon name="askx-status:lock" class="size-3" />{{ copy.footer }}</span>
         </div>
       </footer>
     </ScrollArea>

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { CheckCheck, CircleDot, ListChecks, Sparkles } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
@@ -39,7 +38,7 @@ function updateTarget(value: string, checked: boolean | 'indeterminate') {
       <div class="pointer-events-none absolute -right-16 -top-24 size-72 rounded-full bg-primary/12 blur-3xl" />
       <div class="relative">
         <div class="flex flex-wrap items-center justify-between gap-3">
-          <Badge variant="soft"><Sparkles />SHADCN / CUSTOMIZED</Badge>
+          <Badge variant="soft"><Icon name="askx-status:star" />SHADCN / CUSTOMIZED</Badge>
           <code class="rounded-lg border bg-muted/50 px-2.5 py-1.5 font-mono text-[10px] text-muted-foreground">checkbox · radio-group</code>
         </div>
         <h3 class="mt-6 max-w-4xl text-3xl font-semibold tracking-[-0.055em] sm:text-5xl">选择应该清楚，也应该轻盈。</h3>
@@ -61,7 +60,7 @@ function updateTarget(value: string, checked: boolean | 'indeterminate') {
               <span class="min-w-0"><strong class="block text-[13px] leading-5">{{ option.label }}</strong><span class="block text-xs leading-5 text-muted-foreground">{{ option.description }}</span></span>
             </label>
           </RadioGroup>
-          <div class="flex items-center gap-2 rounded-lg bg-muted/55 px-3 py-2 font-mono text-[10px] text-muted-foreground"><CircleDot class="size-3.5 text-primary" />modelValue: {{ selectedMode }}</div>
+          <div class="flex items-center gap-2 rounded-lg bg-muted/55 px-3 py-2 font-mono text-[10px] text-muted-foreground"><Icon name="askx-objects:selection" class="size-3.5 text-primary" />modelValue: {{ selectedMode }}</div>
         </div>
         <div class="flex justify-end"><DemoCopyButton text='<RadioGroup v-model="mode"><RadioGroupItem value="balanced" /></RadioGroup>' label="复制单选用法" copied-label="已复制" /></div>
       </article>
@@ -72,13 +71,13 @@ function updateTarget(value: string, checked: boolean | 'indeterminate') {
       <article class="grid gap-4 rounded-2xl border bg-background p-4 sm:p-5" data-testid="checkbox-section">
         <div class="grid gap-3 md:grid-cols-3">
           <label v-for="option in targetOptions" :key="option.value" class="group flex min-h-28 cursor-pointer flex-col rounded-xl border bg-card p-4 transition-[border-color,background-color,box-shadow] hover:border-primary/35 hover:bg-primary/5 has-[[data-state=checked]]:border-primary/40 has-[[data-state=checked]]:shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--primary)_18%,transparent)]">
-            <span class="flex items-start justify-between gap-3"><span class="grid size-8 place-items-center rounded-lg bg-muted text-muted-foreground group-has-[[data-state=checked]]:bg-primary/12 group-has-[[data-state=checked]]:text-primary"><ListChecks class="size-4" /></span><Checkbox :id="`target-${option.value}`" :model-value="isTargetSelected(option.value)" @update:model-value="updateTarget(option.value, $event)" /></span>
+            <span class="flex items-start justify-between gap-3"><span class="grid size-8 place-items-center rounded-lg bg-muted text-muted-foreground group-has-[[data-state=checked]]:bg-primary/12 group-has-[[data-state=checked]]:text-primary"><Icon name="askx-objects:selection" class="size-4" /></span><Checkbox :id="`target-${option.value}`" :model-value="isTargetSelected(option.value)" @update:model-value="updateTarget(option.value, $event)" /></span>
             <strong class="mt-4 text-[13px]">{{ option.label }}</strong>
             <span class="mt-1 text-xs leading-5 text-muted-foreground">{{ option.description }}</span>
           </label>
         </div>
         <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed px-4 py-3">
-          <span class="inline-flex items-center gap-2 text-xs text-muted-foreground"><CheckCheck class="size-4 text-primary" />已选择 {{ selectedTargets.length }} 项</span>
+          <span class="inline-flex items-center gap-2 text-xs text-muted-foreground"><Icon name="askx-status:check" class="size-4 text-primary" />已选择 {{ selectedTargets.length }} 项</span>
           <code class="font-mono text-[10px] text-muted-foreground">[{{ selectedTargets.join(', ') }}]</code>
         </div>
       </article>

@@ -1,0 +1,19 @@
+<svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle
+    cx="9"
+    cy="9"
+    r="6.32812"
+    stroke="currentColor"
+    stroke-width="2.34375"
+  />
+  <circle
+    cx="9"
+    cy="9"
+    r="6.32812"
+    stroke="currentColor"
+    stroke-width="2.34375"
+    stroke-linecap="round"
+    stroke-dasharray="24.82 14.94"
+    transform="rotate(-90 9 9)"
+  />
+</svg>

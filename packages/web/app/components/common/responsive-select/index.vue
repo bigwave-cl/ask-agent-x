@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Check, ChevronRight, X } from '@lucide/vue'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -166,7 +165,7 @@ function clearSelection(event: MouseEvent) {
         class="w-full justify-start text-muted-foreground"
         @click="clearSelection"
       >
-        <X />
+        <Icon name="askx-actions:close" />
         {{ clearLabel }}
       </Button>
 
@@ -186,7 +185,7 @@ function clearSelection(event: MouseEvent) {
         @click="selectMobileOption(option, $event)"
       >
         <span class="grid size-5 shrink-0 place-items-center">
-          <Check v-if="option.value === modelValue" class="text-primary" />
+          <Icon name="askx-status:check" v-if="option.value === modelValue" class="text-primary" />
         </span>
         <slot name="item" :option="option" :selected="option.value === modelValue" :is-mobile="true">
           <ResponsiveSelectOptionContent :option="option" />
@@ -207,7 +206,7 @@ function clearSelection(event: MouseEvent) {
           <slot name="value" v-bind="valueSlotProps(false)" />
         </SelectValue>
         <SelectValue v-else :placeholder="placeholder" />
-        <ChevronRight
+        <Icon name="askx-navigation:chevron-right"
           :class="cn(
             responsiveSelectTriggerIconClass,
             open && 'rotate-90 text-ds-text-secondary',
@@ -246,7 +245,7 @@ function clearSelection(event: MouseEvent) {
       @pointerdown.stop.prevent
       @click="clearSelection"
     >
-      <X />
+      <Icon name="askx-actions:close" />
     </Button>
   </div>
 </template>

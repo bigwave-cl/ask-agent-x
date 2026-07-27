@@ -1,14 +1,4 @@
 <script setup lang="ts">
-import {
-  ArrowRight,
-  Check,
-  Layers3,
-  MonitorSmartphone,
-  MousePointer2,
-  PanelsTopLeft,
-  SlidersHorizontal,
-  Sparkles,
-} from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -100,14 +90,14 @@ function finishPublish(close: () => void) {
         <div class="pointer-events-none absolute -bottom-28 left-1/3 size-56 rounded-full bg-cyan-400/10 blur-3xl" />
         <div class="relative grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
           <div>
-            <Badge variant="soft"><Sparkles />SHADCN / RESPONSIVE</Badge>
+            <Badge variant="soft"><Icon name="askx-status:star" />SHADCN / RESPONSIVE</Badge>
             <h3 class="mt-6 max-w-4xl text-3xl font-semibold tracking-[-0.055em] sm:text-5xl">一个入口，选择正确的空间。</h3>
             <p class="mt-4 max-w-3xl text-sm leading-6 text-muted-foreground">桌面上的任务型内容进入 Dialog，轻量锚点内容进入 Popover；当视口变窄，两种模式都切换为底部 Drawer。业务无需维护 UA 判断和两份模板。</p>
           </div>
           <div class="grid min-w-60 gap-2 rounded-xl border bg-card/85 p-4 font-mono text-[10px] text-muted-foreground">
-            <span class="flex items-center gap-2"><PanelsTopLeft class="size-3.5 text-primary" />Dialog → Drawer</span>
-            <span class="flex items-center gap-2"><MousePointer2 class="size-3.5 text-primary" />Popover → Drawer</span>
-            <span class="flex items-center gap-2"><MonitorSmartphone class="size-3.5 text-primary" />Breakpoint · 768px</span>
+            <span class="flex items-center gap-2"><Icon name="askx-objects:layout" class="size-3.5 text-primary" />Dialog → Drawer</span>
+            <span class="flex items-center gap-2"><Icon name="askx-objects:pointer" class="size-3.5 text-primary" />Popover → Drawer</span>
+            <span class="flex items-center gap-2"><Icon name="askx-objects:layout" class="size-3.5 text-primary" />Breakpoint · 768px</span>
           </div>
         </div>
       </article>
@@ -175,7 +165,7 @@ function finishPublish(close: () => void) {
           <div class="absolute right-0 top-0 h-24 w-24 rounded-bl-[4rem] bg-primary/8 transition-transform duration-300 group-hover:scale-110" />
           <div class="relative">
             <div class="flex items-start justify-between gap-3">
-              <span class="grid size-10 place-items-center rounded-xl border bg-background text-primary"><Layers3 class="size-4" /></span>
+              <span class="grid size-10 place-items-center rounded-xl border bg-background text-primary"><Icon name="askx-objects:layers" class="size-4" /></span>
               <DemoCopyButton :text="dialogCode" label="复制 Dialog 用法" copied-label="已复制" square />
             </div>
             <h4 class="mt-8 text-xl font-semibold tracking-[-0.035em]">任务弹层</h4>
@@ -191,7 +181,7 @@ function finishPublish(close: () => void) {
             <template #trigger="{ mode }">
               <Button size="40" class="w-full justify-between" data-testid="open-responsive-dialog">
                 打开任务弹层
-                <span class="flex items-center gap-2 text-[10px] font-normal opacity-75"><span class="hidden sm:inline">{{ mode }}</span><ArrowRight /></span>
+                <span class="flex items-center gap-2 text-[10px] font-normal opacity-75"><span class="hidden sm:inline">{{ mode }}</span><Icon name="askx-navigation:arrow-right" /></span>
               </Button>
             </template>
 
@@ -199,7 +189,7 @@ function finishPublish(close: () => void) {
               <div v-for="(step, index) in ['检测当前配置', '生成变更计划', '等待用户确认']" :key="step" class="flex items-center gap-3 rounded-xl border bg-background p-3">
                 <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 font-mono text-[10px] text-primary">0{{ index + 1 }}</span>
                 <div class="min-w-0 flex-1"><strong class="text-sm">{{ step }}</strong><p class="mt-0.5 text-xs text-muted-foreground">安全链路中的独立阶段</p></div>
-                <Check class="size-4 text-primary" />
+                <Icon name="askx-status:check" class="size-4 text-primary" />
               </div>
             </div>
 
@@ -214,7 +204,7 @@ function finishPublish(close: () => void) {
           <div class="absolute right-0 top-0 h-24 w-24 rounded-bl-[4rem] bg-cyan-400/8 transition-transform duration-300 group-hover:scale-110" />
           <div class="relative">
             <div class="flex items-start justify-between gap-3">
-              <span class="grid size-10 place-items-center rounded-xl border bg-background text-primary"><SlidersHorizontal class="size-4" /></span>
+              <span class="grid size-10 place-items-center rounded-xl border bg-background text-primary"><Icon name="askx-actions:adjust" class="size-4" /></span>
               <DemoCopyButton :text="popoverCode" label="复制 Popover 用法" copied-label="已复制" square />
             </div>
             <h4 class="mt-8 text-xl font-semibold tracking-[-0.035em]">锚点弹层</h4>
@@ -231,7 +221,7 @@ function finishPublish(close: () => void) {
             <template #trigger="{ mode }">
               <Button variant="outline" size="40" class="w-full justify-between" data-testid="open-responsive-popover">
                 打开锚点弹层
-                <span class="flex items-center gap-2 text-[10px] font-normal text-muted-foreground"><span class="hidden sm:inline">{{ mode }}</span><ArrowRight /></span>
+                <span class="flex items-center gap-2 text-[10px] font-normal text-muted-foreground"><span class="hidden sm:inline">{{ mode }}</span><Icon name="askx-navigation:arrow-right" /></span>
               </Button>
             </template>
 
@@ -255,11 +245,11 @@ function finishPublish(close: () => void) {
 
       <section class="grid gap-3 sm:grid-cols-3" data-demo-subsection="responsive-overlay-contract">
         <article v-for="item in [
-          { icon: MonitorSmartphone, title: 'SSR 稳定', text: '服务端只输出触发器，挂载后再选择弹层根组件，避免 hydration 分叉。' },
-          { icon: MousePointer2, title: 'Popover 定位', text: 'side、align、offset 和 collisionPadding 直接沿用 Reka 能力。' },
-          { icon: Layers3, title: '统一状态', text: 'Dialog、Popover、Drawer 都使用同一个 v-model:open 与 close()。' },
+          { icon: 'askx-objects:layout', title: 'SSR 稳定', text: '服务端只输出触发器，挂载后再选择弹层根组件，避免 hydration 分叉。' },
+          { icon: 'askx-objects:pointer', title: 'Popover 定位', text: 'side、align、offset 和 collisionPadding 直接沿用 Reka 能力。' },
+          { icon: 'askx-objects:layers', title: '统一状态', text: 'Dialog、Popover、Drawer 都使用同一个 v-model:open 与 close()。' },
         ]" :key="item.title" class="rounded-xl border bg-card p-5">
-          <component :is="item.icon" class="size-4 text-primary" />
+          <Icon :name="item.icon" class="size-4 text-primary" />
           <h4 class="mt-5 text-sm font-semibold">{{ item.title }}</h4>
           <p class="mt-2 text-xs leading-5 text-muted-foreground">{{ item.text }}</p>
         </article>

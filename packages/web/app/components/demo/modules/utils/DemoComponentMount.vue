@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Boxes, CheckCircle2, PackageOpen, Trash2 } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import DemoCopyButton from '../../components/DemoCopyButton.vue'
@@ -92,7 +91,7 @@ onBeforeUnmount(() => {
     <article class="grid gap-5 rounded-2xl border bg-background p-5 sm:p-7">
       <header class="flex flex-col gap-3 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <Badge variant="outline" class="font-mono"><Boxes />UTILITY</Badge>
+          <Badge variant="outline" class="font-mono"><Icon name="askx-objects:layout" />UTILITY</Badge>
           <h4 class="mt-4 text-2xl font-semibold tracking-normal">组件可以在声明树之外安全生长。</h4>
         </div>
         <code class="w-fit rounded-lg bg-muted px-3 py-2 font-mono text-[10px] text-muted-foreground">app/utils/componentMount.ts</code>
@@ -108,8 +107,8 @@ onBeforeUnmount(() => {
             <DemoCopyButton :text="containerCode" />
           </div>
           <div class="flex flex-wrap gap-2">
-            <Button size="36" @click="mountCard"><PackageOpen />挂载组件</Button>
-            <Button variant="outlined" size="36" :disabled="!cardMount" @click="unmountCard()"><Trash2 />卸载</Button>
+            <Button size="36" @click="mountCard"><Icon name="askx-objects:model" />挂载组件</Button>
+            <Button variant="outlined" size="36" :disabled="!cardMount" @click="unmountCard()"><Icon name="askx-actions:delete" />卸载</Button>
           </div>
           <div ref="mountTarget" data-testid="component-mount-target" class="min-h-36 rounded-xl border border-dashed bg-muted/35 p-3">
             <p v-if="!cardMount" class="grid min-h-28 place-items-center text-xs text-muted-foreground">动态组件挂载区域</p>
@@ -125,12 +124,12 @@ onBeforeUnmount(() => {
             <DemoCopyButton :text="autoUnmountCode" />
           </div>
           <code class="min-h-36 whitespace-pre-wrap rounded-lg bg-muted/65 p-3 font-mono text-xs leading-5 text-muted-foreground">{{ autoUnmountCode }}</code>
-          <Button variant="soft" size="36" class="justify-self-start" @click="mountNotice"><PackageOpen />挂载通知</Button>
+          <Button variant="soft" size="36" class="justify-self-start" @click="mountNotice"><Icon name="askx-objects:model" />挂载通知</Button>
         </section>
       </div>
 
       <section class="grid gap-3 rounded-xl bg-muted/45 p-4">
-        <h5 class="flex items-center gap-2 text-sm font-semibold"><CheckCircle2 class="size-4 text-success" />生命周期记录</h5>
+        <h5 class="flex items-center gap-2 text-sm font-semibold"><Icon name="askx-status:check" class="size-4 text-success" />生命周期记录</h5>
         <ol class="grid gap-1.5 text-xs leading-5 text-muted-foreground">
           <li v-for="(event, index) in lifecycleEvents" :key="`${event}-${index}`">{{ event }}</li>
         </ol>

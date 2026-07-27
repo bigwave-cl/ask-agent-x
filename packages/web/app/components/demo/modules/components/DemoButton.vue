@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { ButtonVariants } from '@/components/ui/button'
-import { ArrowRight, Check, Grid2X2, LoaderCircle, Sparkles, WandSparkles } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import DemoCopyButton from '../../components/DemoCopyButton.vue'
@@ -48,7 +47,7 @@ function runLoadingDemo() {
       <div class="pointer-events-none absolute -right-20 -top-24 size-72 rounded-full bg-primary/12 blur-3xl" />
       <div class="relative">
         <div class="flex flex-wrap items-center justify-between gap-3">
-          <Badge variant="soft"><Sparkles />SHADCN / CUSTOMIZED</Badge>
+          <Badge variant="soft"><Icon name="askx-status:star" />SHADCN / CUSTOMIZED</Badge>
           <code class="rounded-lg border bg-muted/50 px-2.5 py-1.5 font-mono text-[10px] text-muted-foreground">真实组件 · components/ui/button</code>
         </div>
         <h3 class="mt-6 max-w-4xl text-3xl font-semibold tracking-[-0.055em] sm:text-5xl">Button 是第一块迁移标本。</h3>
@@ -94,7 +93,7 @@ function runLoadingDemo() {
         </div>
         <div class="grid gap-3 md:grid-cols-2">
           <div class="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-4"><code class="mr-auto text-[11px] text-muted-foreground">shape</code><Button size="48">Regular</Button><Button size="48" shape="pill">Pill</Button></div>
-          <div class="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-4"><code class="mr-auto text-[11px] text-muted-foreground">square</code><Button size="48" square aria-label="打开工具"><Grid2X2 /></Button><Button size="48" square shape="pill" aria-label="打开工具"><Grid2X2 /></Button></div>
+          <div class="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-4"><code class="mr-auto text-[11px] text-muted-foreground">square</code><Button size="48" square aria-label="打开工具"><Icon name="askx-objects:layout" /></Button><Button size="48" square shape="pill" aria-label="打开工具"><Icon name="askx-objects:layout" /></Button></div>
         </div>
       </article>
     </section>
@@ -104,17 +103,17 @@ function runLoadingDemo() {
       <article class="grid gap-4 rounded-2xl border bg-background p-4 sm:p-5" data-testid="button-loading-section">
         <div class="grid gap-3 md:grid-cols-2">
           <div class="flex min-h-36 flex-wrap items-center justify-center gap-3 rounded-xl border bg-card p-5">
-            <Button variant="primary" size="48"><WandSparkles />生成内容<ArrowRight /></Button>
-            <Button variant="tertiary" size="48" shape="pill"><Sparkles />生成内容</Button>
+            <Button variant="primary" size="48"><Icon name="askx-objects:palette" />生成内容<Icon name="askx-navigation:arrow-right" /></Button>
+            <Button variant="tertiary" size="48" shape="pill"><Icon name="askx-status:star" />生成内容</Button>
           </div>
           <div class="flex min-h-36 flex-col items-center justify-center gap-3 rounded-xl border bg-card p-5">
             <Button variant="primary" size="48" :disabled="loading" data-testid="button-loading-trigger" @click="runLoadingDemo">
-              <LoaderCircle v-if="loading" class="animate-spin" /><Check v-else />{{ loading ? '正在生成' : '体验加载态' }}
+              <Icon name="askx-status:loading" v-if="loading" class="animate-spin" /><Icon name="askx-status:check" v-else />{{ loading ? '正在生成' : '体验加载态' }}
             </Button>
             <span class="font-mono text-[10px] text-muted-foreground">{{ loading ? '正在生成' : '开始生成' }}</span>
           </div>
         </div>
-        <div class="flex justify-end"><DemoCopyButton text='<Button :disabled="loading"><LoaderCircle v-if="loading" class="animate-spin" />Generate</Button>' label="复制代码" copied-label="已复制" variant="outlined" /></div>
+        <div class="flex justify-end"><DemoCopyButton text='<Button :disabled="loading"><Icon name="askx-status:loading" v-if="loading" class="animate-spin" />Generate</Button>' label="复制代码" copied-label="已复制" variant="outlined" /></div>
       </article>
     </section>
 

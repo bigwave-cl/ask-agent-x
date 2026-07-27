@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { ButtonVariants } from '@/components/ui/button'
-import { Check, Copy } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 
 defineOptions({ name: 'DemoCopyButton' })
@@ -41,8 +40,8 @@ onBeforeUnmount(() => resetTimer && clearTimeout(resetTimer))
 
 <template>
   <Button type="button" :variant="variant" :size="size" :square="square" :aria-label="copied ? copiedLabel : label" @click="handleCopy">
-    <Check v-if="copied" />
-    <Copy v-else />
+    <Icon name="askx-status:check" v-if="copied" />
+    <Icon name="askx-actions:copy" v-else />
     <slot v-if="!square">{{ copied ? copiedLabel : label }}</slot>
   </Button>
 </template>

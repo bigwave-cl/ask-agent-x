@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Activity, Eraser, MousePointerClick, RadioTower, Send, Unplug } from '@lucide/vue'
 import mitt from 'mitt'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -106,7 +105,7 @@ onBeforeUnmount(cleanup)
     <article class="grid gap-5 rounded-2xl border bg-background p-5 sm:p-7">
       <header class="flex flex-col gap-3 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <Badge variant="outline" class="font-mono"><RadioTower />EVENT UTILITY</Badge>
+          <Badge variant="outline" class="font-mono"><Icon name="askx-objects:agent" />EVENT UTILITY</Badge>
           <h4 class="mt-4 text-2xl font-semibold tracking-normal">监听和清理必须成对出现。</h4>
         </div>
         <code class="w-fit rounded-lg bg-muted px-3 py-2 font-mono text-[10px] text-muted-foreground">app/utils/messageHandler.ts</code>
@@ -115,12 +114,12 @@ onBeforeUnmount(cleanup)
       <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.72fr)]">
         <section class="grid content-start gap-4 rounded-xl border bg-card p-4 sm:p-5">
           <div class="flex flex-wrap items-center gap-2">
-            <Button v-if="!isListening" size="36" @click="startListening"><Activity />开始监听</Button>
-            <Button v-else variant="destructive" size="36" @click="stopListening"><Unplug />执行 cleanup</Button>
-            <Button variant="outlined" size="36" :disabled="!isListening" @click="emitTask"><Send />发送任务事件</Button>
-            <Button variant="soft" size="36" :disabled="!isListening" @click="emitClear"><Eraser />发送清理事件</Button>
+            <Button v-if="!isListening" size="36" @click="startListening"><Icon name="askx-status:loading" />开始监听</Button>
+            <Button v-else variant="destructive" size="36" @click="stopListening"><Icon name="askx-status:error" />执行 cleanup</Button>
+            <Button variant="outlined" size="36" :disabled="!isListening" @click="emitTask"><Icon name="askx-actions:external-link" />发送任务事件</Button>
+            <Button variant="soft" size="36" :disabled="!isListening" @click="emitClear"><Icon name="askx-actions:erase" />发送清理事件</Button>
             <span ref="nativeEventTarget" class="inline-flex">
-              <Button variant="outlined" size="36" :disabled="!isListening"><MousePointerClick />触发 DOM click</Button>
+              <Button variant="outlined" size="36" :disabled="!isListening"><Icon name="askx-objects:pointer" />触发 DOM click</Button>
             </span>
           </div>
 

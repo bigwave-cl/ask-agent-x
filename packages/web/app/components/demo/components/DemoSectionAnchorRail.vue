@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { Ref } from 'vue'
-import { ArrowUp } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 
 defineOptions({ name: 'DemoSectionAnchorRail' })
@@ -118,6 +117,6 @@ onBeforeUnmount(() => {
     title="回到顶部"
     @click="scrollToTop"
   >
-    <ArrowUp />
+    <Icon name="askx-navigation:arrow-up" />
   </Button>
 </template>

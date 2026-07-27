@@ -21,6 +21,7 @@
 
 - `app/` 使用 Vue Composition API 和 TypeScript；通用视觉能力拆成组件，不继续扩大单文件页面。
 - 优先复用 `app/components/ui` 中的 shadcn-vue 组件；新增组件保持键盘可用、语义化标签和清晰焦点态。
+- 项目自有组件统一通过 `@nuxt/icon` 使用 `askx-*` 本地 SVG 集合；`@lucide/vue` 仅允许 shadcn 管理的 `app/components/ui/**` 使用。新增图标必须同步维护 `app/lib/iconCatalog.ts`，不得启用 Iconify 公网回退。
 - 保持当前 shadcn-vue CLI `init` 生成的 Tailwind 基础导入（`tw-animate-css` 与 `shadcn-vue/tailwind.css`）；不要把上游 variants、keyframes 和 utilities 复制进项目 CSS。
 - 颜色从 `app/assets/css/main.css` 的 PG DS/shadcn token 获取，不在业务组件中扩散无语义品牌色。
 - Web 工作台用户文案统一通过 `@nuxtjs/i18n` 管理，并同时提供 `zh-CN` 和 `en`；公开 Demo 可以生成 locale 路由，但固定使用中文静态文案，不解析翻译资源，也不提供独立语言切换入口。禁止在组件内新增双语 `messages` 对象或独立 locale 状态。CLI/Web 共享的偏好必须写回 Core 配置。
@@ -35,7 +36,7 @@
 - `app/components/ui/`：shadcn-vue primitives，由 shadcn 模块管理且不增加业务前缀；避免与 `Cs`、`Bus` 组件重名。
 - `app/pages/`：Nuxt 文件路由；工作台页面在这里独立声明。Demo 只保留 `app/pages/demo.vue` 一个页面入口，不创建 `pages/demo/` 目录，也不为各模块新增 Page 文件。
 - `app/components/demo/Page.vue`：唯一 Demo 页面装配入口；`index.vue`：根据 `?module=` 管理当前模块并异步加载；`catalog.ts`：模块注册、源码路径与 loader 入口。
-- `app/components/demo/components/`：Demo 专属的导航、侧栏、Section、锚点和复制等公共能力；`modules/`：按模块分类存放实际示例，基础 UI 组件示例统一放在 `modules/components/`。
+- `app/components/demo/components/`：Demo 专属的导航、侧栏、Section、锚点和复制等公共能力；`modules/`：按模块分类存放实际示例，基础 UI 组件示例统一放在 `modules/components/`，图标规范使用独立的 `modules/icons/` 模块。
 - `app/layouts/workspace.vue`：需要全局 Header/Footer 的工作台框架；页面必须显式声明使用。默认布局保持为空，不创建 `default.vue`，登录页与公开 Demo 不继承工作台框架。
 - `server/api/`：Nitro API；`server/middleware/`：会话边界。
 - `server/utils/`：服务端共享实例。

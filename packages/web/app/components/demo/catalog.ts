@@ -1,6 +1,6 @@
 import type { Component } from 'vue'
 
-export type DemoModuleId = 'overview' | 'components' | 'theming' | 'utils'
+export type DemoModuleId = 'overview' | 'components' | 'icons' | 'theming' | 'utils'
 
 export interface DemoModule {
   id: DemoModuleId
@@ -35,8 +35,18 @@ export const demoModules: DemoModule[] = [
     loader: () => import('./modules/components/index.vue'),
   },
   {
-    id: 'theming',
+    id: 'icons',
     index: '02',
+    group: 'foundation',
+    groupLabel: '基础规范',
+    title: 'Icon 图标',
+    description: '浏览本地 SVG 图标、分类、调用方式和使用规范。',
+    sourcePath: 'app/components/demo/modules/icons/index.vue',
+    loader: () => import('./modules/icons/index.vue'),
+  },
+  {
+    id: 'theming',
+    index: '03',
     group: 'foundation',
     groupLabel: '基础规范',
     title: '主题规范',
@@ -46,7 +56,7 @@ export const demoModules: DemoModule[] = [
   },
   {
     id: 'utils',
-    index: '03',
+    index: '04',
     group: 'utils',
     groupLabel: 'Utils 工具集',
     title: 'Utils 工具集',

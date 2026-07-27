@@ -1,0 +1,17 @@
+<svg viewBox="0 0 17 17" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <mask id="prefix__a" style="mask-type:luminance" maskUnits="userSpaceOnUse" x="0" y="-1" width="16" height="17">
+    <path
+      d="M7.683-.001a7.683 7.683 0 110 15.365A7.683 7.683 0 017.683 0zm0 1.471a6.212 6.212 0 100 12.423 6.212 6.212 0 000-12.423z"
+      fill="#fff" />
+  </mask>
+  <g mask="url(#prefix__a)">
+    <path d="M0-.001h15.365v15.365H0V0z" fill="currentColor" />
+  </g>
+  <mask id="prefix__b" style="mask-type:luminance" maskUnits="userSpaceOnUse" x="12" y="12" width="5" height="5">
+    <path d="M13.433 12.403l.082.071 3.27 3.27a.736.736 0 01-.958 1.11l-.083-.07-3.269-3.27a.736.736 0 01.958-1.111z"
+      fill="#fff" />
+  </mask>
+  <g mask="url(#prefix__b)">
+    <path d="M12.26 12.258H17v4.74h-4.74v-4.74z" fill="currentColor" />
+  </g>
+</svg>

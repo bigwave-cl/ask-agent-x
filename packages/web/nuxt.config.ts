@@ -1,9 +1,18 @@
 import tailwindcss from '@tailwindcss/vite'
+import { createResolver } from 'nuxt/kit'
+
+const { resolve } = createResolver(import.meta.url)
+const askxIconDirectories = {
+  actions: resolve('./app/assets/icons/actions'),
+  navigation: resolve('./app/assets/icons/navigation'),
+  status: resolve('./app/assets/icons/status'),
+  objects: resolve('./app/assets/icons/objects'),
+}
 
 export default defineNuxtConfig({
   compatibilityDate: '2026-07-16',
   devtools: { enabled: true },
-  modules: ['shadcn-nuxt', '@nuxtjs/i18n'],
+  modules: ['shadcn-nuxt', '@nuxtjs/i18n', '@nuxt/icon'],
   components: [
     { path: '~/components/common', prefix: 'Cs', extensions: ['vue'] },
     { path: '~/components/ui', extensions: ['vue'] },
@@ -12,7 +21,7 @@ export default defineNuxtConfig({
     { path: '~/components', pathPrefix: false, pattern: '*.vue', extensions: ['vue'] },
   ],
   css: ['~/assets/css/main.css'],
-  watch: ['../core/dist/**'],
+  watch: ['../core/dist/**', 'app/assets/icons/**/*.svg'],
   i18n: {
     defaultLocale: 'zh-CN',
     strategy: 'prefix_except_default',
@@ -22,6 +31,31 @@ export default defineNuxtConfig({
       { code: 'en', language: 'en', name: 'English', file: 'en.json' },
     ],
     vueI18n: './i18n.config.ts',
+  },
+  icon: {
+    provider: 'server',
+    fallbackToApi: false,
+    localApiEndpoint: '/_askx/icon',
+    customCollections: [
+      { prefix: 'askx-actions', dir: askxIconDirectories.actions },
+      { prefix: 'askx-navigation', dir: askxIconDirectories.navigation },
+      { prefix: 'askx-status', dir: askxIconDirectories.status },
+      { prefix: 'askx-objects', dir: askxIconDirectories.objects },
+    ],
+    clientBundle: {
+      scan: false,
+      includeCustomCollections: false,
+      sizeLimitKb: 64,
+      icons: [
+        'askx-actions:external-link',
+        'askx-actions:settings',
+        'askx-objects:agent',
+        'askx-objects:model',
+        'askx-objects:palette',
+        'askx-status:lock',
+        'askx-status:star',
+      ],
+    },
   },
   shadcn: {
     prefix: '',
@@ -36,6 +70,7 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     askxSessionToken: '',
+    askxIconDirectories,
   },
   app: {
     head: {

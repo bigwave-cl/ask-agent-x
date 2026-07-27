@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { DemoModule, DemoModuleId } from '../catalog'
-import { Menu, X } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import DemoSidebar from './DemoSidebar.vue'
@@ -26,8 +25,8 @@ function handleModuleSelect(moduleId: DemoModuleId) {
   <header class="fixed inset-x-0 top-0 z-40 border-b bg-background/88 backdrop-blur-xl lg:hidden">
     <div class="flex h-16 items-center gap-3 px-4 sm:px-6">
       <Button variant="ghost" size="icon" :aria-label="mobileMenuOpen ? '关闭导航' : '打开导航'" @click="mobileMenuOpen = !mobileMenuOpen">
-        <X v-if="mobileMenuOpen" />
-        <Menu v-else />
+        <Icon name="askx-actions:close" v-if="mobileMenuOpen" />
+        <Icon name="askx-actions:more" v-else />
       </Button>
       <NuxtLink :to="localePath('/demo')" class="flex min-w-0 flex-1 items-center gap-2.5">
         <BrandMark class="size-8 shrink-0" />

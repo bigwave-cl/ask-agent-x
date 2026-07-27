@@ -4,7 +4,6 @@ import type { DemoSectionAnchor } from './components/DemoSectionAnchorRail.vue'
 import type { DemoModuleId } from './catalog'
 import type { ScrollAreaInstance } from '@/components/ui/scroll-area'
 import type { LocationQueryRaw, LocationQueryValue } from 'vue-router'
-import { BookOpen } from '@lucide/vue'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import DemoNavigation from './components/DemoNavigation.vue'
 import DemoSectionAnchorRail from './components/DemoSectionAnchorRail.vue'
@@ -142,7 +141,7 @@ onMounted(() => {
 
           <footer class="mt-6 flex flex-wrap items-center justify-between gap-3 font-mono text-[10px] text-muted-foreground">
             <span>AskAgent X · Local UI specimen</span>
-            <span class="inline-flex items-center gap-1.5"><BookOpen class="size-3" />components/ui → demo</span>
+            <span class="inline-flex items-center gap-1.5"><Icon name="askx-objects:skills" class="size-3" />components/ui → demo</span>
           </footer>
         </section>
       </ScrollArea>

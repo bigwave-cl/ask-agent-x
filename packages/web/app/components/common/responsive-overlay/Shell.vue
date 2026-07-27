@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { ChevronLeft, X } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { DrawerDescription, DrawerTitle } from '@/components/ui/drawer'
@@ -92,7 +91,7 @@ const slotProps = computed<ResponsiveOverlaySlotProps>(() => ({
                 :aria-label="topLeftLabel"
                 @click="emit('top-left')"
               >
-                <ChevronLeft class="size-3 md:size-5" />
+                <Icon name="askx-navigation:chevron-left" class="size-3 md:size-5" />
               </Button>
             </slot>
           </div>
@@ -119,7 +118,7 @@ const slotProps = computed<ResponsiveOverlaySlotProps>(() => ({
       :aria-label="closeLabel"
       @click="emit('close')"
     >
-      <X class="size-3" />
+      <Icon name="askx-actions:close" class="size-3" />
     </Button>
 
     <ScrollArea class="min-h-0 flex-1" :viewport-class="responsiveOverlayClasses.shell.viewport[mode]">

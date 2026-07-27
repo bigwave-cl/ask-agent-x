@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { ArrowDown, ArrowRight, Layers3, MousePointer2, Sparkles } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import DemoCopyButton from '../../components/DemoCopyButton.vue'
@@ -41,7 +40,7 @@ const horizontalCode = `<ScrollArea orientation="horizontal" class="h-48 rounded
         <div class="pointer-events-none absolute -right-16 -top-24 size-72 rounded-full bg-primary/12 blur-3xl" />
         <div class="relative">
           <div class="flex flex-wrap items-center justify-between gap-3">
-            <Badge variant="soft"><Sparkles />REKA / SHADCN</Badge>
+            <Badge variant="soft"><Icon name="askx-status:star" />REKA / SHADCN</Badge>
             <code class="rounded-lg border bg-muted/50 px-2.5 py-1.5 font-mono text-[10px] text-muted-foreground">components/ui/scroll-area</code>
           </div>
           <h3 class="mt-6 max-w-4xl text-3xl font-semibold tracking-[-0.055em] sm:text-5xl">滚动应该被感知，而不是被打扰。</h3>
@@ -52,7 +51,7 @@ const horizontalCode = `<ScrollArea orientation="horizontal" class="h-48 rounded
       <section class="grid gap-3 lg:grid-cols-2" data-demo-subsection="scroll-area-directions">
         <article class="grid content-start gap-4 rounded-2xl border bg-card p-4 sm:p-5">
           <div class="flex items-start justify-between gap-3">
-            <div><h4 class="flex items-center gap-2 text-sm font-semibold"><ArrowDown class="size-4 text-primary" />纵向滚动</h4><p class="mt-1.5 text-xs leading-5 text-muted-foreground">`always` 用于持续展示规范效果；内容不足时滑块自动隐藏。</p></div>
+            <div><h4 class="flex items-center gap-2 text-sm font-semibold"><Icon name="askx-navigation:arrow-down" class="size-4 text-primary" />纵向滚动</h4><p class="mt-1.5 text-xs leading-5 text-muted-foreground">`always` 用于持续展示规范效果；内容不足时滑块自动隐藏。</p></div>
             <DemoCopyButton :text="verticalCode" label="复制纵向用法" copied-label="已复制" square />
           </div>
           <ScrollArea class="h-64 rounded-xl border bg-muted/35" type="always" aria-label="纵向滚动示例">
@@ -67,7 +66,7 @@ const horizontalCode = `<ScrollArea orientation="horizontal" class="h-48 rounded
 
         <article class="grid content-start gap-4 rounded-2xl border bg-card p-4 sm:p-5">
           <div class="flex items-start justify-between gap-3">
-            <div><h4 class="flex items-center gap-2 text-sm font-semibold"><ArrowRight class="size-4 text-primary" />横向滚动</h4><p class="mt-1.5 text-xs leading-5 text-muted-foreground">内容保持自然宽度，滚轮、触控板和拖动轨道共用同一 viewport。</p></div>
+            <div><h4 class="flex items-center gap-2 text-sm font-semibold"><Icon name="askx-navigation:arrow-right" class="size-4 text-primary" />横向滚动</h4><p class="mt-1.5 text-xs leading-5 text-muted-foreground">内容保持自然宽度，滚轮、触控板和拖动轨道共用同一 viewport。</p></div>
             <DemoCopyButton :text="horizontalCode" label="复制横向用法" copied-label="已复制" square />
           </div>
           <ScrollArea orientation="horizontal" class="h-64 rounded-xl border bg-muted/35" type="always" aria-label="横向滚动示例">
@@ -83,11 +82,11 @@ const horizontalCode = `<ScrollArea orientation="horizontal" class="h-48 rounded
 
       <section class="grid gap-3 sm:grid-cols-3" data-demo-subsection="scroll-area-contract">
         <article v-for="item in [
-          { icon: MousePointer2, title: '透明命中区', text: '9px 可操作区域保留容错，视觉滑块仅 4px。' },
-          { icon: Layers3, title: '语义 Token', text: '默认和 Hover 分别使用 fill-bw-transparent-5/10。' },
-          { icon: Sparkles, title: 'SSR 稳定', text: '服务端与客户端使用相同结构，不制造内容闪烁。' },
+          { icon: 'askx-objects:pointer', title: '透明命中区', text: '9px 可操作区域保留容错，视觉滑块仅 4px。' },
+          { icon: 'askx-objects:layers', title: '语义 Token', text: '默认和 Hover 分别使用 fill-bw-transparent-5/10。' },
+          { icon: 'askx-status:star', title: 'SSR 稳定', text: '服务端与客户端使用相同结构，不制造内容闪烁。' },
         ]" :key="item.title" class="rounded-xl border bg-card p-5">
-          <component :is="item.icon" class="size-4 text-primary" />
+          <Icon :name="item.icon" class="size-4 text-primary" />
           <h4 class="mt-5 text-sm font-semibold">{{ item.title }}</h4>
           <p class="mt-2 text-xs leading-5 text-muted-foreground">{{ item.text }}</p>
         </article>

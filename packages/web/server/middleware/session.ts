@@ -1,4 +1,5 @@
 import { legacyDemoRedirectLocation, localizePath, parseLocalizedPath } from '../utils/locale-path.js'
+import { isPublicAssetRequest } from '../utils/publicAsset.js'
 
 export default defineEventHandler((event) => {
   const requestUrl = getRequestURL(event)
@@ -13,15 +14,19 @@ export default defineEventHandler((event) => {
   const isPublicDemo = localized.path === '/demo' || localized.path.startsWith('/demo/')
   if (isPublicDemo) return
 
+  const host = getRequestHeader(event, 'host') ?? ''
+  const origin = getRequestHeader(event, 'origin')
+  const isPublicAsset = isPublicAssetRequest(requestPath, event.method)
+  const isInternalPublicAsset = isPublicAsset && !origin && /^(?:127\.0\.0\.1|localhost)$/.test(host)
+  if ((!/^(?:127\.0\.0\.1|localhost):\d+$/.test(host) && !isInternalPublicAsset) || (origin && origin !== `http://${host}`)) {
+    throw createError({ statusCode: 403, statusMessage: 'Origin not allowed' })
+  }
+
+  if (isPublicAsset) return
+
   const config = useRuntimeConfig(event)
   const sessionToken = config.askxSessionToken
   if (!sessionToken) throw createError({ statusCode: 503, statusMessage: 'Local session is not configured' })
-
-  const host = getRequestHeader(event, 'host') ?? ''
-  const origin = getRequestHeader(event, 'origin')
-  if (!/^(?:127\.0\.0\.1|localhost):\d+$/.test(host) || (origin && origin !== `http://${host}`)) {
-    throw createError({ statusCode: 403, statusMessage: 'Origin not allowed' })
-  }
 
   if (requestPath === '/api/session' && event.method === 'POST') return
 
@@ -40,8 +45,7 @@ export default defineEventHandler((event) => {
     throw createError({ statusCode: 401, statusMessage: 'Invalid local session' })
   }
 
-  const isPublicAsset = requestPath.startsWith('/_nuxt/') || requestPath.startsWith('/__nuxt') || /\.[a-z0-9]+$/i.test(requestPath)
-  if (!isPublicAsset && localized.path !== '/login') {
+  if (localized.path !== '/login') {
     return sendRedirect(event, localizePath('/login', localized.locale), 302)
   }
 })

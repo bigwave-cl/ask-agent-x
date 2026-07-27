@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { X } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
@@ -36,7 +35,7 @@ defineExpose({ isOpen, close })
         <p class="mt-1 text-xs leading-5 text-muted-foreground">{{ description }}</p>
       </div>
       <Button variant="ghost" size="icon" square aria-label="关闭动态通知" @click="close">
-        <X />
+        <Icon name="askx-actions:close" />
       </Button>
     </div>
   </aside>

@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import type { Component } from 'vue'
 import type { AskXThemeColor } from '@askx/core'
-import { ArrowUpRight, CloudCog, Command, Palette, ShieldCheck, Sparkles } from '@lucide/vue'
+import type { AskxIconName } from '@/lib/iconCatalog'
 
 type PortalDestination = 'skills' | 'theme' | 'settings'
 
@@ -32,7 +31,7 @@ const portals = computed<Array<{
   title: string
   description: string
   meta: string
-  icon: Component
+  icon: AskxIconName
 }>>(() => [
   {
     id: 'skills',
@@ -40,7 +39,7 @@ const portals = computed<Array<{
     title: copy.value.skillsTitle,
     description: copy.value.skillsDescription,
     meta: t('portal.skillsMeta', { count: props.enabledCount }),
-    icon: Command,
+    icon: 'askx-objects:agent',
   },
   {
     id: 'theme',
@@ -48,7 +47,7 @@ const portals = computed<Array<{
     title: copy.value.themeTitle,
     description: copy.value.themeDescription,
     meta: copy.value.themeMeta,
-    icon: Palette,
+    icon: 'askx-objects:palette',
   },
   {
     id: 'settings',
@@ -56,7 +55,7 @@ const portals = computed<Array<{
     title: copy.value.settingsTitle,
     description: copy.value.settingsDescription,
     meta: t('portal.settingsMeta', { revision: props.revision ?? '—' }),
-    icon: CloudCog,
+    icon: 'askx-actions:settings',
   },
 ])
 </script>
@@ -79,7 +78,7 @@ const portals = computed<Array<{
     <div class="relative z-1 mx-auto min-h-[calc(100vh-4rem)] w-[min(100%-2rem,80rem)] pb-7 pt-14 min-[801px]:pt-[clamp(3rem,7vh,5.5rem)]">
       <section class="mx-auto max-w-[58rem] text-center">
         <Badge variant="outline" class="h-7 gap-1.5 border-primary/30 bg-card/70 text-ds-text-brand shadow-[0_10px_40px_rgb(47_189_199_/_8%)] backdrop-blur-[14px]">
-          <Sparkles class="size-3" />
+          <Icon name="askx-status:star" class="size-3" />
           {{ copy.eyebrow }}
         </Badge>
         <h1 class="mt-6 text-balance text-[clamp(2.65rem,6.5vw,5.7rem)] font-semibold leading-[0.98] tracking-[-0.065em]">{{ copy.title }}</h1>
@@ -99,7 +98,7 @@ const portals = computed<Array<{
           <span class="absolute -right-20 -top-24 size-52 rounded-full bg-portal-accent opacity-20 blur-[26px] transition-[opacity,transform] duration-[400ms] group-hover:translate-x-[-1.5rem] group-hover:translate-y-6 group-hover:scale-115 group-hover:opacity-35 motion-reduce:transition-none" aria-hidden="true" />
           <span class="relative flex items-center justify-between gap-4">
             <span class="font-mono text-[0.68rem] tracking-[0.13em] text-muted-foreground">{{ portal.index }}</span>
-            <span class="grid size-[2.8rem] rotate-4 place-items-center rounded-[0.9rem] border border-[color-mix(in_srgb,var(--portal-accent)_27%,transparent)] bg-[color-mix(in_srgb,var(--portal-accent)_10%,var(--card))] text-[color-mix(in_srgb,var(--portal-accent)_82%,var(--foreground))] transition-transform duration-[260ms] group-hover:rotate-[-4deg] group-hover:scale-108 motion-reduce:transition-none"><component :is="portal.icon" class="size-[1.15rem]" /></span>
+            <span class="grid size-[2.8rem] rotate-4 place-items-center rounded-[0.9rem] border border-[color-mix(in_srgb,var(--portal-accent)_27%,transparent)] bg-[color-mix(in_srgb,var(--portal-accent)_10%,var(--card))] text-[color-mix(in_srgb,var(--portal-accent)_82%,var(--foreground))] transition-transform duration-[260ms] group-hover:rotate-[-4deg] group-hover:scale-108 motion-reduce:transition-none"><Icon :name="portal.icon" class="size-[1.15rem]" /></span>
           </span>
           <span class="relative mt-auto grid gap-3 py-[2.5rem_1.8rem]">
             <strong class="text-[clamp(1.65rem,2.4vw,2.2rem)] font-semibold tracking-[-0.045em]">{{ portal.title }}</strong>
@@ -107,14 +106,14 @@ const portals = computed<Array<{
           </span>
           <span class="relative flex items-center justify-between gap-4 border-t border-foreground/8 pt-4 text-[0.7rem] text-muted-foreground">
             <span>{{ portal.meta }}</span>
-            <span class="inline-flex items-center gap-1.5 font-medium text-foreground">{{ copy.enter }}<ArrowUpRight class="size-3.5 transition-transform duration-180 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 motion-reduce:transition-none" /></span>
+            <span class="inline-flex items-center gap-1.5 font-medium text-foreground">{{ copy.enter }}<Icon name="askx-actions:external-link" class="size-3.5 transition-transform duration-180 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 motion-reduce:transition-none" /></span>
           </span>
         </button>
       </section>
 
       <footer class="mt-9 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-[0.68rem] text-muted-foreground">
         <span class="inline-flex items-center gap-1.5"><i class="size-1.5 rounded-full bg-success shadow-[0_0_0_4px_var(--success-soft)]" />{{ copy.connected }}</span>
-        <span v-if="backupEnabled" class="inline-flex items-center gap-1.5"><ShieldCheck class="size-3 text-success" />{{ copy.protected }}</span>
+        <span v-if="backupEnabled" class="inline-flex items-center gap-1.5"><Icon name="askx-status:lock" class="size-3 text-success" />{{ copy.protected }}</span>
         <span class="inline-flex items-center gap-1.5">{{ copy.private }}</span>
       </footer>
     </div>

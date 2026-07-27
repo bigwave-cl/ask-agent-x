@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { ChevronRight } from '@lucide/vue'
 import type { ResponsiveOverlayClass } from '../responsive-overlay/types'
 import type { ResponsiveSelectValueSlotProps } from './types'
 import { cn } from '@/lib/utils'
@@ -46,7 +45,7 @@ defineSlots<{
         </span>
       </slot>
     </span>
-    <ChevronRight
+    <Icon name="askx-navigation:chevron-right"
       :class="cn(responsiveSelectTriggerIconClass, open && 'rotate-90 text-ds-text-secondary')"
     />
   </Button>

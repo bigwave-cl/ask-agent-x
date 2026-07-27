@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Bell, Braces, Check, CircleAlert, CircleCheck, ClipboardCopy, Info, Layers3, MousePointerClick, TriangleAlert } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import DemoCopyButton from '../../components/DemoCopyButton.vue'
@@ -69,13 +68,13 @@ onBeforeUnmount(() => {
       <div class="pointer-events-none absolute -right-12 -top-20 size-64 rounded-full bg-warning/12 blur-3xl" />
       <div class="relative grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
         <div>
-          <Badge variant="soft"><Braces />UTILS / COMPOSABLES</Badge>
+          <Badge variant="soft"><Icon name="askx-objects:model" />UTILS / COMPOSABLES</Badge>
           <h3 class="mt-6 max-w-4xl text-3xl font-semibold tracking-[-0.055em] sm:text-5xl">小工具负责消除重复。</h3>
           <p class="mt-4 max-w-3xl text-sm leading-6 text-muted-foreground">通用能力保持输入输出明确，组件只消费结果并决定反馈形式。</p>
         </div>
         <div class="grid min-w-56 gap-2 rounded-xl border bg-card/80 p-4 font-mono text-[10px] text-muted-foreground">
-          <span class="flex items-center gap-2"><Layers3 class="size-3.5 text-primary" />模块：Utils 工具集</span>
-          <span class="flex items-center gap-2"><Bell class="size-3.5 text-primary" />能力：Copy / Toast / Mount / Event</span>
+          <span class="flex items-center gap-2"><Icon name="askx-objects:layers" class="size-3.5 text-primary" />模块：Utils 工具集</span>
+          <span class="flex items-center gap-2"><Icon name="askx-objects:schedule" class="size-3.5 text-primary" />能力：Copy / Toast / Mount / Event</span>
         </div>
       </div>
     </article>
@@ -89,7 +88,7 @@ onBeforeUnmount(() => {
       <article class="grid gap-5 rounded-2xl border bg-background p-5 sm:p-7">
         <header class="flex flex-col gap-3 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <Badge variant="outline" class="font-mono"><ClipboardCopy />COMPOSABLE</Badge>
+            <Badge variant="outline" class="font-mono"><Icon name="askx-actions:copy" />COMPOSABLE</Badge>
             <h4 class="mt-4 text-2xl font-semibold tracking-[-0.04em]">复制动作只有一个入口。</h4>
           </div>
           <code class="w-fit rounded-lg bg-muted px-3 py-2 font-mono text-[10px] text-muted-foreground">app/composables/useCopyText.ts</code>
@@ -108,8 +107,8 @@ onBeforeUnmount(() => {
             <div class="flex items-center justify-between gap-3">
               <span class="text-xs text-muted-foreground">目标：<code class="text-foreground">bg-ds-brand-default</code></span>
               <Button variant="outlined" size="36" @click="copyDirectly">
-                <Check v-if="directCopyState === 'success'" />
-                <ClipboardCopy v-else />
+                <Icon name="askx-status:check" v-if="directCopyState === 'success'" />
+                <Icon name="askx-actions:copy" v-else />
                 {{ directCopyState === 'success' ? '已复制' : directCopyState === 'error' ? '复制失败' : '复制 Token' }}
               </Button>
             </div>
@@ -125,10 +124,10 @@ onBeforeUnmount(() => {
             </div>
             <code class="min-h-24 whitespace-pre-wrap rounded-lg bg-muted/65 p-3 font-mono text-xs leading-5 text-muted-foreground">{{ targetCopyCode }}</code>
             <div class="flex items-center justify-between gap-3">
-              <span class="flex items-center gap-1.5 text-xs text-muted-foreground"><MousePointerClick class="size-3.5" />自动解析最近浮层</span>
+              <span class="flex items-center gap-1.5 text-xs text-muted-foreground"><Icon name="askx-objects:pointer" class="size-3.5" />自动解析最近浮层</span>
               <Button variant="soft" size="36" @click="copyFromTarget">
-                <Check v-if="targetCopyState === 'success'" />
-                <ClipboardCopy v-else />
+                <Icon name="askx-status:check" v-if="targetCopyState === 'success'" />
+                <Icon name="askx-actions:copy" v-else />
                 {{ targetCopyState === 'success' ? '已复制' : targetCopyState === 'error' ? '复制失败' : '复制命令' }}
               </Button>
             </div>
@@ -151,7 +150,7 @@ onBeforeUnmount(() => {
       <article class="grid gap-5 rounded-2xl border bg-background p-5 sm:p-7">
         <header class="flex flex-col gap-3 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <Badge variant="outline" class="font-mono"><Bell />COMPOSABLE</Badge>
+            <Badge variant="outline" class="font-mono"><Icon name="askx-objects:schedule" />COMPOSABLE</Badge>
             <h4 class="mt-4 text-2xl font-semibold tracking-[-0.04em]">反馈语义保持明确。</h4>
           </div>
           <code class="w-fit rounded-lg bg-muted px-3 py-2 font-mono text-[10px] text-muted-foreground">app/composables/useToast.ts</code>
@@ -159,19 +158,19 @@ onBeforeUnmount(() => {
 
         <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <Button variant="outlined" size="40" @click="toast.show('设置已更新', { description: '本地配置已写入当前设备。' })">
-            <Bell />默认提示
+            <Icon name="askx-objects:schedule" />默认提示
           </Button>
           <Button variant="outlined" size="40" @click="toast.success('同步完成', { description: 'CLI 与 Web 已使用相同配置。' })">
-            <CircleCheck class="text-success" />成功
+            <Icon name="askx-status:check" class="text-success" />成功
           </Button>
           <Button variant="outlined" size="40" @click="toast.info('发现新版本', { description: '可在准备好后执行更新。' })">
-            <Info class="text-ds-brand-default" />信息
+            <Icon name="askx-status:info" class="text-ds-brand-default" />信息
           </Button>
           <Button variant="outlined" size="40" @click="toast.warning('配置即将过期', { description: '请检查当前 Token 是否仍然有效。' })">
-            <TriangleAlert class="text-warning" />警告
+            <Icon name="askx-status:warning" class="text-warning" />警告
           </Button>
           <Button variant="outlined" size="40" @click="toast.error('保存失败', { description: '配置发生冲突，请重新加载后再试。' })">
-            <CircleAlert class="text-destructive" />错误
+            <Icon name="askx-status:error" class="text-destructive" />错误
           </Button>
         </div>
 

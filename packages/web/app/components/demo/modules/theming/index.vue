@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Check, Moon, Palette, Sun } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -57,7 +56,7 @@ onBeforeUnmount(() => {
   <div class="grid gap-5 p-4 sm:p-6 lg:p-8">
     <article class="relative overflow-hidden rounded-2xl border bg-background p-6 sm:p-8">
       <div class="absolute right-0 top-0 h-full w-2 bg-primary" />
-      <Badge variant="soft"><Palette />SEMANTIC TOKEN MATRIX</Badge>
+      <Badge variant="soft"><Icon name="askx-objects:palette" />SEMANTIC TOKEN MATRIX</Badge>
       <h3 class="mt-5 max-w-4xl text-3xl font-semibold tracking-[-0.05em] sm:text-5xl">一套语义结构，两种主题色，两种明暗外观。</h3>
       <p class="mt-4 max-w-3xl text-sm leading-6 text-muted-foreground">shadcn 组件只消费 background、foreground、primary、muted 等语义 token。切换主题时不修改业务模板。</p>
     </article>
@@ -67,15 +66,15 @@ onBeforeUnmount(() => {
         <CardHeader><CardTitle>主题色</CardTitle><CardDescription>html.theme-cyan / html.theme-rose</CardDescription></CardHeader>
         <CardContent class="grid grid-cols-2 gap-3">
           <button v-for="item in [{ id: 'cyan' as const, label: '离子青' }, { id: 'rose' as const, label: '信号玫红' }]" :key="item.id" type="button" class="relative overflow-hidden rounded-xl border bg-background p-4 text-left transition hover:-translate-y-0.5" :class="themeColor === item.id ? 'border-primary ring-2 ring-primary/20' : ''" @click="setThemeColor(item.id)">
-            <span class="mb-8 block h-16 rounded-lg" :class="item.id === 'cyan' ? 'bg-[#2fbdc7]' : 'bg-[#e7659f]'" /><strong class="text-xs">{{ item.label }}</strong><Check v-if="themeColor === item.id" class="absolute right-3 top-3 size-4 text-white" />
+            <span class="mb-8 block h-16 rounded-lg" :class="item.id === 'cyan' ? 'bg-[#2fbdc7]' : 'bg-[#e7659f]'" /><strong class="text-xs">{{ item.label }}</strong><Icon name="askx-status:check" v-if="themeColor === item.id" class="absolute right-3 top-3 size-4 text-white" />
           </button>
         </CardContent>
       </Card>
       <Card>
         <CardHeader><CardTitle>明暗外观</CardTitle><CardDescription>html.light / html.dark</CardDescription></CardHeader>
         <CardContent class="grid grid-cols-2 gap-3">
-          <Button variant="outline" size="xl" class="h-28 flex-col" :class="appearance === 'light' ? 'border-primary bg-primary/8' : ''" @click="setAppearance('light')"><Sun class="size-5!" />浅色</Button>
-          <Button variant="outline" size="xl" class="h-28 flex-col" :class="appearance === 'dark' ? 'border-primary bg-primary/8' : ''" @click="setAppearance('dark')"><Moon class="size-5!" />深色</Button>
+          <Button variant="outline" size="xl" class="h-28 flex-col" :class="appearance === 'light' ? 'border-primary bg-primary/8' : ''" @click="setAppearance('light')"><Icon name="askx-objects:palette" class="size-5!" />浅色</Button>
+          <Button variant="outline" size="xl" class="h-28 flex-col" :class="appearance === 'dark' ? 'border-primary bg-primary/8' : ''" @click="setAppearance('dark')"><Icon name="askx-objects:palette" class="size-5!" />深色</Button>
         </CardContent>
       </Card>
     </section>

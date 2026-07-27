@@ -1,24 +1,5 @@
 <script setup lang="ts">
 import type { AskXConfig, AskXLocale, AskXThemeColor, ManagedPlatformId } from '@askx/core'
-import {
-  Bot,
-  Check,
-  ChevronRight,
-  CircleCheck,
-  CloudCog,
-  Command,
-  Database,
-  GitBranch,
-  Globe2,
-  HardDriveDownload,
-  Languages,
-  LockKeyhole,
-  RefreshCw,
-  Save,
-  ShieldCheck,
-  Sparkles,
-  TerminalSquare,
-} from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -362,8 +343,8 @@ onBeforeUnmount(() => {
     <main v-else-if="workspaceView === 'skills'" class="mx-auto grid min-h-[calc(100vh-4rem)] max-w-7xl content-start gap-8 px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
       <section class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
         <div class="max-w-3xl">
-          <Button as-child variant="ghost" size="sm" class="mb-4 -ml-2 text-muted-foreground"><NuxtLink :to="localePath('/')"><ChevronRight class="rotate-180" />{{ copy.backToPortal }}</NuxtLink></Button>
-          <Badge variant="secondary" class="mb-4 text-primary"><Command data-icon="inline-start" />{{ copy.skillsNav }}</Badge>
+          <Button as-child variant="ghost" size="sm" class="mb-4 -ml-2 text-muted-foreground"><NuxtLink :to="localePath('/')"><Icon name="askx-navigation:chevron-right" class="rotate-180" />{{ copy.backToPortal }}</NuxtLink></Button>
+          <Badge variant="secondary" class="mb-4 text-primary"><Icon name="askx-objects:agent" data-icon="inline-start" />{{ copy.skillsNav }}</Badge>
           <h1 class="text-balance text-3xl font-semibold tracking-[-0.04em] sm:text-5xl">{{ copy.skillsPageTitle }}</h1>
           <p class="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">{{ copy.skillsPageDescription }}</p>
         </div>
@@ -382,8 +363,8 @@ onBeforeUnmount(() => {
         </Card>
 
         <Card>
-          <CardHeader><div class="flex items-center justify-between"><span class="grid size-9 place-items-center rounded-lg bg-primary/10 text-primary"><TerminalSquare class="size-4" /></span><Badge variant="secondary">{{ copy.readOnly }}</Badge></div><CardTitle class="mt-2">{{ copy.skillsTitle }}</CardTitle><CardDescription>{{ copy.skillsDescription }}</CardDescription></CardHeader>
-          <CardContent><ol class="grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-3"><li v-for="(key, index) in pipelineKeys" :key="key" class="grid justify-items-center gap-2 rounded-lg bg-muted/65 p-3 text-center text-[11px]"><span class="grid size-6 place-items-center rounded-full" :class="index === 0 ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground'"><CircleCheck v-if="index === 0" class="size-3" /><span v-else>{{ index + 1 }}</span></span><span>{{ copy[key] }}</span></li></ol></CardContent>
+          <CardHeader><div class="flex items-center justify-between"><span class="grid size-9 place-items-center rounded-lg bg-primary/10 text-primary"><Icon name="askx-objects:agent" class="size-4" /></span><Badge variant="secondary">{{ copy.readOnly }}</Badge></div><CardTitle class="mt-2">{{ copy.skillsTitle }}</CardTitle><CardDescription>{{ copy.skillsDescription }}</CardDescription></CardHeader>
+          <CardContent><ol class="grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-3"><li v-for="(key, index) in pipelineKeys" :key="key" class="grid justify-items-center gap-2 rounded-lg bg-muted/65 p-3 text-center text-[11px]"><span class="grid size-6 place-items-center rounded-full" :class="index === 0 ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground'"><Icon name="askx-status:check" v-if="index === 0" class="size-3" /><span v-else>{{ index + 1 }}</span></span><span>{{ copy[key] }}</span></li></ol></CardContent>
         </Card>
       </section>
     </main>
@@ -391,12 +372,12 @@ onBeforeUnmount(() => {
     <main v-else-if="workspaceView === 'theme'" class="mx-auto grid min-h-[calc(100vh-4rem)] max-w-7xl content-start gap-8 px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
       <section class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div class="max-w-3xl">
-          <Button as-child variant="ghost" size="sm" class="mb-4 -ml-2 text-muted-foreground"><NuxtLink :to="localePath('/')"><ChevronRight class="rotate-180" />{{ copy.backToPortal }}</NuxtLink></Button>
-          <Badge variant="secondary" class="mb-4 text-primary"><Sparkles data-icon="inline-start" />{{ copy.themePreviewOnly }}</Badge>
+          <Button as-child variant="ghost" size="sm" class="mb-4 -ml-2 text-muted-foreground"><NuxtLink :to="localePath('/')"><Icon name="askx-navigation:chevron-right" class="rotate-180" />{{ copy.backToPortal }}</NuxtLink></Button>
+          <Badge variant="secondary" class="mb-4 text-primary"><Icon name="askx-status:star" data-icon="inline-start" />{{ copy.themePreviewOnly }}</Badge>
           <h1 class="text-balance text-3xl font-semibold tracking-[-0.04em] sm:text-5xl">{{ copy.themePageTitle }}</h1>
           <p class="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">{{ copy.themePageDescription }}</p>
         </div>
-        <Button :disabled="!dirty || saving || loading" data-testid="save-theme" @click="saveSettings"><RefreshCw v-if="saving" class="animate-spin" /><Save v-else />{{ saving ? copy.saving : copy.save }}</Button>
+        <Button :disabled="!dirty || saving || loading" data-testid="save-theme" @click="saveSettings"><Icon name="askx-actions:refresh" v-if="saving" class="animate-spin" /><Icon name="askx-actions:confirm" v-else />{{ saving ? copy.saving : copy.save }}</Button>
       </section>
 
       <section>
@@ -405,12 +386,12 @@ onBeforeUnmount(() => {
           <button type="button" class="flex items-center gap-4 rounded-2xl border bg-card p-4 text-left transition hover:-translate-y-0.5 hover:shadow-lg" :class="draft.themeColor === 'cyan' ? 'border-primary ring-2 ring-primary/20' : ''" data-testid="theme-color-cyan" @click="setThemeColor('cyan')">
             <span class="grid size-14 shrink-0 place-items-center rounded-xl bg-[#2fbdc7]/15"><span class="size-7 rounded-full bg-[#2fbdc7] shadow-[0_0_24px_rgba(47,189,199,.45)]" /></span>
             <span><strong class="block text-sm">{{ copy.themeCyan }}</strong><small class="mt-1.5 block text-xs leading-5 text-muted-foreground">{{ copy.themeCyanDescription }}</small></span>
-            <Check v-if="draft.themeColor === 'cyan'" class="ml-auto size-4 text-primary" />
+            <Icon name="askx-status:check" v-if="draft.themeColor === 'cyan'" class="ml-auto size-4 text-primary" />
           </button>
           <button type="button" class="flex items-center gap-4 rounded-2xl border bg-card p-4 text-left transition hover:-translate-y-0.5 hover:shadow-lg" :class="draft.themeColor === 'rose' ? 'border-primary ring-2 ring-primary/20' : ''" data-testid="theme-color-rose" @click="setThemeColor('rose')">
             <span class="grid size-14 shrink-0 place-items-center rounded-xl bg-[#e7659f]/15"><span class="size-7 rounded-full bg-[#e7659f] shadow-[0_0_24px_rgba(231,101,159,.45)]" /></span>
             <span><strong class="block text-sm">{{ copy.themeRose }}</strong><small class="mt-1.5 block text-xs leading-5 text-muted-foreground">{{ copy.themeRoseDescription }}</small></span>
-            <Check v-if="draft.themeColor === 'rose'" class="ml-auto size-4 text-primary" />
+            <Icon name="askx-status:check" v-if="draft.themeColor === 'rose'" class="ml-auto size-4 text-primary" />
           </button>
         </div>
       </section>
@@ -434,12 +415,12 @@ onBeforeUnmount(() => {
     <main v-else class="mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
       <section class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
         <div class="max-w-3xl">
-          <Badge variant="secondary" class="mb-4 text-primary"><Sparkles data-icon="inline-start" />{{ copy.pageEyebrow }}</Badge>
+          <Badge variant="secondary" class="mb-4 text-primary"><Icon name="askx-status:star" data-icon="inline-start" />{{ copy.pageEyebrow }}</Badge>
           <h1 class="text-balance text-3xl font-semibold tracking-[-0.035em] sm:text-4xl lg:text-5xl">{{ copy.pageTitle }}</h1>
           <p class="mt-4 max-w-2xl text-pretty text-sm leading-6 text-muted-foreground sm:text-base">{{ copy.pageDescription }}</p>
         </div>
         <div class="flex items-center gap-2 text-xs text-muted-foreground">
-          <RefreshCw class="size-3.5" :class="{ 'animate-spin': loading }" />
+          <Icon name="askx-actions:refresh" class="size-3.5" :class="{ 'animate-spin': loading }" />
           <span data-testid="settings-feedback">{{ feedback }}</span>
         </div>
       </section>
@@ -448,7 +429,7 @@ onBeforeUnmount(() => {
         <Card size="sm">
           <CardHeader class="flex-row items-start justify-between space-y-0">
             <div><CardDescription>{{ copy.agentsEnabled }}</CardDescription><CardTitle class="mt-2 text-2xl">{{ enabledCount }} / {{ agents.length }}</CardTitle></div>
-            <span class="grid size-9 place-items-center rounded-lg bg-primary/10 text-primary"><Bot class="size-4" /></span>
+            <span class="grid size-9 place-items-center rounded-lg bg-primary/10 text-primary"><Icon name="askx-objects:agent" class="size-4" /></span>
           </CardHeader>
           <CardContent class="text-xs text-muted-foreground">{{ enabledCount }} {{ copy.agentsEnabledHint }}</CardContent>
         </Card>
@@ -460,7 +441,7 @@ onBeforeUnmount(() => {
               <CardTitle v-if="settings" class="mt-2 text-2xl" data-testid="settings-revision">#{{ settings.revision }}</CardTitle>
               <Skeleton v-else class="mt-2 h-7 w-16" />
             </div>
-            <span class="grid size-9 place-items-center rounded-lg bg-secondary text-secondary-foreground"><GitBranch class="size-4" /></span>
+            <span class="grid size-9 place-items-center rounded-lg bg-secondary text-secondary-foreground"><Icon name="askx-objects:branch" class="size-4" /></span>
           </CardHeader>
           <CardContent class="text-xs text-muted-foreground">{{ copy.currentRevisionHint }}</CardContent>
         </Card>
@@ -468,7 +449,7 @@ onBeforeUnmount(() => {
         <Card size="sm">
           <CardHeader class="flex-row items-start justify-between space-y-0">
             <div><CardDescription>{{ copy.safetyGuard }}</CardDescription><CardTitle class="mt-2 text-base">{{ draft.backupBeforeLink ? copy.safetyGuardOn : copy.safetyGuardOff }}</CardTitle></div>
-            <span class="grid size-9 place-items-center rounded-lg bg-success-soft text-success"><ShieldCheck class="size-4" /></span>
+            <span class="grid size-9 place-items-center rounded-lg bg-success-soft text-success"><Icon name="askx-status:lock" class="size-4" /></span>
           </CardHeader>
           <CardContent><Badge :variant="draft.backupBeforeLink ? 'secondary' : 'destructive'">{{ draft.backupBeforeLink ? copy.connected : copy.off }}</Badge></CardContent>
         </Card>
@@ -478,7 +459,7 @@ onBeforeUnmount(() => {
         <Card data-testid="settings-panel">
           <CardHeader class="border-b">
             <div class="flex items-start gap-3">
-              <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><CloudCog class="size-4" /></span>
+              <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Icon name="askx-actions:settings" class="size-4" /></span>
               <div><CardTitle>{{ copy.settingsTitle }}</CardTitle><CardDescription class="mt-1.5">{{ copy.settingsDescription }}</CardDescription></div>
             </div>
           </CardHeader>
@@ -503,7 +484,7 @@ onBeforeUnmount(() => {
                 >
                   <span class="grid size-8 shrink-0 place-items-center rounded-md bg-secondary font-mono text-[10px] text-secondary-foreground">{{ agent.mark }}</span>
                   <span class="min-w-0 flex-1"><strong class="block truncate text-xs font-medium text-foreground">{{ agent.name }}</strong><small class="mt-1 block truncate font-mono text-[10px]">{{ agent.note }}</small></span>
-                  <Check v-if="draft.platforms.includes(agent.id)" class="size-3.5 shrink-0 text-primary" />
+                  <Icon name="askx-status:check" v-if="draft.platforms.includes(agent.id)" class="size-3.5 shrink-0 text-primary" />
                 </Button>
               </div>
             </section>
@@ -512,7 +493,7 @@ onBeforeUnmount(() => {
 
             <section class="flex items-center justify-between gap-6">
               <div class="flex min-w-0 items-start gap-3">
-                <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-secondary text-secondary-foreground"><HardDriveDownload class="size-4" /></span>
+                <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-secondary text-secondary-foreground"><Icon name="askx-actions:download" class="size-4" /></span>
                 <div><div class="flex flex-wrap items-center gap-2"><h2 class="text-sm font-medium">{{ copy.backupTitle }}</h2><Badge variant="secondary">{{ copy.recommended }}</Badge></div><p class="mt-1 text-xs leading-5 text-muted-foreground">{{ copy.backupDescription }}</p></div>
               </div>
               <Switch
@@ -527,7 +508,7 @@ onBeforeUnmount(() => {
 
             <section class="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
               <div class="flex min-w-0 items-start gap-3">
-                <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-secondary text-secondary-foreground"><Languages class="size-4" /></span>
+                <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-secondary text-secondary-foreground"><Icon name="askx-objects:language" class="size-4" /></span>
                 <div><h2 class="text-sm font-medium">{{ copy.languageTitle }}</h2><p class="mt-1 text-xs leading-5 text-muted-foreground">{{ copy.languageDescription }}</p></div>
               </div>
               <ToggleGroup
@@ -538,7 +519,7 @@ onBeforeUnmount(() => {
                 :disabled="saving || loading"
                 @update:model-value="handleLocaleChange"
               >
-                <ToggleGroupItem value="zh-CN" class="flex-1 sm:flex-none" data-testid="locale-zh-CN"><Globe2 class="size-3.5" />{{ copy.chinese }}</ToggleGroupItem>
+                <ToggleGroupItem value="zh-CN" class="flex-1 sm:flex-none" data-testid="locale-zh-CN"><Icon name="askx-objects:language" class="size-3.5" />{{ copy.chinese }}</ToggleGroupItem>
                 <ToggleGroupItem value="en" class="flex-1 sm:flex-none" data-testid="locale-en">EN</ToggleGroupItem>
               </ToggleGroup>
             </section>
@@ -550,8 +531,8 @@ onBeforeUnmount(() => {
               {{ dirty ? copy.unsaved : copy.allSaved }}
             </div>
             <Button :disabled="!dirty || saving || loading" data-testid="save-settings" @click="saveSettings">
-              <RefreshCw v-if="saving" data-icon="inline-start" class="animate-spin" />
-              <Save v-else data-icon="inline-start" />
+              <Icon name="askx-actions:refresh" v-if="saving" data-icon="inline-start" class="animate-spin" />
+              <Icon name="askx-actions:confirm" v-else data-icon="inline-start" />
               {{ saving ? copy.saving : copy.save }}
             </Button>
           </CardFooter>
@@ -561,7 +542,7 @@ onBeforeUnmount(() => {
           <Card>
             <CardHeader>
               <div class="flex items-center justify-between gap-3">
-                <span class="grid size-9 place-items-center rounded-lg bg-success-soft text-success"><Database class="size-4" /></span>
+                <span class="grid size-9 place-items-center rounded-lg bg-success-soft text-success"><Icon name="askx-objects:layers" class="size-4" /></span>
                 <Badge variant="outline"><span class="size-1.5 rounded-full bg-success" />{{ settings ? copy.connected : copy.connecting }}</Badge>
               </div>
               <CardTitle class="mt-2">{{ copy.syncTitle }}</CardTitle>
@@ -580,7 +561,7 @@ onBeforeUnmount(() => {
 
           <Card>
             <CardHeader>
-              <div class="flex items-center justify-between gap-3"><span class="grid size-9 place-items-center rounded-lg bg-primary/10 text-primary"><TerminalSquare class="size-4" /></span><Badge variant="secondary"><LockKeyhole class="size-3" />{{ copy.readOnly }}</Badge></div>
+              <div class="flex items-center justify-between gap-3"><span class="grid size-9 place-items-center rounded-lg bg-primary/10 text-primary"><Icon name="askx-objects:agent" class="size-4" /></span><Badge variant="secondary"><Icon name="askx-status:lock" class="size-3" />{{ copy.readOnly }}</Badge></div>
               <CardTitle class="mt-2">{{ copy.skillsTitle }}</CardTitle>
               <CardDescription>{{ copy.skillsDescription }}</CardDescription>
             </CardHeader>
@@ -588,16 +569,16 @@ onBeforeUnmount(() => {
               <ol class="grid gap-2">
                 <li v-for="(key, index) in pipelineKeys" :key="key" class="flex items-center gap-2 text-xs">
                   <span class="grid size-5 place-items-center rounded-full" :class="index === 0 ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'">
-                    <CircleCheck v-if="index === 0" class="size-3" />
+                    <Icon name="askx-status:check" v-if="index === 0" class="size-3" />
                     <span v-else class="text-[9px]">{{ index + 1 }}</span>
                   </span>
                   <span :class="index === 0 ? 'font-medium text-foreground' : 'text-muted-foreground'">{{ copy[key] }}</span>
-                  <ChevronRight v-if="index < pipelineKeys.length - 1" class="ml-auto size-3 text-muted-foreground/50" />
+                  <Icon name="askx-navigation:chevron-right" v-if="index < pipelineKeys.length - 1" class="ml-auto size-3 text-muted-foreground/50" />
                 </li>
               </ol>
             </CardContent>
             <CardFooter class="flex-col items-stretch gap-2 bg-transparent">
-              <Button variant="outline" disabled><Command data-icon="inline-start" />{{ copy.runDetection }}</Button>
+              <Button variant="outline" disabled><Icon name="askx-objects:agent" data-icon="inline-start" />{{ copy.runDetection }}</Button>
               <p class="text-center text-[11px] text-muted-foreground">{{ copy.comingSoon }}</p>
             </CardFooter>
           </Card>
