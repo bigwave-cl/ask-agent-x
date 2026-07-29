@@ -1,12 +1,24 @@
-@import "@fontsource-variable/geist";
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn-vue/tailwind.css";
+@import "./md.css";
+
+@layer theme, base, components, utilities, project;
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
   color-scheme: light;
+
+  /* PG DS 尺寸 token */
+  --ds-spacing-2: 2px;
+  --ds-spacing-4: 4px;
+  --ds-spacing-6: 6px;
+  --ds-spacing-8: 8px;
+  --ds-spacing-12: 12px;
+  --ds-spacing-20: 20px;
+  --ds-radius-6: 6px;
+  --ds-radius-8: 8px;
 
   /* PG DS semantic colors — light */
   --ds-color-brand-default: #2fbdc7;
@@ -31,6 +43,7 @@
   --ds-color-border-subtle-5: rgba(6, 7, 8, 0.05);
   --ds-color-border-subtle-10: rgba(6, 7, 8, 0.1);
   --ds-color-border-subtle-20: rgba(6, 7, 8, 0.2);
+  --ds-color-border-brand-85: color-mix(in srgb, var(--ds-color-brand-default) 85%, transparent);
   --ds-color-fill-bw-transparent-3: rgba(6, 7, 8, 0.03);
   --ds-color-fill-bw-transparent-5: rgba(6, 7, 8, 0.05);
   --ds-color-fill-bw-transparent-10: rgba(6, 7, 8, 0.1);
@@ -39,6 +52,7 @@
   --ds-color-fill-brand-transparent-8: color-mix(in srgb, var(--ds-color-brand-default) 8%, transparent);
   --ds-color-fill-brand-transparent-10: color-mix(in srgb, var(--ds-color-brand-default) 10%, transparent);
   --ds-color-fill-brand-transparent-20: color-mix(in srgb, var(--ds-color-brand-default) 20%, transparent);
+  --ds-color-fill-brand-transparent-30: color-mix(in srgb, var(--ds-color-brand-default) 30%, transparent);
   --ds-color-success-default: #3eb343;
   --ds-color-success-soft: rgba(62, 179, 67, 0.12);
   --ds-color-warning-default: #fbb52e;
@@ -104,7 +118,7 @@ html.dark {
   --ds-color-bg-page: #060708;
   --ds-color-bg-surface: #121315;
   --ds-color-bg-surface-subtle: #1a1a1e;
-  --ds-color-bg-surface-raised: #ffffff;
+  --ds-color-bg-surface-raised: rgba(255, 255, 255, 0.05);
   --ds-color-bg-surface-elevated: #323337;
   --ds-color-bg-inverse: #222328;
   --ds-color-text-primary: #fafafa;
@@ -157,7 +171,7 @@ html.dark.theme-rose {
 }
 
 @theme inline {
-  --font-sans: "Geist Variable", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-sans: "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-heading: var(--font-sans);
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   --color-background: var(--background);
@@ -204,6 +218,7 @@ html.dark.theme-rose {
   --color-ds-border-subtle-5: var(--ds-color-border-subtle-5);
   --color-ds-border-subtle-10: var(--ds-color-border-subtle-10);
   --color-ds-border-subtle-20: var(--ds-color-border-subtle-20);
+  --color-ds-border-brand-85: var(--ds-color-border-brand-85);
   --color-ds-fill-bw-transparent-3: var(--ds-color-fill-bw-transparent-3);
   --color-ds-fill-bw-transparent-5: var(--ds-color-fill-bw-transparent-5);
   --color-ds-fill-bw-transparent-10: var(--ds-color-fill-bw-transparent-10);
@@ -212,6 +227,7 @@ html.dark.theme-rose {
   --color-ds-fill-brand-transparent-8: var(--ds-color-fill-brand-transparent-8);
   --color-ds-fill-brand-transparent-10: var(--ds-color-fill-brand-transparent-10);
   --color-ds-fill-brand-transparent-20: var(--ds-color-fill-brand-transparent-20);
+  --color-ds-fill-brand-transparent-30: var(--ds-color-fill-brand-transparent-30);
   --color-ds-success-default: var(--ds-color-success-default);
   --color-ds-success-soft: var(--ds-color-success-soft);
   --color-ds-warning-default: var(--ds-color-warning-default);

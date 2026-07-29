@@ -1,0 +1,262 @@
+@plugin "@tailwindcss/typography" {
+  className: custom-typography;
+}
+
+/* MDC 专用排版：接入方式遵循 IMA，视觉参数遵循 PG DS。 */
+@layer project {
+  .mdc-render-wrap.custom-typography {
+    --tw-prose-body: var(--ds-color-text-secondary);
+    --tw-prose-headings: var(--ds-color-text-primary);
+    --tw-prose-lead: var(--ds-color-text-secondary);
+    --tw-prose-links: var(--ds-color-text-brand);
+    --tw-prose-bold: var(--ds-color-text-primary);
+    --tw-prose-counters: var(--ds-color-text-tertiary);
+    --tw-prose-bullets: var(--ds-color-text-tertiary);
+    --tw-prose-hr: var(--ds-color-border-subtle-10);
+    --tw-prose-quotes: var(--ds-color-text-secondary);
+    --tw-prose-quote-borders: var(--ds-color-brand-default);
+    --tw-prose-code: var(--ds-color-text-brand);
+    --tw-prose-pre-code: var(--ds-color-text-secondary);
+    --tw-prose-pre-bg: var(--ds-color-bg-surface-raised);
+    --tw-prose-th-borders: var(--ds-color-border-subtle-20);
+    --tw-prose-td-borders: var(--ds-color-border-subtle-10);
+    --tw-prose-invert-body: var(--ds-color-text-secondary);
+    --tw-prose-invert-headings: var(--ds-color-text-primary);
+    --tw-prose-invert-lead: var(--ds-color-text-secondary);
+    --tw-prose-invert-links: var(--ds-color-text-brand);
+    --tw-prose-invert-bold: var(--ds-color-text-primary);
+    --tw-prose-invert-counters: var(--ds-color-text-tertiary);
+    --tw-prose-invert-bullets: var(--ds-color-text-tertiary);
+    --tw-prose-invert-hr: var(--ds-color-border-subtle-10);
+    --tw-prose-invert-quotes: var(--ds-color-text-secondary);
+    --tw-prose-invert-quote-borders: var(--ds-color-brand-default);
+    --tw-prose-invert-code: var(--ds-color-text-brand);
+    --tw-prose-invert-pre-code: var(--ds-color-text-secondary);
+    --tw-prose-invert-pre-bg: var(--ds-color-bg-surface-raised);
+
+    max-width: 100%;
+    color: var(--ds-color-text-secondary);
+    font-size: 14px;
+    line-height: 20px;
+    overflow-wrap: anywhere;
+  }
+
+  .mdc-render-wrap.custom-typography h1,
+  .mdc-render-wrap.custom-typography h2,
+  .mdc-render-wrap.custom-typography h3,
+  .mdc-render-wrap.custom-typography h4,
+  .mdc-render-wrap.custom-typography h5,
+  .mdc-render-wrap.custom-typography h6 {
+    color: var(--ds-color-text-primary);
+    margin-bottom: var(--ds-spacing-12);
+    margin-top: var(--ds-spacing-8);
+  }
+
+  .mdc-render-wrap.custom-typography h1 {
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 24px;
+  }
+
+  .mdc-render-wrap.custom-typography h2 {
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 22px;
+  }
+
+  .mdc-render-wrap.custom-typography h3 {
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 20px;
+  }
+
+  .mdc-render-wrap.custom-typography h4 {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 18px;
+  }
+
+  .mdc-render-wrap.custom-typography h5,
+  .mdc-render-wrap.custom-typography h6 {
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 16px;
+  }
+
+  .mdc-render-wrap.custom-typography p {
+    color: var(--ds-color-text-secondary);
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 20px;
+    margin-bottom: var(--ds-spacing-8);
+    margin-top: var(--ds-spacing-8);
+  }
+
+  .mdc-render-wrap.custom-typography strong {
+    color: var(--ds-color-text-primary);
+    font-weight: 600;
+  }
+
+  .mdc-render-wrap.custom-typography a {
+    color: var(--ds-color-text-brand);
+    overflow-wrap: anywhere;
+    text-decoration-color: var(--ds-color-border-brand-85);
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+  }
+
+  .mdc-render-wrap.custom-typography blockquote {
+    background: var(--ds-color-fill-brand-transparent-10);
+    border-left: 3px solid var(--ds-color-brand-default);
+    border-radius: var(--ds-radius-8);
+    color: var(--ds-color-text-secondary);
+    font-style: normal;
+    font-weight: 400;
+    margin: var(--ds-spacing-12) 0;
+    padding: var(--ds-spacing-12);
+  }
+
+  .mdc-render-wrap.custom-typography blockquote p {
+    margin-bottom: var(--ds-spacing-4);
+    margin-top: var(--ds-spacing-4);
+  }
+
+  .mdc-render-wrap.custom-typography blockquote blockquote {
+    background: var(--ds-color-fill-brand-transparent-20);
+    border-left-color: var(--ds-color-brand-active);
+    margin-bottom: var(--ds-spacing-4);
+    margin-top: var(--ds-spacing-8);
+  }
+
+  .mdc-render-wrap.custom-typography blockquote blockquote blockquote {
+    background: var(--ds-color-fill-brand-transparent-30);
+    border-left-color: var(--ds-color-brand-focus);
+  }
+
+  .mdc-render-wrap.custom-typography blockquote p:first-of-type::before,
+  .mdc-render-wrap.custom-typography blockquote p:last-of-type::after {
+    content: none;
+  }
+
+  .mdc-render-wrap.custom-typography ol,
+  .mdc-render-wrap.custom-typography ul {
+    margin-bottom: var(--ds-spacing-8);
+    margin-top: var(--ds-spacing-8);
+    padding-left: var(--ds-spacing-20);
+  }
+
+  .mdc-render-wrap.custom-typography li {
+    color: var(--ds-color-text-secondary);
+    margin-bottom: var(--ds-spacing-4);
+    margin-top: var(--ds-spacing-4);
+    padding-left: var(--ds-spacing-2);
+  }
+
+  .mdc-render-wrap.custom-typography li::marker {
+    color: var(--ds-color-text-tertiary);
+  }
+
+  .mdc-render-wrap.custom-typography :not(pre) > code {
+    background: var(--ds-color-fill-bw-transparent-5);
+    border: 1px solid var(--ds-color-border-subtle-5);
+    border-radius: var(--ds-radius-6);
+    color: var(--ds-color-text-brand);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 18px;
+    padding: var(--ds-spacing-2) var(--ds-spacing-4);
+  }
+
+  .mdc-render-wrap.custom-typography :not(pre) > code::before,
+  .mdc-render-wrap.custom-typography :not(pre) > code::after {
+    content: none;
+  }
+
+  .mdc-render-wrap.custom-typography .mdc-render-code {
+    background: var(--ds-color-bg-surface-raised);
+    border: 1px solid var(--ds-color-border-subtle-10);
+    border-radius: var(--ds-radius-8);
+    margin-bottom: var(--ds-spacing-12);
+    margin-top: var(--ds-spacing-12);
+    max-width: 100%;
+  }
+
+  .mdc-render-wrap.custom-typography .mdc-render-code pre {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    color: var(--ds-color-text-secondary);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 20px;
+    margin: 0;
+    min-width: 100%;
+    padding: var(--ds-spacing-12);
+    tab-size: 2;
+    width: max-content;
+  }
+
+  .mdc-render-wrap.custom-typography .mdc-render-code pre code {
+    background: transparent;
+    border: 0;
+    color: inherit;
+    font-family: inherit;
+    overflow-wrap: normal;
+    padding: 0;
+    white-space: pre;
+    word-break: normal;
+  }
+
+  .mdc-render-wrap.custom-typography hr {
+    border-color: var(--ds-color-border-subtle-10);
+    margin-bottom: var(--ds-spacing-12);
+    margin-top: var(--ds-spacing-12);
+  }
+
+  .mdc-render-wrap.custom-typography .mdc-render-table {
+    margin-bottom: var(--ds-spacing-8);
+    margin-top: var(--ds-spacing-8);
+    max-width: 100%;
+  }
+
+  .mdc-render-wrap.custom-typography .mdc-render-scroll-viewport {
+    padding-bottom: var(--ds-spacing-8);
+  }
+
+  .mdc-render-wrap.custom-typography table {
+    border-collapse: collapse;
+    margin: 0;
+    min-width: 100%;
+    width: max-content;
+  }
+
+  .mdc-render-wrap.custom-typography th,
+  .mdc-render-wrap.custom-typography td {
+    border-bottom: 1px solid var(--ds-color-border-subtle-10);
+    color: var(--ds-color-text-secondary);
+    padding: var(--ds-spacing-8) var(--ds-spacing-6);
+    vertical-align: top;
+  }
+
+  .mdc-render-wrap.custom-typography th {
+    background: var(--ds-color-fill-bw-transparent-3);
+    border-bottom-color: var(--ds-color-border-subtle-20);
+    color: var(--ds-color-text-primary);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .mdc-render-wrap.custom-typography tbody tr:last-child td {
+    border-bottom-color: var(--ds-color-border-subtle-5);
+  }
+
+  .mdc-render-wrap.custom-typography > :first-child {
+    margin-top: 0;
+  }
+
+  .mdc-render-wrap.custom-typography > :last-child {
+    margin-bottom: 0;
+  }
+}
