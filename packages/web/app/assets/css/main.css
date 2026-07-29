@@ -32,6 +32,7 @@
   --ds-color-bg-surface-raised: #f1fafa;
   --ds-color-bg-surface-elevated: #ffffff;
   --ds-color-bg-inverse: #ffffff;
+  --ds-color-bg-tooltip: #4f5050;
   --ds-color-text-primary: #1b1c1c;
   --ds-color-text-secondary: #353737;
   --ds-color-text-tertiary: #4e5353;
@@ -40,6 +41,7 @@
   --ds-color-text-inverse: #ffffff;
   --ds-color-text-white: #ffffff;
   --ds-color-text-brand: #27a3ad;
+  --ds-color-text-tooltip: #ffffff;
   --ds-color-border-subtle-5: rgba(6, 7, 8, 0.05);
   --ds-color-border-subtle-10: rgba(6, 7, 8, 0.1);
   --ds-color-border-subtle-20: rgba(6, 7, 8, 0.2);
@@ -210,11 +212,13 @@ html.dark.theme-rose {
   --color-ds-text-inverse: var(--ds-color-text-inverse);
   --color-ds-text-white: var(--ds-color-text-white);
   --color-ds-text-brand: var(--ds-color-text-brand);
+  --color-ds-text-tooltip: var(--ds-color-text-tooltip);
   --color-ds-bg-surface: var(--ds-color-bg-surface);
   --color-ds-bg-surface-subtle: var(--ds-color-bg-surface-subtle);
   --color-ds-bg-surface-raised: var(--ds-color-bg-surface-raised);
   --color-ds-bg-surface-elevated: var(--ds-color-bg-surface-elevated);
   --color-ds-bg-inverse: var(--ds-color-bg-inverse);
+  --color-ds-bg-tooltip: var(--ds-color-bg-tooltip);
   --color-ds-border-subtle-5: var(--ds-color-border-subtle-5);
   --color-ds-border-subtle-10: var(--ds-color-border-subtle-10);
   --color-ds-border-subtle-20: var(--ds-color-border-subtle-20);
@@ -258,6 +262,7 @@ html.dark.theme-rose {
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
+  --radius-ds-8: var(--ds-radius-8);
   --radius-xl: calc(var(--radius) + 4px);
 }
 
