@@ -6,14 +6,16 @@ import DemoSection from '../../components/DemoSection.vue'
 import DemoComponentMount from './DemoComponentMount.vue'
 import DemoDropUpload from './DemoDropUpload.vue'
 import DemoMittEventHandler from './DemoMittEventHandler.vue'
+import DemoPasteFiles from './DemoPasteFiles.vue'
 
 defineOptions({ name: 'DemoUtilsModule' })
 
 const openSections = reactive({
   copyText: true,
   toast: true,
-  dropUpload: false,
   componentMount: false,
+  pasteFiles: false,
+  dropUpload: false,
   mittEventHandler: false,
 })
 const toast = useToast()
@@ -76,7 +78,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="grid min-w-56 gap-2 rounded-xl border bg-card/80 p-4 font-mono text-[10px] text-muted-foreground">
           <span class="flex items-center gap-2"><Icon name="askx-objects:layers" class="size-3.5 text-primary" />模块：Utils 工具集</span>
-          <span class="flex items-center gap-2"><Icon name="askx-objects:schedule" class="size-3.5 text-primary" />能力：Copy / Toast / Drop / Mount / Event</span>
+          <span class="flex items-center gap-2"><Icon name="askx-objects:schedule" class="size-3.5 text-primary" />能力：Copy / Toast / Mount / Paste / Drop / Event</span>
         </div>
       </div>
     </article>
@@ -189,9 +191,11 @@ onBeforeUnmount(() => {
       </article>
     </DemoSection>
 
-    <DemoDropUpload v-model="openSections.dropUpload" />
-
     <DemoComponentMount v-model="openSections.componentMount" />
+
+    <DemoPasteFiles v-model="openSections.pasteFiles" />
+
+    <DemoDropUpload v-model="openSections.dropUpload" />
 
     <DemoMittEventHandler v-model="openSections.mittEventHandler" />
   </div>
