@@ -49,8 +49,30 @@
     "authNoStorage": "不写入浏览器存储",
     "demoPublic": "无需 Token，先浏览公开 UI Demo。"
   },
+  "dropUpload": {
+    "hint": "拖拽文件到这里上传",
+    "limit": "一次最多上传 {count} 个项目",
+    "errors": {
+      "singleCount": "当前区域一次只能上传一个项目。",
+      "maxCount": "一次最多上传 {count} 个项目。"
+    }
+  },
   "layout": {
-    "overview": "工作台导航"
+    "overview": "工作台导航",
+    "menu": "菜单",
+    "openMenu": "打开菜单",
+    "openNavigation": "打开工作台导航",
+    "closeNavigation": "关闭工作台导航",
+    "backToHome": "返回首页",
+    "toolBadge": "本地工具工作台",
+    "navigationTitle": "选择工作空间",
+    "navigationDescription": "按需展开功能导航，当前页面和共享设置状态会保持不变。",
+    "homeTitle": "首页",
+    "homeDescription": "查看本地工作台概览和快捷入口。",
+    "skillsDescription": "发现并管理本地 Agent 的可复用能力。",
+    "themeDescription": "调整共享主题色与界面明暗模式。",
+    "settingsDescription": "管理平台、备份、语言和配置版本。",
+    "demoDescription": "打开公开的组件与设计规范实验室。"
   },
   "portal": {
     "eyebrow": "本地 AGENT 轨道",
@@ -75,7 +97,6 @@
     "overview": "概览",
     "sharedSettings": "共享设置",
     "modules": "模块",
-    "backToPortal": "返回入口",
     "skillsPageTitle": "Skills 轨道",
     "skillsPageDescription": "集中查看每个已启用 Agent 共享的可复用能力与安全处理链路。",
     "themePageTitle": "工作台氛围",

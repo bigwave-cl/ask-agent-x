@@ -55,6 +55,7 @@
   --ds-color-fill-brand-transparent-10: color-mix(in srgb, var(--ds-color-brand-default) 10%, transparent);
   --ds-color-fill-brand-transparent-20: color-mix(in srgb, var(--ds-color-brand-default) 20%, transparent);
   --ds-color-fill-brand-transparent-30: color-mix(in srgb, var(--ds-color-brand-default) 30%, transparent);
+  --ds-color-overlay-scrim: rgba(0, 0, 0, 0.7);
   --ds-color-success-default: #3eb343;
   --ds-color-success-soft: rgba(62, 179, 67, 0.12);
   --ds-color-warning-default: #fbb52e;
@@ -68,6 +69,13 @@
   --ds-color-auth-text: #fafafa;
   --ds-color-auth-muted: #8f9898;
   --ds-color-auth-grid: rgba(74, 196, 206, 0.1);
+  --ds-color-special-ice-highlight: #f1fdff;
+  --ds-color-special-ice-light: #d8f5f8;
+  --ds-color-special-ice-default: #b4e4e9;
+  --ds-color-special-ice-deep: #6daeb9;
+  --ds-color-special-ice-shadow: #78aeb7;
+  --ds-color-special-ice-text: #17424a;
+  --ds-color-special-signal-default: #9bb8dc;
 
   /* shadcn semantic mapping */
   --radius: 0.75rem;
@@ -137,10 +145,18 @@ html.dark {
   --ds-color-fill-bw-transparent-5: rgba(255, 255, 255, 0.05);
   --ds-color-fill-bw-transparent-10: rgba(255, 255, 255, 0.1);
   --ds-color-fill-bw-transparent-20: rgba(255, 255, 255, 0.2);
+  --ds-color-overlay-scrim: rgba(0, 0, 0, 0.7);
   --ds-color-success-default: #48c04c;
   --ds-color-success-soft: rgba(72, 192, 76, 0.14);
   --ds-color-warning-default: #f09e1f;
   --ds-color-warning-soft: rgba(240, 158, 31, 0.16);
+  --ds-color-special-ice-highlight: #e8fbfd;
+  --ds-color-special-ice-light: #c9edf1;
+  --ds-color-special-ice-default: #9ed5dc;
+  --ds-color-special-ice-deep: #4f8994;
+  --ds-color-special-ice-shadow: #3f6f78;
+  --ds-color-special-ice-text: #102f35;
+  --ds-color-special-signal-default: #87a9d3;
   --ds-color-danger-default: #f95244;
   --ds-color-danger-hover: #ff7d6d;
   --ds-color-danger-active: #f1271e;
@@ -232,6 +248,7 @@ html.dark.theme-rose {
   --color-ds-fill-brand-transparent-10: var(--ds-color-fill-brand-transparent-10);
   --color-ds-fill-brand-transparent-20: var(--ds-color-fill-brand-transparent-20);
   --color-ds-fill-brand-transparent-30: var(--ds-color-fill-brand-transparent-30);
+  --color-ds-overlay-scrim: var(--ds-color-overlay-scrim);
   --color-ds-success-default: var(--ds-color-success-default);
   --color-ds-success-soft: var(--ds-color-success-soft);
   --color-ds-warning-default: var(--ds-color-warning-default);

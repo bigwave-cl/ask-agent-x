@@ -60,7 +60,7 @@ export const demoModules: DemoModule[] = [
     group: 'utils',
     groupLabel: 'Utils 工具集',
     title: 'Utils 工具集',
-    description: '集中验证复制、反馈与后续通用组合式能力。',
+    description: '集中验证复制、反馈、拖拽上传与通用组合式能力。',
     sourcePath: 'app/components/demo/modules/utils/index.vue',
     loader: () => import('./modules/utils/index.vue'),
   },

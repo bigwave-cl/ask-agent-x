@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import DemoCopyButton from '../../components/DemoCopyButton.vue'
 import DemoSection from '../../components/DemoSection.vue'
 import DemoComponentMount from './DemoComponentMount.vue'
+import DemoDropUpload from './DemoDropUpload.vue'
 import DemoMittEventHandler from './DemoMittEventHandler.vue'
 
 defineOptions({ name: 'DemoUtilsModule' })
@@ -11,6 +12,7 @@ defineOptions({ name: 'DemoUtilsModule' })
 const openSections = reactive({
   copyText: true,
   toast: true,
+  dropUpload: false,
   componentMount: false,
   mittEventHandler: false,
 })
@@ -74,7 +76,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="grid min-w-56 gap-2 rounded-xl border bg-card/80 p-4 font-mono text-[10px] text-muted-foreground">
           <span class="flex items-center gap-2"><Icon name="askx-objects:layers" class="size-3.5 text-primary" />模块：Utils 工具集</span>
-          <span class="flex items-center gap-2"><Icon name="askx-objects:schedule" class="size-3.5 text-primary" />能力：Copy / Toast / Mount / Event</span>
+          <span class="flex items-center gap-2"><Icon name="askx-objects:schedule" class="size-3.5 text-primary" />能力：Copy / Toast / Drop / Mount / Event</span>
         </div>
       </div>
     </article>
@@ -186,6 +188,8 @@ onBeforeUnmount(() => {
         </div>
       </article>
     </DemoSection>
+
+    <DemoDropUpload v-model="openSections.dropUpload" />
 
     <DemoComponentMount v-model="openSections.componentMount" />
 

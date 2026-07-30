@@ -1,66 +1,41 @@
 <script setup lang="ts">
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import type { ScrollAreaInstance } from '@/components/ui/scroll-area'
 import { ScrollArea } from '@/components/ui/scroll-area'
 
 const route = useRoute()
 const localePath = useLocalePath()
 const commonMessages = useMessageSection('common')
-const layoutMessages = useMessageSection('layout')
 const copy = computed(() => ({
   ...commonMessages.value,
-  ...layoutMessages.value,
 }))
+/** 工作台主滚动区域实例。 */
+const workspaceScrollArea = ref<ScrollAreaInstance | null>(null)
 
-function isActive(path: string) {
-  const localizedPath = localePath(path)
-  return route.path === localizedPath || route.path.startsWith(`${localizedPath}/`)
-}
+watch(
+  () => route.path,
+  () => nextTick(() => workspaceScrollArea.value?.scrollTo({ top: 0, behavior: 'auto' })),
+)
 </script>
 
 <template>
-  <div class="grid h-svh grid-rows-[4rem_minmax(0,1fr)] overflow-hidden bg-background text-foreground">
-    <header data-testid="workspace-header" class="sticky top-0 z-30 border-b bg-background/92 backdrop-blur-xl">
-      <div class="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-        <NuxtLink :to="localePath('/')" class="flex min-w-0 items-center gap-3" :aria-label="copy.home">
-          <BrandMark class="size-9 shrink-0" />
-          <span class="min-w-0">
-            <strong class="block truncate text-sm font-semibold tracking-tight">AskAgent X</strong>
-            <small class="block truncate text-[11px] text-muted-foreground">{{ copy.productTagline }}</small>
-          </span>
-        </NuxtLink>
+  <div class="relative h-svh overflow-hidden bg-background text-foreground">
+    <div class="pointer-events-none fixed inset-x-0 bottom-4 z-40 sm:bottom-5">
+      <CsWorkspaceContent class="flex justify-end">
+        <CsWorkspaceNavigation />
+      </CsWorkspaceContent>
+    </div>
 
-        <nav class="hidden items-center gap-1 md:flex" :aria-label="copy.overview">
-          <Button as-child variant="ghost" size="sm">
-            <NuxtLink :to="localePath('/demo')"><Icon name="askx-objects:model" data-icon="inline-start" />{{ copy.demoNav }}</NuxtLink>
-          </Button>
-          <Button as-child :variant="isActive('/skills') ? 'secondary' : 'ghost'" size="sm">
-            <NuxtLink :to="localePath('/skills')"><Icon name="askx-objects:agent" data-icon="inline-start" />{{ copy.skillsNav }}</NuxtLink>
-          </Button>
-          <Button as-child :variant="isActive('/theme') ? 'secondary' : 'ghost'" size="sm">
-            <NuxtLink :to="localePath('/theme')"><Icon name="askx-status:star" data-icon="inline-start" />{{ copy.themeNav }}</NuxtLink>
-          </Button>
-          <Button as-child :variant="isActive('/settings') ? 'secondary' : 'ghost'" size="sm">
-            <NuxtLink :to="localePath('/settings')"><Icon name="askx-actions:settings" data-icon="inline-start" />{{ copy.settingsNav }}</NuxtLink>
-          </Button>
-        </nav>
+    <ScrollArea ref="workspaceScrollArea" type="always" class="h-full min-h-0" viewport-class="overscroll-contain" data-testid="workspace-scroll-area">
+      <div class="min-h-full">
+        <slot />
 
-        <Badge variant="outline" class="gap-1.5 bg-card">
-          <span class="size-1.5 rounded-full bg-success shadow-[0_0_0_3px_var(--ds-color-success-soft)]" />
-          127.0.0.1 · {{ copy.localOnly }}
-        </Badge>
+        <footer v-if="route.path !== localePath('/')" data-testid="workspace-footer" class="border-t bg-card/50">
+          <CsWorkspaceContent class="flex flex-col gap-2 pb-28 pt-5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:py-5 sm:pr-64">
+            <span class="font-medium text-foreground">AskAgent X <span class="font-normal text-muted-foreground">/ 0.1.0</span></span>
+            <span class="flex items-center gap-1.5"><Icon name="askx-status:lock" class="size-3" />{{ copy.footer }}</span>
+          </CsWorkspaceContent>
+        </footer>
       </div>
-    </header>
-
-    <ScrollArea type="always" class="h-full min-h-0" viewport-class="overscroll-contain" data-testid="workspace-scroll-area">
-      <slot />
-
-      <footer v-if="route.path !== localePath('/')" data-testid="workspace-footer" class="border-t bg-card/50">
-        <div class="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-          <span class="font-medium text-foreground">AskAgent X <span class="font-normal text-muted-foreground">/ 0.1.0</span></span>
-          <span class="flex items-center gap-1.5"><Icon name="askx-status:lock" class="size-3" />{{ copy.footer }}</span>
-        </div>
-      </footer>
     </ScrollArea>
   </div>
 </template>

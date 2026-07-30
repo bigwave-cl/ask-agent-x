@@ -117,6 +117,41 @@ function runLoadingDemo() {
       </article>
     </section>
 
+    <section class="grid gap-2" data-demo-subsection="button-special-theme">
+      <div class="px-1"><h4 class="text-base font-semibold">特殊主题按钮</h4><p class="mt-1 text-xs leading-5 text-muted-foreground">独立公共组件承载立体底座、品牌渐变与轨迹动画；自动跟随青色、玫红和深浅主题，不扩大基础 Button 的结构。</p></div>
+      <article class="grid gap-4 overflow-hidden rounded-2xl border bg-background p-4 sm:p-6" data-testid="special-button-section">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <Badge variant="soft"><Icon name="askx-status:star" />THEME MOTION</Badge>
+          <code class="rounded-lg border bg-muted/50 px-2.5 py-1.5 font-mono text-[10px] text-muted-foreground">components/common/special-button</code>
+        </div>
+        <div class="grid gap-4 md:grid-cols-2">
+          <div class="relative grid min-h-56 place-items-center overflow-hidden rounded-2xl border bg-[radial-gradient(circle_at_72%_18%,color-mix(in_srgb,var(--ds-color-brand-default)_18%,transparent),transparent_15rem),var(--card)] p-10 md:col-span-2">
+            <CsSpecialButton label="开始探索" active-label="立即进入" />
+          </div>
+          <div class="grid min-h-52 place-items-center overflow-hidden rounded-2xl border bg-card p-8">
+            <CsSpecialButton icon="askx-objects:agent" tone="ice" color="#a8dff0"><span>启动 Agent</span></CsSpecialButton>
+          </div>
+          <div class="grid min-h-52 place-items-center overflow-hidden rounded-2xl border bg-card p-8">
+            <CsSpecialButton label="开始生成">
+              <template #icon><Icon name="askx-status:star" class="size-5" /></template>
+            </CsSpecialButton>
+          </div>
+          <div class="grid min-h-52 place-items-center overflow-hidden rounded-2xl border bg-card p-8">
+            <CsSpecialButton :icon="null" aria-label="启动任务">
+              <span class="flex items-center gap-2"><Icon name="askx-objects:agent" class="size-5" /><strong>启动任务</strong></span>
+            </CsSpecialButton>
+          </div>
+          <div class="grid min-h-52 place-items-center overflow-hidden rounded-2xl border bg-card p-8">
+            <CsSpecialButton label="暂不可用" disabled />
+          </div>
+        </div>
+        <div class="flex flex-wrap justify-end gap-2">
+          <DemoCopyButton text='<CsSpecialButton label="开始探索" active-label="立即进入" />' label="复制基础用法" copied-label="已复制" variant="outlined" />
+          <DemoCopyButton text='<CsSpecialButton icon="askx-objects:agent" tone="ice" color="#a8dff0"><span>启动 Agent</span></CsSpecialButton>' label="复制自定义颜色用法" copied-label="已复制" variant="outlined" />
+        </div>
+      </article>
+    </section>
+
     <section class="grid gap-2" data-demo-subsection="button-usage">
       <div class="px-1"><h4 class="text-base font-semibold">使用方式与迁移边界</h4><p class="mt-1 text-xs leading-5 text-muted-foreground">新风格直接从 components/ui/button 导入；已有 default、outline、soft 和旧尺寸继续兼容。</p></div>
       <article class="grid gap-3 rounded-2xl border bg-background p-4 sm:grid-cols-3 sm:p-5" data-testid="button-usage-section">

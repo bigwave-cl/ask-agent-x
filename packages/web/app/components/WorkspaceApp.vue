@@ -307,7 +307,7 @@ onBeforeUnmount(() => {
   <div
     v-if="authState === 'checking'"
     class="grid place-items-center bg-background px-6 text-foreground"
-    :class="props.login ? 'min-h-screen' : 'min-h-[calc(100vh-4rem)]'"
+    :class="props.login ? 'min-h-screen' : 'min-h-svh'"
   >
     <div class="grid justify-items-center gap-4 text-center">
       <BrandMark class="size-12" />
@@ -330,7 +330,7 @@ onBeforeUnmount(() => {
     @copy-command="copyTokenCommand"
   />
 
-  <div v-else class="min-h-[calc(100vh-4rem)] bg-background text-foreground">
+  <div v-else class="min-h-svh bg-background text-foreground">
     <WorkspacePortal
       v-if="workspaceView === 'home'"
       :enabled-count="enabledCount"
@@ -340,11 +340,10 @@ onBeforeUnmount(() => {
       @select="openWorkspacePage"
     />
 
-    <main v-else-if="workspaceView === 'skills'" class="mx-auto grid min-h-[calc(100vh-4rem)] max-w-7xl content-start gap-8 px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
+    <CsWorkspaceContent v-else-if="workspaceView === 'skills'" as="main" class="grid min-h-svh content-start gap-8 pb-8 pt-20 lg:pb-12 lg:pt-16">
       <section class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
         <div class="max-w-3xl">
-          <Button as-child variant="ghost" size="sm" class="mb-4 -ml-2 text-muted-foreground"><NuxtLink :to="localePath('/')"><Icon name="askx-navigation:chevron-right" class="rotate-180" />{{ copy.backToPortal }}</NuxtLink></Button>
-          <Badge variant="secondary" class="mb-4 text-primary"><Icon name="askx-objects:agent" data-icon="inline-start" />{{ copy.skillsNav }}</Badge>
+          <CsWorkspacePageNav icon="askx-objects:agent" :label="copy.skillsNav" />
           <h1 class="text-balance text-3xl font-semibold tracking-[-0.04em] sm:text-5xl">{{ copy.skillsPageTitle }}</h1>
           <p class="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">{{ copy.skillsPageDescription }}</p>
         </div>
@@ -367,17 +366,16 @@ onBeforeUnmount(() => {
           <CardContent><ol class="grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-3"><li v-for="(key, index) in pipelineKeys" :key="key" class="grid justify-items-center gap-2 rounded-lg bg-muted/65 p-3 text-center text-[11px]"><span class="grid size-6 place-items-center rounded-full" :class="index === 0 ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground'"><Icon name="askx-status:check" v-if="index === 0" class="size-3" /><span v-else>{{ index + 1 }}</span></span><span>{{ copy[key] }}</span></li></ol></CardContent>
         </Card>
       </section>
-    </main>
+    </CsWorkspaceContent>
 
-    <main v-else-if="workspaceView === 'theme'" class="mx-auto grid min-h-[calc(100vh-4rem)] max-w-7xl content-start gap-8 px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
+    <CsWorkspaceContent v-else-if="workspaceView === 'theme'" as="main" class="grid min-h-svh content-start gap-8 pb-8 pt-20 lg:pb-12 lg:pt-16">
       <section class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div class="max-w-3xl">
-          <Button as-child variant="ghost" size="sm" class="mb-4 -ml-2 text-muted-foreground"><NuxtLink :to="localePath('/')"><Icon name="askx-navigation:chevron-right" class="rotate-180" />{{ copy.backToPortal }}</NuxtLink></Button>
-          <Badge variant="secondary" class="mb-4 text-primary"><Icon name="askx-status:star" data-icon="inline-start" />{{ copy.themePreviewOnly }}</Badge>
+          <CsWorkspacePageNav icon="askx-status:star" :label="copy.themePreviewOnly" />
           <h1 class="text-balance text-3xl font-semibold tracking-[-0.04em] sm:text-5xl">{{ copy.themePageTitle }}</h1>
           <p class="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">{{ copy.themePageDescription }}</p>
         </div>
-        <Button :disabled="!dirty || saving || loading" data-testid="save-theme" @click="saveSettings"><Icon name="askx-actions:refresh" v-if="saving" class="animate-spin" /><Icon name="askx-actions:confirm" v-else />{{ saving ? copy.saving : copy.save }}</Button>
+        <Button size="40" :disabled="!dirty || saving || loading" data-testid="save-theme" @click="saveSettings"><Icon name="askx-actions:refresh" v-if="saving" class="animate-spin" /><Icon name="askx-actions:confirm" v-else />{{ saving ? copy.saving : copy.save }}</Button>
       </section>
 
       <section>
@@ -410,12 +408,12 @@ onBeforeUnmount(() => {
           <span class="block px-2 pb-2 pt-4"><strong class="block text-sm">{{ copy.themeSystem }}</strong><small class="mt-1.5 block leading-5 text-muted-foreground">{{ copy.themeSystemDescription }}</small></span>
         </button>
       </section>
-    </main>
+    </CsWorkspaceContent>
 
-    <main v-else class="mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
+    <CsWorkspaceContent v-else as="main" class="grid min-h-svh content-start gap-8 pb-8 pt-20 lg:pb-10 lg:pt-16">
       <section class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
         <div class="max-w-3xl">
-          <Badge variant="secondary" class="mb-4 text-primary"><Icon name="askx-status:star" data-icon="inline-start" />{{ copy.pageEyebrow }}</Badge>
+          <CsWorkspacePageNav icon="askx-status:star" :label="copy.pageEyebrow" />
           <h1 class="text-balance text-3xl font-semibold tracking-[-0.035em] sm:text-4xl lg:text-5xl">{{ copy.pageTitle }}</h1>
           <p class="mt-4 max-w-2xl text-pretty text-sm leading-6 text-muted-foreground sm:text-base">{{ copy.pageDescription }}</p>
         </div>
@@ -530,7 +528,7 @@ onBeforeUnmount(() => {
               <span class="size-1.5 rounded-full" :class="dirty ? 'bg-warning' : 'bg-success'" />
               {{ dirty ? copy.unsaved : copy.allSaved }}
             </div>
-            <Button :disabled="!dirty || saving || loading" data-testid="save-settings" @click="saveSettings">
+            <Button size="40" :disabled="!dirty || saving || loading" data-testid="save-settings" @click="saveSettings">
               <Icon name="askx-actions:refresh" v-if="saving" data-icon="inline-start" class="animate-spin" />
               <Icon name="askx-actions:confirm" v-else data-icon="inline-start" />
               {{ saving ? copy.saving : copy.save }}
@@ -578,13 +576,13 @@ onBeforeUnmount(() => {
               </ol>
             </CardContent>
             <CardFooter class="flex-col items-stretch gap-2 bg-transparent">
-              <Button variant="outline" disabled><Icon name="askx-objects:agent" data-icon="inline-start" />{{ copy.runDetection }}</Button>
+              <Button variant="outline" size="40" disabled><Icon name="askx-objects:agent" data-icon="inline-start" />{{ copy.runDetection }}</Button>
               <p class="text-center text-[11px] text-muted-foreground">{{ copy.comingSoon }}</p>
             </CardFooter>
           </Card>
         </div>
       </section>
-    </main>
+    </CsWorkspaceContent>
 
   </div>
 </template>

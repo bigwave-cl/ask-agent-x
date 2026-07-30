@@ -32,12 +32,13 @@
 
 - `app/`：Vue 页面、入口体验、视觉组件和 shadcn-vue primitives。
 - `app/components/common/`：跨页面公共组件，使用 Nuxt 自动导入的 `Cs` 前缀；不要再通过目录 `index.ts` 二次导出组件。
+- `app/components/common/workspace-content/index.vue`：工作台内容宽度和水平留白的唯一 owner；工作台页面、Footer 与悬浮导航边界必须复用，不要在调用侧重复声明 `max-w`。
 - `app/components/business/`：领域业务组件，使用 Nuxt 自动导入的 `Bus` 前缀；公共能力不要放入该目录。
 - `app/components/ui/`：shadcn-vue primitives，由 shadcn 模块管理且不增加业务前缀；避免与 `Cs`、`Bus` 组件重名。
 - `app/pages/`：Nuxt 文件路由；工作台页面在这里独立声明。Demo 只保留 `app/pages/demo.vue` 一个页面入口，不创建 `pages/demo/` 目录，也不为各模块新增 Page 文件。
 - `app/components/demo/Page.vue`：唯一 Demo 页面装配入口；`index.vue`：根据 `?module=` 管理当前模块并异步加载；`catalog.ts`：模块注册、源码路径与 loader 入口。
 - `app/components/demo/components/`：Demo 专属的导航、侧栏、Section、锚点和复制等公共能力；`modules/`：按模块分类存放实际示例，基础 UI 组件示例统一放在 `modules/components/`，图标规范使用独立的 `modules/icons/` 模块。
-- `app/layouts/workspace.vue`：需要全局 Header/Footer 的工作台框架；页面必须显式声明使用。默认布局保持为空，不创建 `default.vue`，登录页与公开 Demo 不继承工作台框架。
+- `app/layouts/workspace-home.vue`：首页使用顶部悬浮工具条导航；`app/layouts/workspace.vue`：子页面使用右下角 Logo 信标导航并提供 Footer。两者共享同一导航 Drawer 和内容宽度边界，页面必须显式声明使用。默认布局保持为空，不创建 `default.vue`，登录页与公开 Demo 不继承工作台框架。
 - `server/api/`：Nitro API；`server/middleware/`：会话边界。
 - `server/utils/`：服务端共享实例。
 - `src/server.ts`：CLI 启动 Nuxt UI 与活动 token 生命周期。

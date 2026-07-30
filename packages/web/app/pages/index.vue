@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'workspace' })
+definePageMeta({ layout: 'workspace-home' })
 const { t } = useI18n()
 useHead(() => ({ title: t('meta.home') }))
 </script>

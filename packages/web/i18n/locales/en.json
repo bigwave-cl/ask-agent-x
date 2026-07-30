@@ -49,8 +49,30 @@
     "authNoStorage": "No browser storage",
     "demoPublic": "Explore the public UI demo without a token."
   },
+  "dropUpload": {
+    "hint": "Drop files here to upload",
+    "limit": "Upload up to {count} items at a time",
+    "errors": {
+      "singleCount": "This area accepts one item at a time.",
+      "maxCount": "Upload up to {count} items at a time."
+    }
+  },
   "layout": {
-    "overview": "Workspace navigation"
+    "overview": "Workspace navigation",
+    "menu": "Menu",
+    "openMenu": "Open menu",
+    "openNavigation": "Open workspace navigation",
+    "closeNavigation": "Close workspace navigation",
+    "backToHome": "Back to home",
+    "toolBadge": "Local tool workspace",
+    "navigationTitle": "Choose a workspace",
+    "navigationDescription": "Open navigation when needed without resetting the current page or shared settings state.",
+    "homeTitle": "Home",
+    "homeDescription": "View the local workspace overview and shortcuts.",
+    "skillsDescription": "Discover and manage reusable capabilities for local Agents.",
+    "themeDescription": "Adjust the shared accent and interface appearance.",
+    "settingsDescription": "Manage platforms, backups, language, and revisions.",
+    "demoDescription": "Open the public component and design specimen lab."
   },
   "portal": {
     "eyebrow": "LOCAL AGENT ORBIT",
@@ -75,7 +97,6 @@
     "overview": "Overview",
     "sharedSettings": "Shared settings",
     "modules": "Modules",
-    "backToPortal": "Back to portal",
     "skillsPageTitle": "Skills orbit",
     "skillsPageDescription": "A focused view of the reusable capabilities shared by every enabled Agent.",
     "themePageTitle": "Workspace atmosphere",

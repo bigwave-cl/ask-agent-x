@@ -61,7 +61,7 @@ const portals = computed<Array<{
 </script>
 
 <template>
-  <main class="relative isolate min-h-[calc(100vh-4rem)] overflow-hidden [background:radial-gradient(circle_at_20%_5%,color-mix(in_srgb,var(--ds-color-brand-default)_14%,transparent),transparent_34rem),linear-gradient(145deg,var(--background)_15%,color-mix(in_srgb,var(--ds-color-bg-surface-raised)_76%,var(--background))_100%)]">
+  <main class="relative isolate min-h-svh overflow-hidden [background:radial-gradient(circle_at_20%_5%,color-mix(in_srgb,var(--ds-color-brand-default)_14%,transparent),transparent_34rem),linear-gradient(145deg,var(--background)_15%,color-mix(in_srgb,var(--ds-color-bg-surface-raised)_76%,var(--background))_100%)]">
     <ClientOnly>
       <LazyAntigravityBackground
         :count="190"
@@ -75,7 +75,7 @@ const portals = computed<Array<{
     <div class="pointer-events-none absolute -inset-[20%] -z-1 animate-portal-drift opacity-70 blur-[28px] motion-reduce:animate-none [background:radial-gradient(ellipse_at_23%_38%,rgb(100_224_231_/_22%),transparent_27%),radial-gradient(ellipse_at_73%_25%,rgb(255_194_116_/_14%),transparent_23%),radial-gradient(ellipse_at_72%_83%,rgb(242_103_162_/_10%),transparent_22%)]" aria-hidden="true" />
     <div class="pointer-events-none absolute inset-0 -z-1 opacity-20 [background-image:radial-gradient(circle,color-mix(in_srgb,var(--foreground)_28%,transparent)_0.7px,transparent_0.8px)] [background-size:22px_22px] [mask-image:linear-gradient(to_bottom,transparent,black_22%,black_74%,transparent)]" aria-hidden="true" />
 
-    <div class="relative z-1 mx-auto min-h-[calc(100vh-4rem)] w-[min(100%-2rem,80rem)] pb-7 pt-14 min-[801px]:pt-[clamp(3rem,7vh,5.5rem)]">
+    <CsWorkspaceContent class="relative z-1 min-h-svh pb-7 pt-28 min-[801px]:pt-[clamp(7rem,12vh,8rem)]">
       <section class="mx-auto max-w-[58rem] text-center">
         <Badge variant="outline" class="h-7 gap-1.5 border-primary/30 bg-card/70 text-ds-text-brand shadow-[0_10px_40px_rgb(47_189_199_/_8%)] backdrop-blur-[14px]">
           <Icon name="askx-status:star" class="size-3" />
@@ -116,6 +116,6 @@ const portals = computed<Array<{
         <span v-if="backupEnabled" class="inline-flex items-center gap-1.5"><Icon name="askx-status:lock" class="size-3 text-success" />{{ copy.protected }}</span>
         <span class="inline-flex items-center gap-1.5">{{ copy.private }}</span>
       </footer>
-    </div>
+    </CsWorkspaceContent>
   </main>
 </template>
