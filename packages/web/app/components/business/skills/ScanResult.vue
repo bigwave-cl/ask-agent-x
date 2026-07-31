@@ -1,6 +1,18 @@
 <script setup lang="ts">
 import type { SkillDecision, SkillGroup, SkillPlatformId, SkillsScanReport } from '@askx/module-skills/skill-types'
-import { skillPlatformPresentations } from '@/lib/skillPlatformPresentation'
+
+/** 最终 Skill 清单筛选类型。 */
+type SkillListFilter = 'all' | 'included' | 'review' | 'skipped'
+
+/** 最终 Skill 清单筛选项。 */
+interface SkillFilterOption {
+  /** 筛选标识。 */
+  id: SkillListFilter
+  /** 当前语言的筛选文案。 */
+  label: string
+  /** 对应 Skill 数量。 */
+  count: number
+}
 
 /** 扫描结果组件属性。 */
 interface Props {
@@ -20,18 +32,16 @@ const emit = defineEmits<{
   'rescan': []
 }>()
 const { t } = useI18n()
+/** Skill 名称和描述搜索词。 */
+const searchQuery = ref('')
+/** 当前最终清单筛选条件。 */
+const activeFilter = ref<SkillListFilter>('all')
 
-/** 返回平台对应的副本。 */
-function platformLocations(platform: SkillPlatformId) {
-  return props.report.locations.filter((location) => location.platform === platform)
-}
-
-/** 返回一个额外目录中发现的 Skill。 */
-function customRootLocations(rootId: string) {
-  return props.report.locations.filter((location) => location.platform === 'custom' && location.customRootId === rootId)
-}
-
-/** 返回分组对应的当前决策。 */
+/**
+ * 返回分组对应的当前决策。
+ * @param group 按名称聚合后的 Skill。
+ * @returns 当前用户选择或安全的保留默认值。
+ */
 function groupDecision(group: SkillGroup): SkillDecision {
   return props.decisions.find((decision) => {
     if (decision.kind === 'keep') return decision.groupId === group.id
@@ -39,6 +49,56 @@ function groupDecision(group: SkillGroup): SkillDecision {
     return group.locations.some((location) => location.id === decision.sourceLocationId)
   }) ?? { kind: 'keep', groupId: group.id }
 }
+
+/**
+ * 判断一个决策是否会将 Skill 纳入统一源。
+ * @param decision 当前 Skill 决策。
+ * @returns 是否会生成或更新统一源。
+ */
+function decisionIncludesSkill(decision: SkillDecision): boolean {
+  return decision.kind === 'adopt'
+    || decision.kind === 'merge'
+    || decision.kind === 'replace'
+    || decision.kind === 'rename-and-adopt'
+}
+
+/**
+ * 判断一个聚合 Skill 是否建议人工检查。
+ * @param group 按名称聚合后的 Skill。
+ * @returns 是否存在冲突、无效内容或失效链接。
+ */
+function groupNeedsReview(group: SkillGroup): boolean {
+  return group.status === 'conflict' || group.status === 'invalid' || group.status === 'broken'
+}
+
+/** 最终会进入 AskX 统一源的 Skill 数量。 */
+const includedCount = computed(() => props.report.groups.filter((group) => decisionIncludesSkill(groupDecision(group))).length)
+/** 建议用户重点检查的 Skill 数量。 */
+const reviewCount = computed(() => props.report.groups.filter(groupNeedsReview).length)
+/** 当前选择保留或移入备份区的 Skill 数量。 */
+const skippedCount = computed(() => props.report.groups.length - includedCount.value)
+/** 最终 Skill 清单筛选项。 */
+const filterOptions = computed<SkillFilterOption[]>(() => [
+  { id: 'all', label: t('skills.filterAll'), count: props.report.groups.length },
+  { id: 'included', label: t('skills.filterIncluded'), count: includedCount.value },
+  { id: 'review', label: t('skills.filterReview'), count: reviewCount.value },
+  { id: 'skipped', label: t('skills.filterSkipped'), count: skippedCount.value },
+])
+/** 搜索和筛选后的最终 Skill 清单。 */
+const visibleGroups = computed<SkillGroup[]>(() => {
+  const query = searchQuery.value.trim().toLocaleLowerCase()
+  return props.report.groups.filter((group) => {
+    const decision = groupDecision(group)
+    const matchesFilter = activeFilter.value === 'all'
+      || (activeFilter.value === 'included' && decisionIncludesSkill(decision))
+      || (activeFilter.value === 'review' && groupNeedsReview(group))
+      || (activeFilter.value === 'skipped' && !decisionIncludesSkill(decision))
+    if (!matchesFilter) return false
+    if (!query) return true
+    return [group.name, ...group.locations.map((location) => location.metadata.description ?? location.metadata.error ?? '')]
+      .some((value) => value.toLocaleLowerCase().includes(query))
+  })
+})
 </script>
 
 <template>
@@ -52,57 +112,29 @@ function groupDecision(group: SkillGroup): SkillDecision {
       <Button variant="outline" size="40" @click="emit('rescan')"><Icon name="askx-actions:refresh" />{{ t('skills.rescan') }}</Button>
     </header>
 
-    <div class="grid gap-4 lg:grid-cols-3">
-      <article v-for="platform in report.platformStatuses" :key="platform.id" class="min-w-0 overflow-hidden rounded-2xl border bg-card">
-        <header class="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
-          <div class="flex min-w-0 items-center gap-2"><Icon :name="skillPlatformPresentations[platform.id].icon" class="size-4 shrink-0" aria-hidden="true" /><strong class="truncate text-sm">{{ skillPlatformPresentations[platform.id].name }}</strong><span class="font-mono text-[10px] text-muted-foreground">{{ platformLocations(platform.id).length }}</span></div>
-          <i class="size-2 rounded-full" :class="platform.linkSupported ? 'bg-success' : 'bg-warning'" />
-        </header>
-        <ScrollArea class="h-[30rem]" viewport-class="overscroll-contain" type="always" :aria-label="platform.name">
-          <div class="grid gap-2 p-3 pr-5">
-            <div v-if="!platformLocations(platform.id).length" class="grid min-h-32 place-items-center rounded-xl border border-dashed bg-muted/15 px-4 text-center text-xs text-muted-foreground">{{ t('skills.platformEmpty') }}</div>
-            <div v-for="location in platformLocations(platform.id)" :key="location.id" class="rounded-xl border bg-background p-3">
-              <div class="flex items-start justify-between gap-3"><strong class="min-w-0 truncate text-sm">{{ location.name }}</strong><Badge :variant="location.broken || !location.metadata.valid ? 'destructive' : 'secondary'">{{ location.broken ? t('skills.broken') : location.metadata.valid ? t('skills.valid') : t('skills.invalid') }}</Badge></div>
-              <p class="mt-1 line-clamp-2 text-[11px] leading-4 text-muted-foreground">{{ location.metadata.description ?? location.metadata.error }}</p>
-              <span class="mt-3 block truncate font-mono text-[9px] text-muted-foreground">{{ location.contentHash?.slice(0, 16) ?? 'NO HASH' }}</span>
-            </div>
-          </div>
-        </ScrollArea>
-      </article>
-    </div>
-
-    <section v-if="report.customRoots.length" class="overflow-hidden rounded-2xl border bg-card">
-      <header class="flex flex-col gap-2 border-b bg-muted/25 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div class="flex items-center gap-2"><Icon name="askx-objects:file" class="size-4 text-primary" aria-hidden="true" /><strong class="text-sm">{{ t('skills.customFolderSource') }}</strong></div>
-        <span class="font-mono text-[10px] text-muted-foreground">{{ t('skills.folderCount', { count: report.customRoots.length }) }}</span>
+    <section class="overflow-hidden rounded-[24px] border bg-card shadow-sm">
+      <header class="grid gap-4 border-b px-4 py-4 sm:px-5 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-center">
+        <div><div class="flex items-center gap-2"><h3 class="font-semibold">{{ t('skills.finalSkillList') }}</h3><Badge variant="secondary">{{ t('skills.skillCount', { count: report.groups.length }) }}</Badge></div><p class="mt-1 text-xs text-muted-foreground">{{ t('skills.finalSkillListDescription') }}</p></div>
+        <div class="relative"><Icon name="askx-actions:search" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" /><Input v-model="searchQuery" class="h-10 pl-9" :placeholder="t('skills.skillSearchPlaceholder')" /></div>
       </header>
-      <div class="grid gap-2 p-3 sm:grid-cols-2">
-        <article v-for="root in report.customRoots" :key="root.id" class="min-w-0 rounded-xl border bg-background p-3">
-          <div class="flex min-w-0 items-center justify-between gap-3"><strong class="truncate text-sm">{{ root.name }}</strong><Badge variant="secondary">{{ t('skills.customFolderSkills', { count: customRootLocations(root.id).length }) }}</Badge></div>
-          <p class="mt-1 truncate font-mono text-[9px] text-muted-foreground sm:text-[10px]">{{ root.path }}</p>
-          <div v-if="customRootLocations(root.id).length" class="mt-3 flex flex-wrap gap-1.5">
-            <span v-for="location in customRootLocations(root.id)" :key="location.id" class="max-w-full truncate rounded-full bg-muted px-2.5 py-1 text-[10px] text-muted-foreground">{{ location.name }}</span>
-          </div>
-        </article>
-      </div>
-    </section>
 
-    <div class="grid gap-3">
-      <div class="flex items-center gap-3"><span class="font-mono text-[10px] text-primary">02 / DECISIONS</span><Separator class="flex-1" /></div>
+      <nav class="flex gap-1 overflow-x-auto border-b bg-muted/20 px-3 py-2" :aria-label="t('skills.skillFilters')">
+        <button v-for="option in filterOptions" :key="option.id" type="button" class="flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-medium transition-colors" :class="activeFilter === option.id ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'" :aria-pressed="activeFilter === option.id" @click="activeFilter = option.id"><span>{{ option.label }}</span><span class="font-mono text-[9px] opacity-70">{{ option.count }}</span></button>
+      </nav>
+
+      <div class="hidden grid-cols-[minmax(0,1fr)_minmax(13rem,.55fr)_auto] gap-5 border-b bg-muted/10 px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground lg:grid"><span>{{ t('skills.skillColumn') }}</span><span>{{ t('skills.sourcesColumn') }}</span><span>{{ t('skills.decisionColumn') }}</span></div>
+
       <BusSkillsSkillDecision
-        v-for="group in report.groups"
+        v-for="group in visibleGroups"
         :key="group.id"
         :group="group"
         :decision="groupDecision(group)"
         :platforms="platforms"
         @update:decision="emit('update-decision', group.id, $event)"
       />
-      <div v-if="!report.groups.length" class="rounded-2xl border border-dashed bg-card/70 p-8 text-center">
-        <Icon name="askx-objects:skills" class="mx-auto size-8 text-primary" />
-        <h3 class="mt-4 font-semibold">{{ t('skills.noFilesFound') }}</h3>
-        <p class="mt-2 text-sm text-muted-foreground">{{ t('skills.noFilesDescription') }}</p>
-      </div>
-    </div>
+      <div v-if="!report.groups.length" class="p-8 text-center"><Icon name="askx-objects:skills" class="mx-auto size-8 text-primary" /><h3 class="mt-4 font-semibold">{{ t('skills.noFilesFound') }}</h3><p class="mt-2 text-sm text-muted-foreground">{{ t('skills.noFilesDescription') }}</p></div>
+      <div v-else-if="!visibleGroups.length" class="p-8 text-center"><Icon name="askx-actions:search" class="mx-auto size-7 text-muted-foreground" /><h3 class="mt-3 font-semibold">{{ t('skills.noMatchingSkills') }}</h3><p class="mt-1 text-xs text-muted-foreground">{{ t('skills.noMatchingSkillsDescription') }}</p></div>
+    </section>
 
   </section>
 </template>

@@ -69,63 +69,49 @@ function toggleArchiveLocation(locationId: string, selected: boolean): void {
 </script>
 
 <template>
-  <article class="rounded-2xl border bg-card p-4 sm:p-5">
-    <header class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <div class="flex items-center gap-2">
-          <strong class="text-base">{{ group.name }}</strong>
-          <Badge :variant="group.status === 'conflict' || group.status === 'broken' ? 'destructive' : 'secondary'">{{ t(`skills.${group.status}`) }}</Badge>
-        </div>
-        <p class="mt-1 text-xs text-muted-foreground">{{ t('skills.locations', { count: group.locations.length }) }}</p>
+  <article class="border-b bg-card transition-colors last:border-b-0 hover:bg-muted/10">
+    <div class="grid gap-4 px-4 py-4 sm:px-5 lg:grid-cols-[minmax(0,1fr)_minmax(13rem,.55fr)_auto] lg:items-center lg:gap-5">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2"><strong class="truncate text-sm sm:text-base">{{ group.name }}</strong><Badge :variant="group.status === 'conflict' || group.status === 'broken' ? 'destructive' : 'secondary'">{{ t(`skills.${group.status}`) }}</Badge></div>
+        <p class="mt-1 line-clamp-2 max-w-2xl text-xs leading-5 text-muted-foreground">{{ group.locations.find((location) => location.metadata.description)?.metadata.description ?? group.locations.find((location) => location.metadata.error)?.metadata.error ?? t('skills.noSkillDescription') }}</p>
       </div>
-      <span class="rounded-full bg-muted px-2.5 py-1 font-mono text-[10px] text-muted-foreground">{{ group.hashes[0]?.slice(0, 10) ?? 'NO HASH' }}</span>
-    </header>
 
-    <div class="mt-4 flex flex-wrap gap-2">
-      <Button v-if="group.status === 'unique'" size="36" :variant="active('adopt') ? 'default' : 'outline'" @click="selectCanonical('adopt')">{{ t('skills.adopt') }}</Button>
-      <Button v-if="group.status === 'identical'" size="36" :variant="active('merge') ? 'default' : 'outline'" @click="selectCanonical('merge')">{{ t('skills.merge') }}</Button>
-      <Button size="36" :variant="active('keep') ? 'secondary' : 'outline'" @click="emit('update:decision', { kind: 'keep', groupId: group.id })">{{ t('skills.keep') }}</Button>
-      <Button v-if="archivableLocations.length" size="36" :variant="active('archive') ? 'destructive' : 'outline'" @click="emit('update:decision', { kind: 'archive', locationIds: archivableLocations.map((location) => location.id) })">{{ t('skills.archive') }}</Button>
+      <div class="flex min-w-0 flex-wrap items-center gap-1.5">
+        <span v-for="location in group.locations" :key="location.id" class="flex max-w-full items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-[10px] text-muted-foreground"><Icon :name="getSkillPlatformPresentation(location.platform).icon" class="size-3 shrink-0" aria-hidden="true" /><span class="truncate">{{ locationSourceName(location) }}</span></span>
+        <span class="font-mono text-[9px] text-muted-foreground/70">{{ group.hashes[0]?.slice(0, 8) ?? 'NO HASH' }}</span>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2 lg:justify-end">
+        <Button v-if="group.status === 'unique'" size="36" :variant="active('adopt') ? 'default' : 'outline'" @click="selectCanonical('adopt')">{{ t('skills.adopt') }}</Button>
+        <Button v-if="group.status === 'identical'" size="36" :variant="active('merge') ? 'default' : 'outline'" @click="selectCanonical('merge')">{{ t('skills.merge') }}</Button>
+        <Button size="36" :variant="active('keep') ? 'secondary' : 'outline'" @click="emit('update:decision', { kind: 'keep', groupId: group.id })">{{ t('skills.keep') }}</Button>
+        <Button v-if="archivableLocations.length" size="36" :variant="active('archive') ? 'destructive' : 'outline'" @click="emit('update:decision', { kind: 'archive', locationIds: archivableLocations.map((location) => location.id) })">{{ t('skills.archive') }}</Button>
+      </div>
     </div>
 
-    <div v-if="group.status === 'conflict'" class="mt-4 rounded-xl border border-warning/30 bg-warning/5 p-3">
-      <span class="text-xs font-medium">{{ t('skills.chooseVersion') }}</span>
-      <div class="mt-2 grid gap-2 sm:grid-cols-3">
-        <button v-for="location in group.locations" :key="location.id" type="button" class="rounded-lg border bg-background p-3 text-left text-xs transition hover:border-primary" :class="(decision.kind === 'replace' || decision.kind === 'adopt') && decision.sourceLocationId === location.id ? 'border-primary ring-2 ring-primary/15' : ''" @click="selectReplacement(location.id)">
+    <div v-if="group.status === 'conflict'" class="border-t border-warning/20 bg-warning/5 px-4 py-4 sm:px-5">
+      <div class="flex items-center gap-2 text-xs font-medium text-warning"><Icon name="askx-status:warning" class="size-3.5" aria-hidden="true" />{{ t('skills.chooseVersion') }}</div>
+      <div class="mt-3 grid gap-2 sm:grid-cols-3">
+        <button v-for="location in group.locations" :key="location.id" type="button" class="rounded-xl border bg-background p-3 text-left text-xs transition hover:border-primary" :class="(decision.kind === 'replace' || decision.kind === 'adopt') && decision.sourceLocationId === location.id ? 'border-primary ring-2 ring-primary/15' : ''" @click="selectReplacement(location.id)">
           <span class="flex items-center gap-2"><Icon :name="getSkillPlatformPresentation(location.platform).icon" class="size-4 shrink-0" aria-hidden="true" /><strong class="block">{{ locationSourceName(location) }}</strong></span>
           <span class="mt-1 block font-mono text-[10px] text-muted-foreground">{{ location.contentHash?.slice(0, 12) }}</span>
         </button>
       </div>
     </div>
 
-    <details v-if="group.status !== 'broken'" class="mt-4 rounded-xl border bg-muted/20 p-3" :open="active('rename-and-adopt')">
-      <summary class="cursor-pointer text-xs font-medium">{{ t('skills.rename') }}</summary>
+    <details v-if="group.status !== 'broken'" class="border-t bg-muted/15 px-4 py-3 sm:px-5" :open="active('rename-and-adopt')">
+      <summary class="cursor-pointer text-xs font-medium text-muted-foreground transition hover:text-foreground">{{ t('skills.advancedActions') }}</summary>
       <div class="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-        <CsResponsiveSelect
-          v-model="renameSourceId"
-          :options="renameSourceOptions"
-          :title="t('skills.selectRenameSource')"
-          :placeholder="t('skills.selectRenameSource')"
-          :close-label="t('skills.closeSourceSelection')"
-          :empty-text="t('skills.noValidSource')"
-          :clear-label="t('skills.clearSourceSelection')"
-          trigger-class="h-10"
-          @change="updateRename"
-        />
+        <CsResponsiveSelect v-model="renameSourceId" :options="renameSourceOptions" :title="t('skills.selectRenameSource')" :placeholder="t('skills.selectRenameSource')" :close-label="t('skills.closeSourceSelection')" :empty-text="t('skills.noValidSource')" :clear-label="t('skills.clearSourceSelection')" trigger-class="h-10" @change="updateRename" />
         <Input v-model="renameName" :placeholder="t('skills.renamePlaceholder')" @input="updateRename" />
         <Button variant="outline" size="40" :disabled="!renameSourceId || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(renameName)" @click="updateRename">{{ t('skills.rename') }}</Button>
       </div>
     </details>
 
-    <div v-if="decision.kind === 'archive'" class="mt-4 rounded-xl border border-destructive/20 bg-destructive/5 p-3">
+    <div v-if="decision.kind === 'archive'" class="border-t border-destructive/20 bg-destructive/5 px-4 py-4 sm:px-5">
       <p class="flex items-center gap-2 text-xs text-destructive"><Icon name="askx-status:warning" class="size-3.5" />{{ t('skills.archiveHint') }}</p>
       <p class="mt-3 text-xs font-medium">{{ t('skills.chooseArchiveCopies') }}</p>
-      <div class="mt-2 grid gap-2 sm:grid-cols-3">
-        <label v-for="location in archivableLocations" :key="location.id" class="flex cursor-pointer items-center gap-2 rounded-lg border bg-background p-3 text-xs">
-          <Checkbox :model-value="decision.locationIds.includes(location.id)" @update:model-value="toggleArchiveLocation(location.id, Boolean($event))" />
-          <span><span class="flex items-center gap-2"><Icon :name="getSkillPlatformPresentation(location.platform).icon" class="size-4 shrink-0" aria-hidden="true" /><strong class="block">{{ locationSourceName(location) }}</strong></span><span class="mt-0.5 block text-muted-foreground">{{ location.name }}</span></span>
-        </label>
-      </div>
+      <div class="mt-2 grid gap-2 sm:grid-cols-3"><label v-for="location in archivableLocations" :key="location.id" class="flex cursor-pointer items-center gap-2 rounded-lg border bg-background p-3 text-xs"><Checkbox :model-value="decision.locationIds.includes(location.id)" @update:model-value="toggleArchiveLocation(location.id, Boolean($event))" /><span><span class="flex items-center gap-2"><Icon :name="getSkillPlatformPresentation(location.platform).icon" class="size-4 shrink-0" aria-hidden="true" /><strong class="block">{{ locationSourceName(location) }}</strong></span><span class="mt-0.5 block text-muted-foreground">{{ location.name }}</span></span></label></div>
     </div>
   </article>
 </template>
