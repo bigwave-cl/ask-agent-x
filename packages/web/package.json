@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@askx/core": "workspace:*",
+    "@askx/module-skills": "workspace:*",
     "@iconify/utils": "^3.1.4",
     "@lucide/vue": "^1.25.0",
     "@nuxt/icon": "^2.3.1",

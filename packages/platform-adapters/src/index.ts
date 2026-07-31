@@ -27,7 +27,7 @@ export interface PlatformDetection extends PlatformDescriptor {
 export function platformDescriptors(home = homedir()): PlatformDescriptor[] {
   return [
     { id: 'agents', name: 'Agents shared', skillsDir: join(home, '.agents', 'skills') },
-    { id: 'codex', name: 'Codex', command: 'codex', skillsDir: join(home, '.codex', 'skills') },
+    { id: 'codex', name: 'ChatGPT / Codex', command: 'codex', skillsDir: join(home, '.codex', 'skills') },
     {
       id: 'claude',
       name: 'Claude Code',
@@ -95,4 +95,3 @@ export async function detectPlatforms(home = homedir()): Promise<PlatformDetecti
     }),
   )
 }
-

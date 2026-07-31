@@ -1,7 +1,7 @@
-const COLLECTION_PATTERN = /^\/_askx\/icon\/askx-(actions|navigation|status|objects)\.json$/
+const COLLECTION_PATTERN = /^\/_askx\/icon\/askx-(actions|navigation|status|objects|platforms)\.json$/
 const ICON_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
-export type LocalIconCategory = 'actions' | 'navigation' | 'status' | 'objects'
+export type LocalIconCategory = 'actions' | 'navigation' | 'status' | 'objects' | 'platforms'
 
 export interface LocalIconRequest {
   category: LocalIconCategory

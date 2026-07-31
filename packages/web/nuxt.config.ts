@@ -7,6 +7,7 @@ const askxIconDirectories = {
   navigation: resolve('./app/assets/icons/navigation'),
   status: resolve('./app/assets/icons/status'),
   objects: resolve('./app/assets/icons/objects'),
+  platforms: resolve('./app/assets/icons/platforms'),
 }
 
 export default defineNuxtConfig({
@@ -21,7 +22,7 @@ export default defineNuxtConfig({
     { path: '~/components', pathPrefix: false, pattern: '*.vue', extensions: ['vue'] },
   ],
   css: ['~/assets/css/main.css'],
-  watch: ['../core/dist/**', 'app/assets/icons/**/*.svg'],
+  watch: ['../core/dist/**', '../platform-adapters/dist/**', '../modules/skills/dist/**', 'app/assets/icons/**/*.svg'],
   i18n: {
     defaultLocale: 'zh-CN',
     strategy: 'prefix_except_default',
@@ -41,6 +42,7 @@ export default defineNuxtConfig({
       { prefix: 'askx-navigation', dir: askxIconDirectories.navigation },
       { prefix: 'askx-status', dir: askxIconDirectories.status },
       { prefix: 'askx-objects', dir: askxIconDirectories.objects },
+      { prefix: 'askx-platforms', dir: askxIconDirectories.platforms },
     ],
     clientBundle: {
       scan: false,
@@ -52,6 +54,9 @@ export default defineNuxtConfig({
         'askx-objects:agent',
         'askx-objects:model',
         'askx-objects:palette',
+        'askx-platforms:chatgpt-codex',
+        'askx-platforms:claude-code',
+        'askx-platforms:cursor',
         'askx-status:lock',
         'askx-status:star',
       ],

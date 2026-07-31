@@ -8,17 +8,20 @@ import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import type { AskxIconName } from '@/lib/iconCatalog'
 import { parseSessionCredential } from '@/lib/session-credential'
+import { skillPlatformPresentations } from '@/lib/skillPlatformPresentation'
 
-const agents: Array<{ id: ManagedPlatformId; name: string; mark: string; note: string }> = [
-  { id: 'codex', name: 'Codex', mark: 'CX', note: '~/.codex/skills' },
-  { id: 'claude', name: 'Claude Code', mark: 'CL', note: '~/.claude/skills' },
-  { id: 'cursor', name: 'Cursor', mark: 'CU', note: '~/.cursor/skills' },
+/** 设置页展示的 Agent 平台。 */
+const agents: Array<{ id: ManagedPlatformId; name: string; icon: AskxIconName; note: string }> = [
+  { id: 'codex', ...skillPlatformPresentations.codex, note: '~/.codex/skills' },
+  { id: 'claude', ...skillPlatformPresentations.claude, note: '~/.claude/skills' },
+  { id: 'cursor', ...skillPlatformPresentations.cursor, note: '~/.cursor/skills' },
 ]
 
 type FeedbackKey = 'feedbackConnecting' | 'feedbackConnected' | 'feedbackSynced' | 'feedbackExternal' | 'feedbackMinPlatform' | 'feedbackUnsaved' | 'feedbackSaved' | 'feedbackReadFailed' | 'feedbackSaveFailed' | 'feedbackConflict'
 type AuthState = 'checking' | 'authenticated' | 'unauthenticated'
-type WorkspaceView = 'home' | 'skills' | 'theme' | 'settings'
+type WorkspaceView = 'home' | 'skills-x' | 'theme' | 'settings'
 type VisualTheme = 'light' | 'dark' | 'system'
 
 const props = withDefaults(defineProps<{
@@ -340,32 +343,8 @@ onBeforeUnmount(() => {
       @select="openWorkspacePage"
     />
 
-    <CsWorkspaceContent v-else-if="workspaceView === 'skills'" as="main" class="grid min-h-svh content-start gap-8 pb-8 pt-20 lg:pb-12 lg:pt-16">
-      <section class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-        <div class="max-w-3xl">
-          <CsWorkspacePageNav icon="askx-objects:agent" :label="copy.skillsNav" />
-          <h1 class="text-balance text-3xl font-semibold tracking-[-0.04em] sm:text-5xl">{{ copy.skillsPageTitle }}</h1>
-          <p class="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">{{ copy.skillsPageDescription }}</p>
-        </div>
-        <Badge variant="outline" class="gap-1.5 bg-card"><span class="size-1.5 rounded-full bg-success" />{{ enabledCount }}/{{ agents.length }} {{ copy.connected }}</Badge>
-      </section>
-
-      <section class="grid gap-5 lg:grid-cols-[1.2fr_.8fr]">
-        <Card>
-          <CardHeader><CardTitle>{{ copy.platformsTitle }}</CardTitle><CardDescription>{{ copy.platformsDescription }}</CardDescription></CardHeader>
-          <CardContent class="grid gap-3 sm:grid-cols-3">
-            <div v-for="agent in agents" :key="agent.id" class="flex items-center gap-3 rounded-xl border bg-card/70 p-4" :class="draft.platforms.includes(agent.id) ? 'border-primary/40' : 'opacity-50'">
-              <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 font-mono text-[10px] text-primary">{{ agent.mark }}</span>
-              <span class="min-w-0"><strong class="block truncate text-sm">{{ agent.name }}</strong><small class="mt-1 block truncate font-mono text-[10px] text-muted-foreground">{{ agent.note }}</small></span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader><div class="flex items-center justify-between"><span class="grid size-9 place-items-center rounded-lg bg-primary/10 text-primary"><Icon name="askx-objects:agent" class="size-4" /></span><Badge variant="secondary">{{ copy.readOnly }}</Badge></div><CardTitle class="mt-2">{{ copy.skillsTitle }}</CardTitle><CardDescription>{{ copy.skillsDescription }}</CardDescription></CardHeader>
-          <CardContent><ol class="grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-3"><li v-for="(key, index) in pipelineKeys" :key="key" class="grid justify-items-center gap-2 rounded-lg bg-muted/65 p-3 text-center text-[11px]"><span class="grid size-6 place-items-center rounded-full" :class="index === 0 ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground'"><Icon name="askx-status:check" v-if="index === 0" class="size-3" /><span v-else>{{ index + 1 }}</span></span><span>{{ copy[key] }}</span></li></ol></CardContent>
-        </Card>
-      </section>
+    <CsWorkspaceContent v-else-if="workspaceView === 'skills-x'" as="main" class="grid min-h-svh content-start gap-8 pb-8 pt-20 lg:pb-12 lg:pt-16">
+      <BusSkillsOnboarding :settings="settings" @settings-updated="applySettings($event, 'feedbackSaved', { revision: $event.revision })" />
     </CsWorkspaceContent>
 
     <CsWorkspaceContent v-else-if="workspaceView === 'theme'" as="main" class="grid min-h-svh content-start gap-8 pb-8 pt-20 lg:pb-12 lg:pt-16">
@@ -480,7 +459,7 @@ onBeforeUnmount(() => {
                   :data-testid="`platform-${agent.id}`"
                   @click="togglePlatform(agent.id)"
                 >
-                  <span class="grid size-8 shrink-0 place-items-center rounded-md bg-secondary font-mono text-[10px] text-secondary-foreground">{{ agent.mark }}</span>
+                  <span class="grid size-8 shrink-0 place-items-center rounded-md bg-secondary text-secondary-foreground"><Icon :name="agent.icon" class="size-4.5" aria-hidden="true" /></span>
                   <span class="min-w-0 flex-1"><strong class="block truncate text-xs font-medium text-foreground">{{ agent.name }}</strong><small class="mt-1 block truncate font-mono text-[10px]">{{ agent.note }}</small></span>
                   <Icon name="askx-status:check" v-if="draft.platforms.includes(agent.id)" class="size-3.5 shrink-0 text-primary" />
                 </Button>

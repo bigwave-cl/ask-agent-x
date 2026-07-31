@@ -10,6 +10,14 @@ describe('parseLocalIconRequest', () => {
     })
   })
 
+  it('parses the local platform logo collection', () => {
+    expect(parseLocalIconRequest('/_askx/icon/askx-platforms.json', 'GET', 'chatgpt-codex,claude-code,cursor')).toEqual({
+      category: 'platforms',
+      prefix: 'askx-platforms',
+      icons: ['chatgpt-codex', 'claude-code', 'cursor'],
+    })
+  })
+
   it.each([
     ['/api/settings', 'GET', 'copy'],
     ['/_askx/icon/askx-actions.json', 'POST', 'copy'],

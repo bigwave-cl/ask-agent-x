@@ -10,17 +10,19 @@ import {
   type DetectionIssue,
   type ManagedPlatformId,
 } from '@askx/core'
-import { SkillsModule, type SkillsTopology } from '@askx/module-skills'
+import { SkillsManager, SkillsModule } from '@askx/module-skills'
+import type { SkillPlatformId, SkillsScanReport } from '@askx/module-skills/skill-types'
 import { detectPlatforms, type PlatformDetection } from '@askx/platform-adapters'
 import { readUiSessionToken, startUi } from '@askx/web/server'
 import { Command } from 'commander'
-import { Box, render, Text } from 'ink'
-import type { ReactNode } from 'react'
+import { Box, render, Text, useApp, useInput } from 'ink'
+import { useState, type ReactNode } from 'react'
 
 const accent = '#d7ff3f'
 const registry = new ModuleRegistry()
 registry.register(new SkillsModule())
 const settingsStore = new SettingsStore(defaultContext().dataDir)
+const skillsManager = new SkillsManager(defaultContext())
 const activeLocale = (await settingsStore.read()).locale
 
 const messages = {
@@ -41,6 +43,8 @@ const messages = {
     themeArgument: 'cyan or rose', themeDescription: 'Set the shared CLI/Web theme color', themeError: 'Theme color must be "cyan" or "rose"',
     uiDescription: 'Start the local Nuxt management interface', portDescription: 'Local port', invalidPort: 'Invalid port', tokenDescription: 'Print the active local UI token', noToken: 'No active UI session. Start "pnpm dev" or "askx ui" first.',
     manageBackups: 'Manage Skills backups', placeholder: 'foundation placeholder',
+    choosePlatforms: 'Choose platforms to scan', scanOnlySelected: 'Space toggles · Enter confirms', platformRequired: 'Select at least one platform.', platformSelectionRequired: 'First scan requires --platform in non-interactive mode.',
+    skillConflict: 'Skill {name} has conflicting content.', skillBroken: 'Skill {name} has a broken link.', skillInvalid: 'Skill {name} has invalid metadata.',
   },
   'zh-CN': {
     builtInModules: '内置模块', doctor: '环境诊断', skillsScan: 'Skills 扫描', skillsStatus: 'Skills 状态',
@@ -59,6 +63,8 @@ const messages = {
     themeArgument: 'cyan 或 rose', themeDescription: '设置 CLI/Web 共享主题色', themeError: '主题色必须是 "cyan" 或 "rose"',
     uiDescription: '启动本地 Nuxt 管理界面', portDescription: '本地端口', invalidPort: '无效端口', tokenDescription: '输出当前本地 UI token', noToken: '没有活动的 UI 会话，请先运行 "pnpm dev" 或 "askx ui"。',
     manageBackups: '管理 Skills 备份', placeholder: '基础占位命令',
+    choosePlatforms: '选择需要扫描的平台', scanOnlySelected: '空格切换 · 回车确认', platformRequired: '至少选择一个平台。', platformSelectionRequired: '非交互模式首次扫描必须传入 --platform。',
+    skillConflict: 'Skill {name} 在不同平台的内容不一致。', skillBroken: 'Skill {name} 包含失效软链。', skillInvalid: 'Skill {name} 的元数据无效。',
   },
 } as const
 
@@ -127,25 +133,83 @@ function IssueList({ issues, locale }: { issues: DetectionIssue[]; locale: AskXL
   )
 }
 
-function SkillsScanView({ topology, issues, status, locale }: { topology: SkillsTopology; issues: DetectionIssue[]; status: 'ok' | 'warning' | 'blocked'; locale: AskXLocale }) {
+function SkillsScanView({ report, issues, status, locale }: { report: SkillsScanReport; issues: DetectionIssue[]; status: 'ok' | 'warning' | 'blocked'; locale: AskXLocale }) {
+  const conflicts = report.groups.filter((group) => group.status === 'conflict').length
+  const brokenLinks = report.groups.filter((group) => group.status === 'broken').length
   return (
     <Frame title={t(locale, 'skillsScan')}>
       <Box marginBottom={1} gap={1}><Text>{t(locale, 'status')}</Text><State value={status} locale={locale} /></Box>
-      {topology.roots.map((root) => (
-        <Box key={root.path} gap={1}>
-          <Text color={root.exists ? 'green' : 'gray'}>{root.exists ? '✓' : '·'}</Text>
-          <Text bold>{root.platform.padEnd(8)}</Text>
-          <Text dimColor>{root.path}</Text>
+      {report.platformStatuses.map((platform) => (
+        <Box key={platform.id} gap={1}>
+          <Text color={platform.skillsDirExists ? 'green' : 'gray'}>{platform.skillsDirExists ? '✓' : '·'}</Text>
+          <Text bold>{platform.name.padEnd(16)}</Text>
+          <Text dimColor>{platform.skillsDir}</Text>
         </Box>
       ))}
       <Box marginTop={1} gap={2}>
-        <Text><Text color={accent}>{topology.skills.length}</Text> {t(locale, 'skills')}</Text>
-        <Text><Text color={topology.conflicts.length ? 'yellow' : 'green'}>{topology.conflicts.length}</Text> {t(locale, 'conflicts')}</Text>
-        <Text><Text color={topology.brokenLinks.length ? 'red' : 'green'}>{topology.brokenLinks.length}</Text> {t(locale, 'brokenLinks')}</Text>
+        <Text><Text color={accent}>{report.groups.length}</Text> {t(locale, 'skills')}</Text>
+        <Text><Text color={conflicts ? 'yellow' : 'green'}>{conflicts}</Text> {t(locale, 'conflicts')}</Text>
+        <Text><Text color={brokenLinks ? 'red' : 'green'}>{brokenLinks}</Text> {t(locale, 'brokenLinks')}</Text>
       </Box>
       <IssueList issues={issues} locale={locale} />
     </Frame>
   )
+}
+
+/** 交互式平台选择属性。 */
+interface PlatformPromptProps {
+  /** 当前界面语言。 */
+  locale: AskXLocale
+  /** 完成选择时回传平台。 */
+  onComplete: (platforms: SkillPlatformId[]) => void
+}
+
+/** 首次扫描使用的 Ink 平台多选界面。 */
+function PlatformPrompt({ locale, onComplete }: PlatformPromptProps) {
+  const options: Array<{ id: SkillPlatformId; label: string }> = [
+    { id: 'codex', label: 'ChatGPT / Codex' },
+    { id: 'claude', label: 'Claude Code' },
+    { id: 'cursor', label: 'Cursor' },
+  ]
+  const [cursor, setCursor] = useState(0)
+  const [selected, setSelected] = useState<SkillPlatformId[]>(options.map((option) => option.id))
+  const [warning, setWarning] = useState('')
+  const { exit } = useApp()
+  useInput((_input, key) => {
+    if (key.upArrow) setCursor((current) => (current + options.length - 1) % options.length)
+    if (key.downArrow) setCursor((current) => (current + 1) % options.length)
+    if (_input === ' ') {
+      const id = options[cursor]!.id
+      setSelected((current) => current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id])
+      setWarning('')
+    }
+    if (key.return) {
+      if (!selected.length) {
+        setWarning(t(locale, 'platformRequired'))
+        return
+      }
+      onComplete(selected)
+      exit()
+    }
+  })
+  return (
+    <Frame title={t(locale, 'choosePlatforms')}>
+      <Text dimColor>{t(locale, 'scanOnlySelected')}</Text>
+      <Box flexDirection="column" marginTop={1}>
+        {options.map((option, index) => (
+          <Text key={option.id} {...(index === cursor ? { color: accent } : {})}>
+            {index === cursor ? '›' : ' '} {selected.includes(option.id) ? '◉' : '○'} {option.label}
+          </Text>
+        ))}
+      </Box>
+      {warning ? <Text color="yellow">! {warning}</Text> : null}
+    </Frame>
+  )
+}
+
+/** 等待用户在 Ink 中确认首次扫描平台。 */
+function choosePlatforms(locale: AskXLocale): Promise<SkillPlatformId[]> {
+  return new Promise((resolve) => render(<PlatformPrompt locale={locale} onComplete={resolve} />))
 }
 
 function StatusView({ status, issues, fingerprint, locale }: { status: 'ok' | 'warning' | 'blocked'; issues: DetectionIssue[]; fingerprint: string; locale: AskXLocale }) {
@@ -210,19 +274,67 @@ program
   })
 
 const skills = program.command('skills').description(t(activeLocale, 'skillsDescription'))
+
+/** 收集重复传入的平台参数。 */
+function collectPlatform(value: string, previous: string[]): string[] {
+  return [...previous, ...value.split(',').filter(Boolean)]
+}
+
+/** 校验 CLI 平台参数。 */
+function parseSkillPlatforms(values: string[]): SkillPlatformId[] {
+  const allowed = new Set<SkillPlatformId>(['codex', 'claude', 'cursor'])
+  const unique = [...new Set(values)]
+  if (!unique.length || unique.some((value) => !allowed.has(value as SkillPlatformId))) throw new Error(t(activeLocale, 'platformsError'))
+  return unique as SkillPlatformId[]
+}
+
+/** 从扫描报告构建 CLI 检测问题。 */
+function scanIssues(report: SkillsScanReport): DetectionIssue[] {
+  return report.groups.flatMap((group) => {
+    if (group.status === 'conflict') return [{ code: 'SKILL_CONTENT_CONFLICT', message: t(activeLocale, 'skillConflict').replace('{name}', group.name) }]
+    if (group.status === 'broken') return [{ code: 'BROKEN_SKILL_LINK', message: t(activeLocale, 'skillBroken').replace('{name}', group.name) }]
+    if (group.status === 'invalid') return [{ code: 'INVALID_SKILL', message: t(activeLocale, 'skillInvalid').replace('{name}', group.name) }]
+    return []
+  })
+}
+
 skills
   .command('scan')
   .description(t(activeLocale, 'scanDescription'))
   .option('--json', t(activeLocale, 'jsonDescription'))
-  .action(async ({ json }: { json?: boolean }) => {
-    const report = await registry.get('skills').detect(defaultContext())
+  .option('-p, --platform <platform>', t(activeLocale, 'platformsArgument'), collectPlatform, [])
+  .action(async ({ json, platform }: { json?: boolean; platform: string[] }) => {
+    const bootstrap = await skillsManager.bootstrap()
+    let platforms: SkillPlatformId[]
+    if (platform.length) {
+      platforms = parseSkillPlatforms(platform)
+    } else if (bootstrap.initialized) {
+      platforms = (await settingsStore.read()).skills.platforms
+    } else if (process.stdin.isTTY && !json) {
+      platforms = await choosePlatforms(activeLocale)
+    } else {
+      if (json) {
+        console.log(JSON.stringify({ error: { code: 'PLATFORM_SELECTION_REQUIRED', message: t(activeLocale, 'platformSelectionRequired') } }, null, 2))
+        process.exitCode = 2
+        return
+      }
+      throw new Error(t(activeLocale, 'platformSelectionRequired'))
+    }
+    const current = await settingsStore.read()
+    if (current.skills.platforms.join(',') !== platforms.join(',')) {
+      await settingsStore.update({ skills: { platforms } }, { source: 'cli', expectedRevision: current.revision })
+    }
+    const report = await skillsManager.scan(platforms)
+    const issues = scanIssues(report)
     if (json) console.log(JSON.stringify(report, null, 2))
-    else render(<SkillsScanView topology={report.data as SkillsTopology} issues={report.issues} status={report.status} locale={activeLocale} />)
+    else render(<SkillsScanView report={report} issues={issues} status={issues.length ? 'warning' : 'ok'} locale={activeLocale} />)
   })
 
 skills.command('status').description(t(activeLocale, 'statusDescription')).action(async () => {
-  const report = await registry.get('skills').detect(defaultContext())
-  render(<StatusView status={report.status} issues={report.issues} fingerprint={report.fingerprint} locale={activeLocale} />)
+  const platforms = (await settingsStore.read()).skills.platforms
+  const report = await skillsManager.scan(platforms)
+  const issues = scanIssues(report)
+  render(<StatusView status={issues.length ? 'warning' : 'ok'} issues={issues} fingerprint={report.fingerprint} locale={activeLocale} />)
 })
 
 function unavailable(command: Command): void {

@@ -17,6 +17,7 @@ pnpm check
 pnpm askx modules list
 pnpm askx doctor
 pnpm askx skills scan
+pnpm askx skills scan --platform codex --platform claude --json
 pnpm askx settings show
 pnpm askx settings set backup off
 pnpm askx settings set platforms codex cursor
@@ -51,7 +52,9 @@ pnpm dev:cli
 pnpm dev:web
 ```
 
-`askx ui` 只监听 `127.0.0.1`，启动时会生成一次性会话 token。打开不带 token 的页面会进入欢迎登录页，可通过 `askx ui token` 获取当前 token；验证成功后使用 HttpOnly Cookie 保存本次会话。共享设置已支持 CLI/Web 双向写入；Skills 模块仍只开放只读检测，同步、挂接和回滚将在事务与授权链路完整后开放。
+`askx ui` 只监听 `127.0.0.1`，启动时会生成一次性会话 token。打开不带 token 的页面会进入欢迎登录页，可通过 `askx ui token` 获取当前 token；验证成功后使用 HttpOnly Cookie 保存本次会话。共享设置已支持 CLI/Web 双向写入。
+
+首次进入 `/skills-x` 会先选择 Codex、Claude Code、Cursor 管理范围，再执行只读扫描。扫描结果按平台展示并聚合同名 Skill；用户确认后，接管、合并、覆盖、重命名和可恢复删除均按 Skill 独立事务执行。AskX 只修改 manifest 明确登记的统一源与软链，需要替换的原平台目录会先移入 `~/.askx/backups/skills`。CLI 首次交互扫描提供 Ink 平台多选；非交互环境通过重复的 `--platform` 明确扫描范围。
 
 CLI 和 Web 设置统一写入 `~/.askx/config.json`。配置带 revision 和来源标记，使用原子写入与锁避免两个入口静默覆盖；Web 会自动检测 CLI 产生的新 revision。界面支持简体中文与英文，语言选择同样在两个入口间同步；CLI 可通过 `askx settings set language zh-CN|en` 切换。Web 默认中文路由不带前缀，英文路由统一使用 `/en`，例如 `/settings` 与 `/en/settings`。主题色提供 `cyan` 与 `rose` 两套方案，可通过 Web 主题入口或 `askx settings set theme cyan|rose` 修改。
 

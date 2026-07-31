@@ -1,0 +1,17 @@
+import { skillPlatformIdSchema } from '@askx/module-skills/skill-types'
+import { z } from 'zod'
+import { skillsManager, throwSkillsApiError } from '../../utils/skills.js'
+
+const requestSchema = z.object({
+  platforms: z.array(skillPlatformIdSchema).min(1),
+  customRoots: z.array(z.string().min(1)).max(20).default([]),
+})
+
+export default defineEventHandler(async (event) => {
+  try {
+    const input = requestSchema.parse(await readBody(event))
+    return await skillsManager.scan(input.platforms, input.customRoots)
+  } catch (error) {
+    throwSkillsApiError(error)
+  }
+})

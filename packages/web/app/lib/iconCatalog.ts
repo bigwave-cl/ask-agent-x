@@ -1,5 +1,5 @@
 /** AskX 本地图标支持的分类。 */
-export const askxIconCategories = ['actions', 'navigation', 'status', 'objects'] as const
+export const askxIconCategories = ['actions', 'navigation', 'status', 'objects', 'platforms'] as const
 
 /** AskX 本地图标分类。 */
 export type AskxIconCategory = typeof askxIconCategories[number]
@@ -10,6 +10,7 @@ export const askxIconCategoryLabels: Record<AskxIconCategory, string> = {
   navigation: '导航',
   status: '状态',
   objects: '对象',
+  platforms: '平台',
 }
 
 /** AskX 项目当前可用的本地图标清单。 */
@@ -57,6 +58,9 @@ export const askxIconCatalog = [
   { name: 'askx-objects:schedule', category: 'objects' },
   { name: 'askx-objects:selection', category: 'objects' },
   { name: 'askx-objects:branch', category: 'objects' },
+  { name: 'askx-platforms:chatgpt-codex', category: 'platforms' },
+  { name: 'askx-platforms:claude-code', category: 'platforms' },
+  { name: 'askx-platforms:cursor', category: 'platforms' },
 ] as const satisfies ReadonlyArray<{
   name: `askx-${AskxIconCategory}:${string}`
   category: AskxIconCategory

@@ -1,34 +1,30 @@
 import { createHash } from 'node:crypto'
 import { lstat, readdir, readFile, readlink } from 'node:fs/promises'
-import { join, relative } from 'node:path'
+import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 import { stableHash } from '@askx/core'
-import { platformDescriptors, type PlatformId } from '@askx/platform-adapters'
+import { detectPlatforms, platformDescriptors } from '@askx/platform-adapters'
+import { readSkillMetadata } from './skill-metadata.js'
+import type {
+  SkillGroup,
+  SkillGroupStatus,
+  SkillCustomScanRoot,
+  SkillLocation,
+  SkillPlatformId,
+  SkillPlatformStatus,
+  SkillsScanReport,
+} from './skill-types.js'
 
-export interface SkillLocation {
-  platform: PlatformId | 'askx'
-  name: string
-  path: string
-  kind: 'directory' | 'symlink'
-  target?: string
-  contentHash?: string
-}
+/** Skill 扫描默认支持的平台顺序。 */
+export const supportedSkillPlatforms: SkillPlatformId[] = ['codex', 'claude', 'cursor']
 
-export interface SkillConflict {
-  name: string
-  hashes: string[]
-  locations: string[]
-}
-
-export interface SkillsTopology {
-  roots: Array<{ platform: PlatformId | 'askx'; path: string; exists: boolean }>
-  skills: SkillLocation[]
-  conflicts: SkillConflict[]
-  brokenLinks: string[]
-  fingerprint: string
-}
-
-async function hashDirectory(root: string): Promise<string> {
+/**
+ * 对目录业务内容生成稳定指纹。
+ * @param root 要读取的目录。
+ * @returns SHA-256 内容指纹。
+ */
+export async function hashSkillDirectory(root: string): Promise<string> {
   const hash = createHash('sha256')
+  /** 按稳定顺序递归读取目录。 */
   async function visit(directory: string): Promise<void> {
     const entries = await readdir(directory, { withFileTypes: true })
     entries.sort((left, right) => left.name.localeCompare(right.name))
@@ -44,60 +40,190 @@ async function hashDirectory(root: string): Promise<string> {
   return hash.digest('hex')
 }
 
-export async function scanSkills(homeDir: string, dataDir: string): Promise<SkillsTopology> {
+/**
+ * 只检测三个受支持平台的应用与目录状态。
+ * @param homeDir 可注入的用户目录。
+ * @returns 保持固定顺序的平台状态。
+ */
+export async function detectSkillPlatforms(homeDir: string): Promise<SkillPlatformStatus[]> {
+  const detections = await detectPlatforms(homeDir)
+  return supportedSkillPlatforms.map((id) => {
+    const detected = detections.find((entry) => entry.id === id)
+    if (!detected) throw new Error(`缺少平台描述：${id}`)
+    return {
+      id,
+      name: detected.name,
+      skillsDir: detected.skillsDir,
+      installed: detected.installed,
+      skillsDirExists: detected.skillsDirExists,
+      ...(detected.version ? { version: detected.version } : {}),
+      linkSupported: detected.linkSupported,
+      notes: detected.notes,
+    }
+  })
+}
+
+/**
+ * 推导同名 Skill 分组状态。
+ * @param locations 分组内的副本。
+ * @returns 分组状态。
+ */
+function resolveGroupStatus(locations: SkillLocation[]): SkillGroupStatus {
+  if (locations.some((location) => location.broken)) return 'broken'
+  if (locations.some((location) => !location.metadata.valid || !location.contentHash)) return 'invalid'
+  if (locations.length === 1) return 'unique'
+  const hashes = new Set(locations.map((location) => location.contentHash))
+  return hashes.size === 1 ? 'identical' : 'conflict'
+}
+
+/**
+ * 将扫描位置聚合为逻辑 Skill。
+ * @param locations 扫描到的所有位置。
+ * @returns 按名称稳定排序的逻辑分组。
+ */
+export function groupSkillLocations(locations: SkillLocation[]): SkillGroup[] {
+  const grouped = new Map<string, SkillLocation[]>()
+  for (const location of locations.filter((entry) => entry.platform !== 'askx')) {
+    grouped.set(location.name, [...(grouped.get(location.name) ?? []), location])
+  }
+  return [...grouped.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([name, entries]) => {
+      const ordered = [...entries].sort((left, right) => {
+        const leftOrder = left.platform === 'custom' ? supportedSkillPlatforms.length : supportedSkillPlatforms.indexOf(left.platform as SkillPlatformId)
+        const rightOrder = right.platform === 'custom' ? supportedSkillPlatforms.length : supportedSkillPlatforms.indexOf(right.platform as SkillPlatformId)
+        return leftOrder - rightOrder || left.path.localeCompare(right.path)
+      })
+      const status = resolveGroupStatus(ordered)
+      return {
+        id: stableHash({ name, locations: ordered.map((entry) => entry.id) }),
+        name,
+        locations: ordered,
+        hashes: [...new Set(ordered.flatMap((entry) => entry.contentHash ? [entry.contentHash] : []))].sort(),
+        status,
+        recommendedAction: status === 'unique' ? 'adopt' : status === 'identical' ? 'merge' : 'keep',
+      }
+    })
+}
+
+/**
+ * 扫描用户明确选择的平台和 AskX 内部统一源。
+ * @param homeDir 用户目录。
+ * @param dataDir AskX 数据目录。
+ * @param platforms 本次允许扫描的平台。
+ * @param customRootPaths 用户通过本地目录选择器添加的额外根目录。
+ * @returns 只读扫描报告。
+ */
+export async function scanSkills(
+  homeDir: string,
+  dataDir: string,
+  platforms: SkillPlatformId[] = supportedSkillPlatforms,
+  customRootPaths: string[] = [],
+): Promise<SkillsScanReport> {
+  const uniquePlatforms = supportedSkillPlatforms.filter((platform) => platforms.includes(platform))
+  if (!uniquePlatforms.length) throw new Error('至少选择一个 Skill 平台。')
+  const descriptors = platformDescriptors(homeDir)
+  if (customRootPaths.length > 20) throw new Error('一次最多选择 20 个额外扫描目录。')
+  const normalizedCustomPaths = [...new Set(customRootPaths.map((path) => {
+    if (!isAbsolute(path)) throw new Error(`额外扫描目录必须是绝对路径：${path}`)
+    return resolve(path)
+  }))].sort()
+  const customRoots: SkillCustomScanRoot[] = []
+  for (const path of normalizedCustomPaths) {
+    const stat = await lstat(path).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') throw new Error(`额外扫描目录不存在：${path}`)
+      throw error
+    })
+    if (!stat.isDirectory()) throw new Error(`额外扫描路径不是目录：${path}`)
+    customRoots.push({ id: stableHash({ type: 'custom-skill-root', path }), name: basename(path), path })
+  }
   const roots = [
-    ...platformDescriptors(homeDir).map(({ id, skillsDir }) => ({ platform: id, path: skillsDir })),
+    ...uniquePlatforms.map((platform) => {
+      const descriptor = descriptors.find((entry) => entry.id === platform)
+      if (!descriptor) throw new Error(`缺少平台描述：${platform}`)
+      return { platform, path: descriptor.skillsDir }
+    }),
     { platform: 'askx' as const, path: join(dataDir, 'skills') },
+    ...customRoots.map((root) => ({ platform: 'custom' as const, path: root.path, customRootId: root.id })),
   ]
-  const skills: SkillLocation[] = []
-  const brokenLinks: string[] = []
-  const rootStates: SkillsTopology['roots'] = []
+  const locations: SkillLocation[] = []
+  const scannedPaths = new Set<string>()
 
   for (const root of roots) {
+    let entries
     try {
-      const entries = await readdir(root.path, { withFileTypes: true })
-      rootStates.push({ ...root, exists: true })
-      for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-        if (!entry.isDirectory() && !entry.isSymbolicLink()) continue
-        const path = join(root.path, entry.name)
-        const stat = await lstat(path)
-        if (stat.isSymbolicLink()) {
-          const target = await readlink(path)
-          try {
-            const contentHash = await hashDirectory(path)
-            skills.push({ platform: root.platform, name: entry.name, path, kind: 'symlink', target, contentHash })
-          } catch {
-            brokenLinks.push(path)
-            skills.push({ platform: root.platform, name: entry.name, path, kind: 'symlink', target })
-          }
-        } else {
-          skills.push({
+      entries = await readdir(root.path, { withFileTypes: true })
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
+      throw error
+    }
+    const rootHasSkillFile = root.platform === 'custom' && await lstat(join(root.path, 'SKILL.md'))
+      .then((stat) => stat.isFile())
+      .catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return false
+        throw error
+      })
+    const candidates = rootHasSkillFile
+      ? [{ name: basename(root.path), path: root.path, customRootSkill: true }]
+      : entries.sort((left, right) => left.name.localeCompare(right.name)).flatMap((entry) => {
+          if (entry.name.startsWith('.') || (!entry.isDirectory() && !entry.isSymbolicLink())) return []
+          return [{ name: entry.name, path: join(root.path, entry.name), customRootSkill: false }]
+        })
+    for (const entry of candidates) {
+      if (entry.name.startsWith('.')) continue
+      const path = entry.path
+      const normalizedPath = resolve(path)
+      if (scannedPaths.has(normalizedPath)) continue
+      scannedPaths.add(normalizedPath)
+      const stat = await lstat(path)
+      const id = stableHash({ platform: root.platform, path, customRootId: root.platform === 'custom' ? root.customRootId : undefined })
+      if (stat.isSymbolicLink()) {
+        const target = await readlink(path)
+        try {
+          locations.push({
+            id,
             platform: root.platform,
+            ...(root.platform === 'custom' ? { customRootId: root.customRootId } : {}),
             name: entry.name,
             path,
-            kind: 'directory',
-            contentHash: await hashDirectory(path),
+            kind: 'symlink',
+            target,
+            contentHash: await hashSkillDirectory(path),
+            metadata: await readSkillMetadata(path),
+            broken: false,
+          })
+        } catch {
+          locations.push({
+            id,
+            platform: root.platform,
+            ...(root.platform === 'custom' ? { customRootId: root.customRootId } : {}),
+            name: entry.name,
+            path,
+            kind: 'symlink',
+            target,
+            metadata: { valid: false, error: '软链目标不存在或不可读。' },
+            broken: true,
           })
         }
+      } else {
+        locations.push({
+          id,
+          platform: root.platform,
+          ...(root.platform === 'custom' ? { customRootId: root.customRootId } : {}),
+          name: entry.name,
+          path,
+          kind: 'directory',
+          contentHash: await hashSkillDirectory(path),
+          metadata: await readSkillMetadata(path),
+          broken: false,
+        })
       }
-    } catch {
-      rootStates.push({ ...root, exists: false })
     }
   }
 
-  const grouped = new Map<string, SkillLocation[]>()
-  for (const skill of skills.filter((entry) => entry.contentHash)) {
-    grouped.set(skill.name, [...(grouped.get(skill.name) ?? []), skill])
-  }
-  const conflicts = [...grouped.entries()].flatMap(([name, entries]) => {
-    const hashes = [...new Set(entries.map((entry) => entry.contentHash as string))]
-    return hashes.length > 1 ? [{ name, hashes, locations: entries.map((entry) => entry.path) }] : []
-  })
-  return {
-    roots: rootStates,
-    skills,
-    conflicts,
-    brokenLinks,
-    fingerprint: stableHash({ roots: rootStates, skills, conflicts, brokenLinks }),
-  }
+  const platformStatuses = (await detectSkillPlatforms(homeDir)).filter((platform) => uniquePlatforms.includes(platform.id))
+  const groups = groupSkillLocations(locations)
+  const scannedAt = new Date().toISOString()
+  const fingerprint = stableHash({ platforms: uniquePlatforms, platformStatuses, customRoots, locations, groups })
+  return { scannedAt, platforms: uniquePlatforms, platformStatuses, customRoots, locations, groups, fingerprint }
 }

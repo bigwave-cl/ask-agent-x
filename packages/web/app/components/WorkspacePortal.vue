@@ -2,7 +2,7 @@
 import type { AskXThemeColor } from '@askx/core'
 import type { AskxIconName } from '@/lib/iconCatalog'
 
-type PortalDestination = 'skills' | 'theme' | 'settings'
+type PortalDestination = 'skills-x' | 'theme' | 'settings'
 
 const props = defineProps<{
   enabledCount: number
@@ -20,7 +20,7 @@ const copy = useMessageSection('portal')
 const particleColor = computed(() => props.themeColor === 'rose' ? '#e7659f' : '#31bbc5')
 
 const portalCardTone: Record<PortalDestination, string> = {
-  skills: '[--portal-accent:var(--ds-color-brand-default)] min-[801px]:rotate-[-0.7deg]',
+  'skills-x': '[--portal-accent:var(--ds-color-brand-default)] min-[801px]:rotate-[-0.7deg]',
   theme: '[--portal-accent:var(--chart-3)] min-[801px]:translate-y-3 min-[801px]:rotate-[0.8deg]',
   settings: '[--portal-accent:var(--chart-4)] min-[801px]:rotate-[-0.2deg]',
 }
@@ -34,7 +34,7 @@ const portals = computed<Array<{
   icon: AskxIconName
 }>>(() => [
   {
-    id: 'skills',
+    id: 'skills-x',
     index: '01',
     title: copy.value.skillsTitle,
     description: copy.value.skillsDescription,

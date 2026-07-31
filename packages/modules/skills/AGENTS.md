@@ -20,8 +20,14 @@
 
 ## 目录提示
 
-- `src/scanner.ts`：Skills 文件系统发现和拓扑建模。
-- `src/index.ts`：`SkillsModule` 与公共导出。
+- `src/scanner.ts`：Codex、Claude Code、Cursor 与内部统一源的只读发现。
+- `src/skill-types.ts`：扫描、manifest、决策、计划与回执契约。
+- `src/manifest-store.ts`：受管资源所有权和 revisioned 原子存储。
+- `src/skills-planner.ts`：把扫描结果与用户决策解析为稳定计划。
+- `src/skills-executor.ts`：逐 Skill 快照、应用、验证、回执与回滚。
+- `src/skills-module.ts`：`SkillsManager` 与 Core 模块入口。
+
+新增公共符号时由实际 owner 文件声明，并通过 package subpath 暴露；不要恢复 `src/index.ts` 桶导出。
 
 ## 验证
 

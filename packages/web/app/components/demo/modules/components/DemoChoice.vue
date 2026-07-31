@@ -14,7 +14,7 @@ const notifications = ref(true)
 const indeterminate = ref<boolean | 'indeterminate'>('indeterminate')
 
 const targetOptions = [
-  { value: 'codex', label: 'Codex', description: '同步到 Codex Skills 目录' },
+  { value: 'codex', label: 'ChatGPT / Codex', description: '同步到 ChatGPT / Codex Skills 目录' },
   { value: 'claude', label: 'Claude Code', description: '同步到 Claude Code 配置' },
   { value: 'cursor', label: 'Cursor', description: '同步到 Cursor Rules 目录' },
 ]

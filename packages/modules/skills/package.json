@@ -5,18 +5,27 @@
   "type": "module",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "types": "./dist/skills-module.d.ts",
+      "import": "./dist/skills-module.js"
+    },
+    "./scanner": {
+      "types": "./dist/scanner.d.ts",
+      "import": "./dist/scanner.js"
+    },
+    "./skill-types": {
+      "types": "./dist/skill-types.d.ts",
+      "import": "./dist/skill-types.js"
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean",
-    "dev": "tsup src/index.ts --format esm --dts --watch",
+    "build": "tsup src/skills-module.ts src/scanner.ts src/skill-types.ts --format esm --dts --clean",
+    "dev": "tsup src/skills-module.ts src/scanner.ts src/skill-types.ts --format esm --dts --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
     "@askx/core": "workspace:*",
-    "@askx/platform-adapters": "workspace:*"
+    "@askx/platform-adapters": "workspace:*",
+    "zod": "^3.24.1"
   }
 }
