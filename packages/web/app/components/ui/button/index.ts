@@ -45,7 +45,7 @@ export const buttonVariants = cva(
       },
     },
     defaultVariants: {
-      variant: 'default',
+      variant: 'primary',
       size: 'default',
       shape: 'regular',
       square: false,
