@@ -19,6 +19,10 @@ interface Props {
 const props = defineProps<Props>()
 const emit = defineEmits<{ /** 平台选择保存后的新设置。 */ 'settings-updated': [value: AskXConfig] }>()
 const { t } = useI18n()
+const toast = useToast()
+
+/** Skills 引导流程请求错误使用的固定 Toast 标识。 */
+const SKILLS_REQUEST_ERROR_TOAST_ID = 'skills-request-error'
 
 /** 首次接入和管理页面状态。 */
 type SkillsViewState = 'loading' | 'platforms' | 'scan' | 'confirm' | 'result' | 'dashboard'
@@ -36,7 +40,6 @@ const history = ref<SkillsBatchReceipt[]>([])
 const busy = ref(false)
 /** 系统原生目录窗口是否正在等待用户选择。 */
 const pickingDirectories = ref(false)
-const errorMessage = ref('')
 const setupOpen = ref(false)
 
 /** 当前三步位置。 */
@@ -52,6 +55,20 @@ function localizedRequestError(error: unknown, fallback = 'requestFailed'): stri
   return t(`skills.${candidate.statusCode === 409 || candidate.response?.status === 409 ? 'settingsConflict' : fallback}`)
 }
 
+/** 清除上一条 Skills 请求错误提示。 */
+function clearRequestError(): void {
+  toast.dismiss(SKILLS_REQUEST_ERROR_TOAST_ID)
+}
+
+/**
+ * 使用全局 Toast 展示 Skills 请求错误，避免反馈与触发位置脱节。
+ * @param error 原始请求错误。
+ * @param fallback 无明确错误类型时使用的文案键。
+ */
+function notifyRequestError(error: unknown, fallback = 'requestFailed'): void {
+  toast.error(localizedRequestError(error, fallback), { id: SKILLS_REQUEST_ERROR_TOAST_ID })
+}
+
 /** 为分组创建安全的默认决策。 */
 function defaultDecision(group: SkillGroup): SkillDecision {
   const source = group.locations.find((location) => location.metadata.valid && !location.broken)
@@ -63,7 +80,7 @@ function defaultDecision(group: SkillGroup): SkillDecision {
 /** 加载初始化状态和平台预检测。 */
 async function loadBootstrap(): Promise<void> {
   state.value = 'loading'
-  errorMessage.value = ''
+  clearRequestError()
   try {
     bootstrap.value = await $fetch<SkillsBootstrap>('/api/skills/bootstrap')
     selectedDirectories.value = []
@@ -80,7 +97,7 @@ async function loadBootstrap(): Promise<void> {
       setupOpen.value = true
     }
   } catch (error) {
-    errorMessage.value = localizedRequestError(error, 'loadFailed')
+    notifyRequestError(error, 'loadFailed')
     state.value = 'platforms'
   }
 }
@@ -88,14 +105,14 @@ async function loadBootstrap(): Promise<void> {
 /** 调起本机目录多选窗口并合并用户选择。 */
 async function selectDirectories(): Promise<void> {
   pickingDirectories.value = true
-  errorMessage.value = ''
+  clearRequestError()
   try {
     const result = await $fetch<{ directories: Array<{ name: string; path: string }> }>('/api/skills/folders/select', { method: 'POST' })
     const merged = new Map(selectedDirectories.value.map((directory) => [directory.path, directory]))
     for (const directory of result.directories) merged.set(directory.path, directory)
     selectedDirectories.value = [...merged.values()].sort((left, right) => left.path.localeCompare(right.path))
   } catch (error) {
-    errorMessage.value = localizedRequestError(error, 'folderSelectionFailed')
+    notifyRequestError(error, 'folderSelectionFailed')
   } finally {
     pickingDirectories.value = false
   }
@@ -118,7 +135,7 @@ async function loadHistory(): Promise<void> {
 async function startFirstScan(): Promise<void> {
   if (!props.settings || !selectedPlatforms.value.length) return
   busy.value = true
-  errorMessage.value = ''
+  clearRequestError()
   try {
     let current = props.settings
     const changed = current.skills.platforms.join(',') !== selectedPlatforms.value.join(',')
@@ -138,7 +155,7 @@ async function startFirstScan(): Promise<void> {
     }
     await scan(true)
   } catch (error) {
-    errorMessage.value = localizedRequestError(error)
+    notifyRequestError(error)
   } finally {
     busy.value = false
   }
@@ -172,7 +189,7 @@ function updateDecision(groupId: string, decision: SkillDecision): void {
 async function preparePlan(): Promise<void> {
   if (!props.settings || !report.value) return
   busy.value = true
-  errorMessage.value = ''
+  clearRequestError()
   try {
     plan.value = await $fetch<SkillsBatchPlan>('/api/skills/plan', {
       method: 'POST',
@@ -186,7 +203,7 @@ async function preparePlan(): Promise<void> {
     })
     state.value = 'confirm'
   } catch (error) {
-    errorMessage.value = localizedRequestError(error)
+    notifyRequestError(error)
   } finally {
     busy.value = false
   }
@@ -196,7 +213,7 @@ async function preparePlan(): Promise<void> {
 async function applyPlan(): Promise<void> {
   if (!plan.value) return
   busy.value = true
-  errorMessage.value = ''
+  clearRequestError()
   try {
     receipt.value = await $fetch<SkillsBatchReceipt>('/api/skills/apply', {
       method: 'POST',
@@ -207,7 +224,7 @@ async function applyPlan(): Promise<void> {
     await Promise.all([scan(false), loadHistory()])
     state.value = 'result'
   } catch (error) {
-    errorMessage.value = localizedRequestError(error)
+    notifyRequestError(error)
   } finally {
     busy.value = false
   }
@@ -225,13 +242,13 @@ async function complete(): Promise<void> {
  */
 async function rollbackTransaction(receiptId: string): Promise<void> {
   busy.value = true
-  errorMessage.value = ''
+  clearRequestError()
   try {
     const result = await $fetch<RollbackResult>('/api/skills/rollback', { method: 'POST', body: { receiptId } })
     if (!result.rolledBack) throw new Error(result.warnings.join('\n'))
     await loadBootstrap()
   } catch (error) {
-    errorMessage.value = localizedRequestError(error, 'restoreFailed')
+    notifyRequestError(error, 'restoreFailed')
   } finally {
     busy.value = false
   }
@@ -240,12 +257,12 @@ async function rollbackTransaction(receiptId: string): Promise<void> {
 /** 从管理页重新打开扫描决策。 */
 async function rescanForManagement(): Promise<void> {
   busy.value = true
-  errorMessage.value = ''
+  clearRequestError()
   try {
     await scan(true)
     setupOpen.value = true
   } catch (error) {
-    errorMessage.value = localizedRequestError(error)
+    notifyRequestError(error)
   } finally {
     busy.value = false
   }
@@ -283,8 +300,6 @@ onMounted(loadBootstrap)
         <p class="mt-4 w-full text-sm leading-6 text-muted-foreground sm:text-base">{{ t('skills.managerDescription') }}</p>
       </div>
     </header>
-
-    <p v-if="errorMessage" class="flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"><Icon name="askx-status:error" class="size-4" />{{ errorMessage }}</p>
 
     <div v-if="state === 'loading' || !bootstrap" class="grid gap-4"><Skeleton class="h-72 rounded-[28px]" /><div class="grid gap-4 sm:grid-cols-3"><Skeleton v-for="index in 3" :key="index" class="h-32 rounded-2xl" /></div></div>
     <template v-else>

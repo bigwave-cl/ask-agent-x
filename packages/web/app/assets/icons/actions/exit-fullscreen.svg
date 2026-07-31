@@ -1,0 +1,13 @@
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_exit_fs)">
+<path d="M16 10C14.9 10 14 9.1 14 8V4H16V8H20V10H16Z" fill="currentColor"/>
+<path d="M14 20V16C14 14.9 14.9 14 16 14H20V16H16V20H14Z" fill="currentColor"/>
+<path d="M8 14C9.1 14 10 14.9 10 16V20H8V16H4V14H8Z" fill="currentColor"/>
+<path d="M4 8H8V4H10V8C10 9.1 9.1 10 8 10H4V8Z" fill="currentColor"/>
+</g>
+<defs>
+<clipPath id="clip0_exit_fs">
+<rect width="24" height="24" fill="currentColor"/>
+</clipPath>
+</defs>
+</svg>

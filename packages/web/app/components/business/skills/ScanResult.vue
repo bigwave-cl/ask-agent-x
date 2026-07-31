@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import type { SkillDecision, SkillGroup, SkillPlatformId, SkillsScanReport } from '@askx/module-skills/skill-types'
+import Tabs from '@/components/ui/tabs/Tabs.vue'
+import TabsList from '@/components/ui/tabs/TabsList.vue'
+import TabsTrigger from '@/components/ui/tabs/TabsTrigger.vue'
 
 /** 最终 Skill 清单筛选类型。 */
 type SkillListFilter = 'all' | 'included' | 'review' | 'skipped'
@@ -102,39 +105,47 @@ const visibleGroups = computed<SkillGroup[]>(() => {
 </script>
 
 <template>
-  <section class="grid gap-6">
-    <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div class="max-w-2xl">
-        <Badge variant="secondary" class="mb-3 gap-1.5"><Icon name="askx-status:check" class="size-3.5" />{{ t('skills.safeRead') }}</Badge>
-        <h2 class="text-2xl font-semibold tracking-[-0.03em] sm:text-3xl">{{ t('skills.scanTitle') }}</h2>
-        <p class="mt-2 text-sm leading-6 text-muted-foreground">{{ t('skills.scanDescription') }}</p>
-      </div>
-      <Button variant="outline" size="40" @click="emit('rescan')"><Icon name="askx-actions:refresh" />{{ t('skills.rescan') }}</Button>
-    </header>
-
-    <section class="overflow-hidden rounded-[24px] border bg-card shadow-sm">
-      <header class="grid gap-4 border-b px-4 py-4 sm:px-5 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-center">
-        <div><div class="flex items-center gap-2"><h3 class="font-semibold">{{ t('skills.finalSkillList') }}</h3><Badge variant="secondary">{{ t('skills.skillCount', { count: report.groups.length }) }}</Badge></div><p class="mt-1 text-xs text-muted-foreground">{{ t('skills.finalSkillListDescription') }}</p></div>
-        <div class="relative"><Icon name="askx-actions:search" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" /><Input v-model="searchQuery" class="h-10 pl-9" :placeholder="t('skills.skillSearchPlaceholder')" /></div>
+  <section class="relative overflow-hidden rounded-[28px] border bg-card p-5 shadow-sm sm:p-8">
+    <div class="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-primary/10 to-transparent" />
+    <div class="relative grid gap-6">
+      <header class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+        <div class="min-w-0">
+          <Badge variant="secondary" class="mb-3 gap-1.5"><Icon name="askx-status:check" class="size-3.5" />{{ t('skills.safeRead') }}</Badge>
+          <h2 class="text-2xl font-semibold tracking-[-0.03em] sm:text-3xl">{{ t('skills.scanTitle') }}</h2>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">{{ t('skills.scanDescription') }}</p>
+        </div>
+        <Button variant="outline" size="40" class="justify-self-start sm:justify-self-end" @click="emit('rescan')"><Icon name="askx-actions:refresh" />{{ t('skills.rescan') }}</Button>
       </header>
 
-      <nav class="flex gap-1 overflow-x-auto border-b bg-muted/20 px-3 py-2" :aria-label="t('skills.skillFilters')">
-        <button v-for="option in filterOptions" :key="option.id" type="button" class="flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-medium transition-colors" :class="activeFilter === option.id ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'" :aria-pressed="activeFilter === option.id" @click="activeFilter = option.id"><span>{{ option.label }}</span><span class="font-mono text-[9px] opacity-70">{{ option.count }}</span></button>
-      </nav>
+      <section class="overflow-hidden rounded-[24px] border bg-background/75 shadow-sm">
+        <header class="grid gap-4 border-b px-4 py-4 sm:px-5 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-center">
+          <div><div class="flex items-center gap-2"><h3 class="font-semibold">{{ t('skills.finalSkillList') }}</h3><Badge variant="secondary">{{ t('skills.skillCount', { count: report.groups.length }) }}</Badge></div><p class="mt-1 text-xs text-muted-foreground">{{ t('skills.finalSkillListDescription') }}</p></div>
+          <div class="relative"><Icon name="askx-actions:search" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" /><Input v-model="searchQuery" class="h-10 pl-9" :placeholder="t('skills.skillSearchPlaceholder')" /></div>
+        </header>
 
-      <div class="hidden grid-cols-[minmax(0,1fr)_minmax(13rem,.55fr)_auto] gap-5 border-b bg-muted/10 px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground lg:grid"><span>{{ t('skills.skillColumn') }}</span><span>{{ t('skills.sourcesColumn') }}</span><span>{{ t('skills.decisionColumn') }}</span></div>
+        <Tabs v-model="activeFilter" class="border-b bg-muted/20 px-3">
+          <TabsList variant="line" size="36" scrollable :aria-label="t('skills.skillFilters')">
+            <TabsTrigger v-for="option in filterOptions" :key="option.id" :value="option.id">
+              <span>{{ option.label }}</span>
+              <span class="font-mono text-[9px] opacity-65">{{ option.count }}</span>
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
 
-      <BusSkillsSkillDecision
-        v-for="group in visibleGroups"
-        :key="group.id"
-        :group="group"
-        :decision="groupDecision(group)"
-        :platforms="platforms"
-        @update:decision="emit('update-decision', group.id, $event)"
-      />
-      <div v-if="!report.groups.length" class="p-8 text-center"><Icon name="askx-objects:skills" class="mx-auto size-8 text-primary" /><h3 class="mt-4 font-semibold">{{ t('skills.noFilesFound') }}</h3><p class="mt-2 text-sm text-muted-foreground">{{ t('skills.noFilesDescription') }}</p></div>
-      <div v-else-if="!visibleGroups.length" class="p-8 text-center"><Icon name="askx-actions:search" class="mx-auto size-7 text-muted-foreground" /><h3 class="mt-3 font-semibold">{{ t('skills.noMatchingSkills') }}</h3><p class="mt-1 text-xs text-muted-foreground">{{ t('skills.noMatchingSkillsDescription') }}</p></div>
-    </section>
+        <div class="hidden grid-cols-[minmax(0,1fr)_minmax(13rem,.55fr)_auto] gap-5 border-b bg-muted/10 px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground lg:grid"><span>{{ t('skills.skillColumn') }}</span><span>{{ t('skills.sourcesColumn') }}</span><span>{{ t('skills.decisionColumn') }}</span></div>
 
+        <BusSkillsSkillDecision
+          v-for="group in visibleGroups"
+          :key="group.id"
+          :group="group"
+          :decision="groupDecision(group)"
+          :platforms="platforms"
+          :custom-roots="report.customRoots"
+          @update:decision="emit('update-decision', group.id, $event)"
+        />
+        <div v-if="!report.groups.length" class="p-8 text-center"><Icon name="askx-objects:skills" class="mx-auto size-8 text-primary" /><h3 class="mt-4 font-semibold">{{ t('skills.noFilesFound') }}</h3><p class="mt-2 text-sm text-muted-foreground">{{ t('skills.noFilesDescription') }}</p></div>
+        <div v-else-if="!visibleGroups.length" class="p-8 text-center"><Icon name="askx-actions:search" class="mx-auto size-7 text-muted-foreground" /><h3 class="mt-3 font-semibold">{{ t('skills.noMatchingSkills') }}</h3><p class="mt-1 text-xs text-muted-foreground">{{ t('skills.noMatchingSkillsDescription') }}</p></div>
+      </section>
+    </div>
   </section>
 </template>

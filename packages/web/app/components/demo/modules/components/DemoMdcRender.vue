@@ -54,7 +54,13 @@ const isSafe = true
 
 原始 HTML 会显示为文本：${rawHtmlExample}
 
-图片降级为 alt 文本：![Preview image](https://example.com/image.png)`)
+## 图片
+
+安全的 HTTP(S) 与站内相对图片会渲染为受控图片节点：
+
+![山谷风景](https://picsum.photos/id/1067/640/360 "Markdown 图片预览")
+
+危险协议只保留 alt 文本：![Blocked image](data:image/png;base64,test)`)
 /** MDC 渲染器的标准调用代码。 */
 const usageCode = `<BusMdcRender
   :value="markdown"
@@ -65,7 +71,7 @@ const usageCode = `<BusMdcRender
 /** MDC 安全边界说明项。 */
 const securityItems: Array<{ icon: AskxIconName, title: string, text: string }> = [
   { icon: 'askx-status:lock', title: '受控节点', text: '只渲染白名单语义，不使用 v-html。' },
-  { icon: 'askx-actions:hide', title: '主动降级', text: 'HTML 与图片只保留可读文本。' },
+  { icon: 'askx-actions:hide', title: '主动降级', text: 'HTML 与危险图片地址只保留可读文本。' },
   { icon: 'askx-status:check', title: 'SSR 稳定', text: 'Token 解析和节点结构可在服务端直接输出。' },
 ]
 

@@ -68,6 +68,18 @@ export interface MarkdownLinkNode {
   children: MarkdownRenderNode[]
 }
 
+/** Markdown 安全图片节点。 */
+export interface MarkdownImageNode {
+  /** 节点类型。 */
+  type: 'image'
+  /** 通过安全校验的图片地址。 */
+  src: string
+  /** 图片替代文本。 */
+  alt: string
+  /** 图片标题。 */
+  title: string
+}
+
 /** Markdown 列表节点。 */
 export interface MarkdownListNode {
   /** 节点类型。 */
@@ -107,6 +119,7 @@ export type MarkdownRenderNode =
   | MarkdownCodeBlockNode
   | MarkdownBreakNode
   | MarkdownLinkNode
+  | MarkdownImageNode
   | MarkdownListNode
   | MarkdownTableNode
 
@@ -138,6 +151,26 @@ export function normalizeMarkdownLinkHref(href: string): string | null {
   if (/^(?:\/\/|\\\\)/.test(normalizedHref)) return null
   if (/^[a-z][a-z\d+.-]*:/i.test(normalizedHref)) return null
   return normalizedHref
+}
+
+/**
+ * 校验 Markdown 图片地址，仅允许 HTTP(S) 和站内相对路径。
+ *
+ * @param src marked 解析出的图片地址。
+ * @returns 可安全写入图片节点的地址，危险地址返回 null。
+ */
+export function normalizeMarkdownImageSrc(src: string): string | null {
+  const normalizedSrc = src.trim()
+  const hasControlCharacter = Array.from(normalizedSrc).some((character) => {
+    const characterCode = character.charCodeAt(0)
+    return characterCode <= 31 || characterCode === 127
+  })
+
+  if (!normalizedSrc || hasControlCharacter) return null
+  if (/^https?:/i.test(normalizedSrc)) return normalizedSrc
+  if (/^(?:\/\/|\\\\)/.test(normalizedSrc)) return null
+  if (/^[a-z][a-z\d+.-]*:/i.test(normalizedSrc)) return null
+  return normalizedSrc
 }
 
 /**
@@ -212,7 +245,15 @@ function normalizeMarkdownToken(token: Token): MarkdownRenderNode[] {
     }
     case 'image': {
       const imageToken = token as Tokens.Image
-      return imageToken.text ? [{ type: 'text', value: imageToken.text }] : []
+      /** 经过安全校验的图片地址。 */
+      const src = normalizeMarkdownImageSrc(imageToken.href)
+      if (!src) return imageToken.text ? [{ type: 'text', value: imageToken.text }] : []
+      return [{
+        type: 'image',
+        src,
+        alt: imageToken.text,
+        title: imageToken.title || '',
+      }]
     }
     case 'checkbox':
       return [{ type: 'text', value: (token as Tokens.Checkbox).checked ? '[x] ' : '[ ] ' }]

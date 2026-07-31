@@ -62,7 +62,7 @@ watch(
 <template>
   <div :key="cacheKey" class="mdc-render-wrap custom-typography min-w-0 max-w-full">
     <p v-if="plainText" class="m-0 whitespace-pre-wrap break-words">{{ value }}</p>
-    <RenderNode v-else-if="renderState.nodes.length" :nodes="renderState.nodes" />
+    <RenderNode v-else-if="renderState.nodes.length" :nodes="renderState.nodes" @resolve="emitResolve" />
     <p v-else-if="renderState.error" data-render-error class="m-0 whitespace-pre-wrap break-words">{{ value }}</p>
   </div>
 </template>
