@@ -1,8 +1,8 @@
-import { access, lstat, mkdtemp, mkdir, readFile, symlink, writeFile } from 'node:fs/promises'
+import { access, lstat, mkdtemp, mkdir, readFile, readlink, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { stableHash } from '@askx/core'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { SkillsManager } from './skills-module.js'
 
 /** 创建结构有效的测试 Skill。 */
@@ -14,6 +14,26 @@ async function createSkill(home: string, platform: 'codex' | 'claude' | 'cursor'
 }
 
 describe('SkillsManager', () => {
+  it('旧版逐 Skill manifest 会要求迁移为平台根目录代理', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-legacy-home-'))
+    const dataDir = join(homeDir, '.askx')
+    const now = new Date().toISOString()
+    await mkdir(dataDir, { recursive: true })
+    await writeFile(join(dataDir, 'skills-manifest.json'), `${JSON.stringify({
+      version: 1,
+      revision: 3,
+      initializedAt: now,
+      lastScan: { scannedAt: now, fingerprint: 'legacy', platforms: ['codex'] },
+      skills: [],
+    })}\n`)
+
+    const bootstrap = await new SkillsManager({ homeDir, dataDir }).bootstrap()
+
+    expect(bootstrap.initialized).toBe(false)
+    expect(bootstrap.manifestRevision).toBe(3)
+    expect(bootstrap.platformBindings).toEqual([])
+  })
+
   it('扫描为空时也能通过空计划完成初始化', async () => {
     const homeDir = await mkdtemp(join(tmpdir(), 'askx-empty-home-'))
     const dataDir = join(homeDir, '.askx')
@@ -40,7 +60,7 @@ describe('SkillsManager', () => {
       platforms: ['codex'],
       detectionFingerprint: report.fingerprint,
       settingsRevision: 2,
-      decisions: [{ kind: 'adopt', sourceLocationId: source.id, platforms: ['codex'] }],
+      decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
     })
 
     const receipt = await manager.applyOnboarding(plan, 2)
@@ -48,9 +68,196 @@ describe('SkillsManager', () => {
 
     expect(receipt.results[0]?.status).toBe('applied')
     expect(bootstrap.managedSkills[0]?.name).toBe('demo')
-    expect(bootstrap.managedHealth[0]).toMatchObject({ drifted: false, brokenBindings: 0 })
+    expect(bootstrap.managedHealth[0]).toMatchObject({ drifted: false })
+    expect(bootstrap.platformHealth.find((health) => health.platform === 'codex')).toMatchObject({ status: 'connected', connected: true, issues: [] })
+    expect(bootstrap.platformHealth.find((health) => health.platform === 'claude')).toMatchObject({ status: 'pending', connected: false })
     expect(await readFile(join(dataDir, 'skills', 'demo', 'SKILL.md'), 'utf8')).toContain('demo body')
     expect((await lstat(join(dataDir, 'skills', 'demo'))).isDirectory()).toBe(true)
+    expect((await lstat(join(homeDir, '.codex', 'skills'))).isSymbolicLink()).toBe(true)
+    expect(await readlink(join(homeDir, '.codex', 'skills'))).toBe(join(dataDir, 'skills'))
+  })
+
+  it('可以幂等停用并恢复单个平台根目录软链且不修改统一源', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-suspend-link-home-'))
+    const dataDir = join(homeDir, '.askx')
+    await createSkill(homeDir, 'codex', 'demo', 'canonical body')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const report = await manager.scan(['codex'])
+    const source = report.groups[0]!.locations[0]!
+    const onboardingPlan = await manager.planOnboarding({
+      platforms: ['codex'],
+      detectionFingerprint: report.fingerprint,
+      settingsRevision: 0,
+      decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
+    })
+    await manager.applyOnboarding(onboardingPlan, 0)
+
+    const suspendPlan = await manager.planPlatformLink('codex', 'suspend')
+    const suspendReceipt = await manager.applyPlatformLink(suspendPlan, { planHash: suspendPlan.hash, confirmedAt: new Date().toISOString() })
+    const suspendedBootstrap = await manager.bootstrap()
+
+    expect(suspendReceipt.status).toBe('applied')
+    expect((await lstat(join(homeDir, '.codex', 'skills'))).isDirectory()).toBe(true)
+    expect((await lstat(suspendPlan.suspendedPath)).isSymbolicLink()).toBe(true)
+    expect(await readlink(suspendPlan.suspendedPath)).toBe(join(dataDir, 'skills'))
+    expect(await readFile(join(homeDir, '.codex', 'skills', 'demo', 'SKILL.md'), 'utf8')).toContain('canonical body')
+    expect(await readFile(join(dataDir, 'skills', 'demo', 'SKILL.md'), 'utf8')).toContain('canonical body')
+    expect(suspendedBootstrap.platformHealth.find((health) => health.platform === 'codex')).toMatchObject({ status: 'suspended', connected: false, issues: [] })
+
+    const repeatedSuspendPlan = await manager.planPlatformLink('codex', 'suspend')
+    const repeatedSuspendReceipt = await manager.applyPlatformLink(repeatedSuspendPlan, { planHash: repeatedSuspendPlan.hash, confirmedAt: new Date().toISOString() })
+    expect(repeatedSuspendPlan.operations).toEqual([])
+    expect(repeatedSuspendReceipt.status).toBe('skipped')
+
+    await writeFile(join(homeDir, '.codex', 'skills', 'demo', 'SKILL.md'), 'platform directory changed while disconnected')
+    expect(await readFile(join(dataDir, 'skills', 'demo', 'SKILL.md'), 'utf8')).toContain('canonical body')
+
+    const resumePlan = await manager.planPlatformLink('codex', 'resume')
+    const resumeReceipt = await manager.applyPlatformLink(resumePlan, { planHash: resumePlan.hash, confirmedAt: new Date().toISOString() })
+    const resumedBootstrap = await manager.bootstrap()
+
+    expect(resumeReceipt.status).toBe('applied')
+    expect((await lstat(join(homeDir, '.codex', 'skills'))).isSymbolicLink()).toBe(true)
+    await expect(access(resumePlan.suspendedPath)).rejects.toThrow()
+    expect(await readFile(join(homeDir, '.codex', 'skills', 'demo', 'SKILL.md'), 'utf8')).toContain('canonical body')
+    expect(await readFile(join(resumePlan.originalRootBackup!.backupPath, 'demo', 'SKILL.md'), 'utf8')).toBe('platform directory changed while disconnected')
+    expect(resumedBootstrap.platformHealth.find((health) => health.platform === 'codex')).toMatchObject({ status: 'connected', connected: true, issues: [] })
+
+    const repeatedResumePlan = await manager.planPlatformLink('codex', 'resume')
+    const repeatedResumeReceipt = await manager.applyPlatformLink(repeatedResumePlan, { planHash: repeatedResumePlan.hash, confirmedAt: new Date().toISOString() })
+    expect(repeatedResumePlan.operations).toEqual([])
+    expect(repeatedResumeReceipt.status).toBe('skipped')
+
+    const secondSuspendPlan = await manager.planPlatformLink('codex', 'suspend')
+    await manager.applyPlatformLink(secondSuspendPlan, { planHash: secondSuspendPlan.hash, confirmedAt: new Date().toISOString() })
+    expect(await readFile(join(homeDir, '.codex', 'skills', 'demo', 'SKILL.md'), 'utf8')).toBe('platform directory changed while disconnected')
+    expect(await readFile(join(dataDir, 'skills', 'demo', 'SKILL.md'), 'utf8')).toContain('canonical body')
+  })
+
+  it('恢复平台软链时不会覆盖被外部占用的原目录备份位置', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-resume-conflict-home-'))
+    const dataDir = join(homeDir, '.askx')
+    await createSkill(homeDir, 'codex', 'demo', 'canonical body')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const report = await manager.scan(['codex'])
+    const source = report.groups[0]!.locations[0]!
+    const onboardingPlan = await manager.planOnboarding({
+      platforms: ['codex'],
+      detectionFingerprint: report.fingerprint,
+      settingsRevision: 0,
+      decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
+    })
+    await manager.applyOnboarding(onboardingPlan, 0)
+    const suspendPlan = await manager.planPlatformLink('codex', 'suspend')
+    await manager.applyPlatformLink(suspendPlan, { planHash: suspendPlan.hash, confirmedAt: new Date().toISOString() })
+    const backupPath = suspendPlan.originalRootBackup!.backupPath
+    await mkdir(backupPath, { recursive: true })
+    await writeFile(join(backupPath, 'foreign.txt'), 'foreign backup occupant')
+
+    await expect(manager.planPlatformLink('codex', 'resume')).rejects.toThrow('备份位置')
+    expect(await readFile(join(backupPath, 'foreign.txt'), 'utf8')).toBe('foreign backup occupant')
+    expect(await readFile(join(homeDir, '.codex', 'skills', 'demo', 'SKILL.md'), 'utf8')).toContain('canonical body')
+    expect((await lstat(suspendPlan.suspendedPath)).isSymbolicLink()).toBe(true)
+    expect(await readFile(join(dataDir, 'skills', 'demo', 'SKILL.md'), 'utf8')).toContain('canonical body')
+  })
+
+  it('平台接入前没有 Skills 目录时只往返受管软链', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-empty-link-home-'))
+    const dataDir = join(homeDir, '.askx')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const report = await manager.scan(['codex'])
+    const onboardingPlan = await manager.planOnboarding({ platforms: ['codex'], detectionFingerprint: report.fingerprint, settingsRevision: 0, decisions: [] })
+    await manager.applyOnboarding(onboardingPlan, 0)
+
+    const suspendPlan = await manager.planPlatformLink('codex', 'suspend')
+    expect(suspendPlan.originalRootBackup).toBeUndefined()
+    expect(suspendPlan.operations).toHaveLength(1)
+    await manager.applyPlatformLink(suspendPlan, { planHash: suspendPlan.hash, confirmedAt: new Date().toISOString() })
+    await expect(access(join(homeDir, '.codex', 'skills'))).rejects.toThrow()
+
+    const resumePlan = await manager.planPlatformLink('codex', 'resume')
+    expect(resumePlan.operations).toHaveLength(1)
+    await manager.applyPlatformLink(resumePlan, { planHash: resumePlan.hash, confirmedAt: new Date().toISOString() })
+    expect((await lstat(join(homeDir, '.codex', 'skills'))).isSymbolicLink()).toBe(true)
+  })
+
+  it('旧 manifest 会从批次回执恢复并持久化平台原目录备份关系', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-backup-recovery-home-'))
+    const dataDir = join(homeDir, '.askx')
+    await createSkill(homeDir, 'codex', 'demo', 'original body')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const report = await manager.scan(['codex'])
+    const source = report.groups[0]!.locations[0]!
+    const onboardingPlan = await manager.planOnboarding({
+      platforms: ['codex'],
+      detectionFingerprint: report.fingerprint,
+      settingsRevision: 0,
+      decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
+    })
+    await manager.applyOnboarding(onboardingPlan, 0)
+
+    const manifestPath = join(dataDir, 'skills-manifest.json')
+    const legacyManifest = JSON.parse(await readFile(manifestPath, 'utf8')) as { platformBindings: Array<Record<string, unknown>> }
+    delete legacyManifest.platformBindings[0]!.originalRootBackup
+    await writeFile(manifestPath, `${JSON.stringify(legacyManifest, null, 2)}\n`)
+
+    const recoveredBootstrap = await manager.bootstrap()
+    expect(recoveredBootstrap.platformBindings[0]?.originalRootBackup).toBeDefined()
+    const suspendPlan = await manager.planPlatformLink('codex', 'suspend')
+    expect(suspendPlan.operations).toHaveLength(2)
+    await manager.applyPlatformLink(suspendPlan, { planHash: suspendPlan.hash, confirmedAt: new Date().toISOString() })
+
+    const persistedManifest = JSON.parse(await readFile(manifestPath, 'utf8')) as { platformBindings: Array<Record<string, unknown>> }
+    expect(persistedManifest.platformBindings[0]?.originalRootBackup).toEqual(suspendPlan.originalRootBackup)
+    expect((await lstat(join(homeDir, '.codex', 'skills'))).isDirectory()).toBe(true)
+  })
+
+  it('软链状态保存失败时会逆序恢复软链与平台原目录', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-link-rollback-home-'))
+    const dataDir = join(homeDir, '.askx')
+    await createSkill(homeDir, 'codex', 'demo', 'original body')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const report = await manager.scan(['codex'])
+    const source = report.groups[0]!.locations[0]!
+    const onboardingPlan = await manager.planOnboarding({
+      platforms: ['codex'],
+      detectionFingerprint: report.fingerprint,
+      settingsRevision: 0,
+      decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
+    })
+    await manager.applyOnboarding(onboardingPlan, 0)
+    const suspendPlan = await manager.planPlatformLink('codex', 'suspend')
+    vi.spyOn(manager.manifestStore, 'write').mockRejectedValueOnce(new Error('模拟 manifest 写入失败'))
+
+    await expect(manager.applyPlatformLink(suspendPlan, { planHash: suspendPlan.hash, confirmedAt: new Date().toISOString() })).rejects.toThrow('模拟 manifest 写入失败')
+
+    expect((await lstat(join(homeDir, '.codex', 'skills'))).isSymbolicLink()).toBe(true)
+    await expect(access(suspendPlan.suspendedPath)).rejects.toThrow()
+    expect(await readFile(join(suspendPlan.originalRootBackup!.backupPath, 'demo', 'SKILL.md'), 'utf8')).toContain('original body')
+    const bootstrap = await manager.bootstrap()
+    expect(bootstrap.platformHealth.find((health) => health.platform === 'codex')).toMatchObject({ status: 'connected', connected: true, issues: [] })
+  })
+
+  it('多个平台通过各自根目录共享同一份统一源', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-shared-root-home-'))
+    const dataDir = join(homeDir, '.askx')
+    await createSkill(homeDir, 'codex', 'alpha', 'alpha body')
+    await createSkill(homeDir, 'claude', 'beta', 'beta body')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const report = await manager.scan(['codex', 'claude'])
+    const plan = await manager.planOnboarding({
+      platforms: ['codex', 'claude'],
+      detectionFingerprint: report.fingerprint,
+      settingsRevision: 0,
+      decisions: report.groups.map((group) => ({ kind: 'adopt' as const, sourceLocationId: group.locations[0]!.id })),
+    })
+
+    await manager.applyOnboarding(plan, 0)
+
+    expect(await readlink(join(homeDir, '.codex', 'skills'))).toBe(join(dataDir, 'skills'))
+    expect(await readlink(join(homeDir, '.claude', 'skills'))).toBe(join(dataDir, 'skills'))
+    expect(await readFile(join(homeDir, '.codex', 'skills', 'beta', 'SKILL.md'), 'utf8')).toContain('beta body')
+    expect(await readFile(join(homeDir, '.claude', 'skills', 'alpha', 'SKILL.md'), 'utf8')).toContain('alpha body')
   })
 
   it('可以从额外目录接管 Skill，但不会归档原目录', async () => {
@@ -67,7 +274,7 @@ describe('SkillsManager', () => {
       customRoots: [customSkill],
       detectionFingerprint: report.fingerprint,
       settingsRevision: 0,
-      decisions: [{ kind: 'adopt', sourceLocationId: source.id, platforms: ['codex'] }],
+      decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
     })
 
     const receipt = await manager.applyOnboarding(plan, 0)
@@ -106,38 +313,191 @@ describe('SkillsManager', () => {
       platforms: ['codex'],
       detectionFingerprint: report.fingerprint,
       settingsRevision: 0,
-      decisions: [{ kind: 'adopt', sourceLocationId: source.id, platforms: ['codex'] }],
+      decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
     })
     await writeFile(join(source.path, 'SKILL.md'), 'changed')
 
     await expect(manager.applyOnboarding(plan, 0)).rejects.toThrow('重新扫描')
   })
 
-  it('单个 Skill 失败不会撤销其他成功单元', async () => {
+  it('临时统一目录构建失败时不会切换平台根目录', async () => {
     const homeDir = await mkdtemp(join(tmpdir(), 'askx-partial-home-'))
     const dataDir = join(homeDir, '.askx')
-    await createSkill(homeDir, 'codex', 'alpha', 'alpha')
-    await mkdir(join(homeDir, '.codex', 'skills'), { recursive: true })
-    await symlink(join(homeDir, '.codex', 'skills', 'alpha'), join(homeDir, '.codex', 'skills', 'beta'), 'dir')
+    await createSkill(homeDir, 'codex', 'alpha', 'platform alpha')
+    await mkdir(join(dataDir, 'skills', 'alpha'), { recursive: true })
+    await writeFile(join(dataDir, 'skills', 'alpha', 'SKILL.md'), 'existing canonical')
     const manager = new SkillsManager({ homeDir, dataDir })
     const report = await manager.scan(['codex'])
     const alpha = report.groups.find((group) => group.name === 'alpha')!.locations[0]!
-    const beta = report.groups.find((group) => group.name === 'beta')!.locations[0]!
     const plan = await manager.planOnboarding({
       platforms: ['codex'],
       detectionFingerprint: report.fingerprint,
       settingsRevision: 0,
-      decisions: [
-        { kind: 'archive', locationIds: [alpha.id] },
-        { kind: 'adopt', sourceLocationId: beta.id, platforms: ['codex'] },
-      ],
+      decisions: [{ kind: 'adopt', sourceLocationId: alpha.id }],
+    })
+
+    await expect(manager.applyOnboarding(plan, 0)).rejects.toThrow('已经存在不同内容')
+
+    expect((await lstat(join(homeDir, '.codex', 'skills'))).isDirectory()).toBe(true)
+    expect(await readFile(join(homeDir, '.codex', 'skills', 'alpha', 'SKILL.md'), 'utf8')).toContain('platform alpha')
+  })
+
+  it('单个平台根目录切换失败时只标记该平台并允许单独重试', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-root-rollback-home-'))
+    const dataDir = join(homeDir, '.askx')
+    await createSkill(homeDir, 'codex', 'alpha', 'platform alpha')
+    await writeFile(join(homeDir, '.claude'), '阻止创建 Claude Code 根目录')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const report = await manager.scan(['codex', 'claude'])
+    const source = report.groups[0]!.locations[0]!
+    const plan = await manager.planOnboarding({
+      platforms: ['codex', 'claude'],
+      detectionFingerprint: report.fingerprint,
+      settingsRevision: 0,
+      decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
     })
 
     const receipt = await manager.applyOnboarding(plan, 0)
+    const firstBootstrap = await manager.bootstrap()
 
-    expect(receipt.results.map((result) => result.status)).toContain('applied')
-    expect(receipt.results.map((result) => result.status)).toContain('rolled-back')
-    expect((await manager.bootstrap()).managedSkills).toEqual([])
+    expect(receipt.platformResults).toMatchObject([
+      { platform: 'codex', status: 'applied' },
+      { platform: 'claude', status: 'failed' },
+    ])
+    expect(firstBootstrap.initialized).toBe(true)
+    expect(firstBootstrap.platformHealth.find((health) => health.platform === 'codex')).toMatchObject({ status: 'connected', connected: true })
+    expect(firstBootstrap.platformHealth.find((health) => health.platform === 'claude')).toMatchObject({ status: 'failed', connected: false })
+    expect((await lstat(join(homeDir, '.codex', 'skills'))).isSymbolicLink()).toBe(true)
+    expect(await readFile(join(dataDir, 'skills', 'alpha', 'SKILL.md'), 'utf8')).toContain('platform alpha')
+    expect(await readFile(join(homeDir, '.claude'), 'utf8')).toContain('阻止创建')
+
+    await rm(join(homeDir, '.claude'))
+    const retryReport = await manager.scan(['claude'])
+    const retryPlan = await manager.planOnboarding({
+      platforms: ['claude'],
+      detectionFingerprint: retryReport.fingerprint,
+      settingsRevision: 0,
+      decisions: [],
+    })
+    const retryReceipt = await manager.applyOnboarding(retryPlan, 0)
+    const retryBootstrap = await manager.bootstrap()
+
+    expect(retryReceipt.platformResults).toMatchObject([{ platform: 'claude', status: 'applied' }])
+    expect((await lstat(join(homeDir, '.claude', 'skills'))).isSymbolicLink()).toBe(true)
+    expect(retryBootstrap.platformHealth.find((health) => health.platform === 'claude')).toMatchObject({ status: 'connected', connected: true })
+    expect(retryBootstrap.platformBindings.map((binding) => binding.platform).sort()).toEqual(['claude', 'codex'])
+  })
+
+  it('单独导入平台时会将其版本与现有统一源一起交给用户决策', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-platform-import-home-'))
+    const dataDir = join(homeDir, '.askx')
+    await createSkill(homeDir, 'codex', 'alpha', 'canonical version')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const initialReport = await manager.scan(['codex'])
+    const initialSource = initialReport.groups[0]!.locations[0]!
+    const initialPlan = await manager.planOnboarding({
+      platforms: ['codex'],
+      detectionFingerprint: initialReport.fingerprint,
+      settingsRevision: 0,
+      decisions: [{ kind: 'adopt', sourceLocationId: initialSource.id }],
+    })
+    await manager.applyOnboarding(initialPlan, 0)
+    await createSkill(homeDir, 'claude', 'alpha', 'claude version')
+
+    const report = await manager.scan(['claude'])
+    const group = report.groups[0]!
+    const source = group.locations.find((location) => location.platform === 'claude')!
+    const canonical = group.locations.find((location) => location.platform === 'askx')!
+    expect(group.status).toBe('conflict')
+
+    const plan = await manager.planOnboarding({
+      platforms: ['claude'],
+      detectionFingerprint: report.fingerprint,
+      settingsRevision: 0,
+      decisions: [{ kind: 'replace', sourceLocationId: source.id, targetLocationIds: [canonical.id] }],
+    })
+    await manager.applyOnboarding(plan, 0)
+
+    expect(await readFile(join(dataDir, 'skills', 'alpha', 'SKILL.md'), 'utf8')).toContain('claude version')
+    expect(await readlink(join(homeDir, '.claude', 'skills'))).toBe(join(dataDir, 'skills'))
+  })
+
+  it('单平台同步只更新统一源且不会接入平台根目录', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-platform-sync-home-'))
+    const dataDir = join(homeDir, '.askx')
+    await createSkill(homeDir, 'codex', 'alpha', 'canonical version')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const initialReport = await manager.scan(['codex'])
+    const initialPlan = await manager.planOnboarding({
+      platforms: ['codex'],
+      detectionFingerprint: initialReport.fingerprint,
+      settingsRevision: 0,
+      decisions: [{ kind: 'adopt', sourceLocationId: initialReport.groups[0]!.locations[0]!.id }],
+    })
+    await manager.applyOnboarding(initialPlan, 0)
+    await createSkill(homeDir, 'claude', 'beta', 'claude only version')
+
+    const report = await manager.scan(['claude'])
+    const beta = report.groups.find((group) => group.name === 'beta')!
+    const source = beta.locations.find((location) => location.platform === 'claude')!
+    const plan = await manager.planOnboarding({
+      platforms: ['claude'],
+      detectionFingerprint: report.fingerprint,
+      settingsRevision: 0,
+      decisions: report.groups.map((group) => group.id === beta.id
+        ? { kind: 'adopt' as const, sourceLocationId: source.id }
+        : { kind: 'keep' as const, groupId: group.id }),
+      mode: 'sync',
+    })
+    const receipt = await manager.applyOnboarding(plan, 0)
+
+    expect(plan.platformOperations).toEqual([])
+    expect(receipt.platformResults).toEqual([])
+    expect((await lstat(join(homeDir, '.claude', 'skills'))).isDirectory()).toBe(true)
+    expect((await lstat(join(homeDir, '.claude', 'skills'))).isSymbolicLink()).toBe(false)
+    expect(await readFile(join(homeDir, '.claude', 'skills', 'beta', 'SKILL.md'), 'utf8')).toContain('claude only version')
+    expect(await readFile(join(dataDir, 'skills', 'beta', 'SKILL.md'), 'utf8')).toContain('claude only version')
+    expect(await readlink(join(homeDir, '.codex', 'skills'))).toBe(join(dataDir, 'skills'))
+  })
+
+  it('停用平台同步后保持停用状态且不会改动平台目录', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-suspended-sync-home-'))
+    const dataDir = join(homeDir, '.askx')
+    await createSkill(homeDir, 'codex', 'alpha', 'alpha version')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const initialReport = await manager.scan(['codex'])
+    const initialPlan = await manager.planOnboarding({
+      platforms: ['codex'],
+      detectionFingerprint: initialReport.fingerprint,
+      settingsRevision: 0,
+      decisions: [{ kind: 'adopt', sourceLocationId: initialReport.groups[0]!.locations[0]!.id }],
+    })
+    await manager.applyOnboarding(initialPlan, 0)
+    const suspendPlan = await manager.planPlatformLink('codex', 'suspend')
+    await manager.applyPlatformLink(suspendPlan, { planHash: suspendPlan.hash, confirmedAt: new Date().toISOString() })
+    await createSkill(homeDir, 'codex', 'beta', 'beta from suspended platform')
+
+    const report = await manager.scan(['codex'])
+    const plan = await manager.planOnboarding({
+      platforms: ['codex'],
+      detectionFingerprint: report.fingerprint,
+      settingsRevision: 0,
+      decisions: report.groups.map((group) => {
+        const platformSource = group.locations.find((location) => location.platform === 'codex' && location.metadata.valid && !location.broken)
+        if (group.name === 'beta' && platformSource) return { kind: 'adopt' as const, sourceLocationId: platformSource.id }
+        return { kind: 'keep' as const, groupId: group.id }
+      }),
+      mode: 'sync',
+    })
+    await manager.applyOnboarding(plan, 0)
+    const bootstrap = await manager.bootstrap()
+
+    expect((await lstat(join(homeDir, '.codex', 'skills'))).isDirectory()).toBe(true)
+    expect((await lstat(join(homeDir, '.codex', 'skills'))).isSymbolicLink()).toBe(false)
+    expect((await lstat(suspendPlan.suspendedPath)).isSymbolicLink()).toBe(true)
+    expect(await readFile(join(homeDir, '.codex', 'skills', 'beta', 'SKILL.md'), 'utf8')).toContain('beta from suspended platform')
+    expect(await readFile(join(dataDir, 'skills', 'beta', 'SKILL.md'), 'utf8')).toContain('beta from suspended platform')
+    expect(bootstrap.platformHealth.find((health) => health.platform === 'codex')).toMatchObject({ status: 'suspended', connected: false })
   })
 
   it('计划要求每个扫描分组恰好提交一项决策', async () => {
@@ -153,7 +513,7 @@ describe('SkillsManager', () => {
       platforms: ['codex'],
       detectionFingerprint: report.fingerprint,
       settingsRevision: 0,
-      decisions: [{ kind: 'adopt', sourceLocationId: alpha.id, platforms: ['codex'] }],
+      decisions: [{ kind: 'adopt', sourceLocationId: alpha.id }],
     })).rejects.toThrow('每个扫描分组')
   })
 
@@ -187,7 +547,7 @@ describe('SkillsManager', () => {
       platforms: ['codex'],
       detectionFingerprint: report.fingerprint,
       settingsRevision: 0,
-      decisions: [{ kind: 'adopt', sourceLocationId: source.id, platforms: ['codex'] }],
+      decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
     })
     const receipt = await manager.applyOnboarding(plan, 0)
 
@@ -196,6 +556,8 @@ describe('SkillsManager', () => {
     expect(rollback.rolledBack).toBe(true)
     expect((await manager.bootstrap()).initialized).toBe(false)
     await expect(access(join(dataDir, 'skills', 'demo'))).rejects.toMatchObject({ code: 'ENOENT' })
+    expect((await lstat(join(homeDir, '.codex', 'skills'))).isDirectory()).toBe(true)
+    expect(await readFile(join(homeDir, '.codex', 'skills', 'demo', 'SKILL.md'), 'utf8')).toContain('rollback body')
   })
 
   it('统一源被外部修改后拒绝恢复', async () => {
@@ -209,7 +571,7 @@ describe('SkillsManager', () => {
       platforms: ['codex'],
       detectionFingerprint: report.fingerprint,
       settingsRevision: 0,
-      decisions: [{ kind: 'adopt', sourceLocationId: source.id, platforms: ['codex'] }],
+      decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
     })
     const receipt = await manager.applyOnboarding(plan, 0)
     await writeFile(join(dataDir, 'skills', 'demo', 'SKILL.md'), 'user changed content')

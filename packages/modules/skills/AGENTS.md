@@ -11,20 +11,26 @@
 ## 边界规则
 
 - 扫描阶段严格只读，不执行 Skill 中的任何脚本、二进制或安装步骤。
+- 所有扫描来源统一建模为目录根：平台只提供按当前操作系统解析的预设目录，自选文件夹提供用户目录；两者必须复用同一枚举、元数据读取、内容 hash 和去重链路。
 - 内容相同的 Skill 可以归并；同名但内容不同必须报告冲突，不能自动选择覆盖方。
-- 后续写操作只能处理 plan/manifest 明确登记、且目标位于 `~/.askx/skills` 范围内的链接。
+- Skill 内容只写入 `~/.askx/skills` 统一源；平台侧只允许管理 manifest 明确登记的整个 Skills 根目录软链接，禁止为单个 Skill 创建平台链接。
+- 统一源文件查看与编辑只能按 manifest 中的 Skill ID 解析既有普通文本文件：拒绝绝对路径、路径穿越和任意层级软链接，不读取二进制文件；写入前必须同时校验 manifest revision、完整 Skill 指纹和文件指纹，并在失败时恢复原文件。
+- 已登记的平台根目录软链允许无损取消和恢复：取消时把 AskX 软链移动到隐藏保留路径，并将接入前的平台 Skills 根目录从事务备份原样放回；恢复时先把该平台原目录原样移回同一备份位，再将受管软链放回平台路径。两组移动必须作为同一可逆事务逆序回滚，禁止扫描、同步、改写内容或覆盖任何已占用路径。
+- 平台切换必须先在 staging 中完整生成并验证统一源，再按平台顺序执行独立子事务；单个平台失败时只恢复并标记该平台，其他平台继续，manifest 或回执持久化失败时才回滚本批次已成功的平台。
 - 所有可变更操作必须使用最新检测结果、计划 hash 和用户授权；授权不得跨计划复用。
 - 临时快照、长期备份、验证和回滚属于同一事务，不允许出现只有 apply 没有恢复路径的实现。
 - 拓扑输出保持稳定排序，测试使用临时 home/data 目录，不读取或修改真实 `~/.askx`。
-- 模块入口与公共扫描类型从 `src/index.ts` 导出。
+- 公共符号由实际 owner 文件直接导出，禁止通过 `src/index.ts` 二次导出。
 
 ## 目录提示
 
-- `src/scanner.ts`：Codex、Claude Code、Cursor 与内部统一源的只读发现。
+- `src/scanner.ts`：平台预设目录、自选目录与内部统一源共用的目录级只读发现。
 - `src/skill-types.ts`：扫描、manifest、决策、计划与回执契约。
 - `src/manifest-store.ts`：受管资源所有权和 revisioned 原子存储。
 - `src/skills-planner.ts`：把扫描结果与用户决策解析为稳定计划。
-- `src/skills-executor.ts`：逐 Skill 快照、应用、验证、回执与回滚。
+- `src/skills-executor.ts`：统一源 staging、平台根目录独立接入、验证、回执与安全回滚。
+- `src/platform-link-manager.ts`：平台根目录软链的幂等取消、恢复、校验与失败回滚。
+- `src/skill-file-manager.ts`：受管 Skill 元数据、目录树、文本文件读取，以及文件更新计划、验证和失败回滚。
 - `src/skills-module.ts`：`SkillsManager` 与 Core 模块入口。
 
 新增公共符号时由实际 owner 文件声明，并通过 package subpath 暴露；不要恢复 `src/index.ts` 桶导出。

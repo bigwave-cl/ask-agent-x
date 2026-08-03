@@ -1,0 +1,159 @@
+/** 支持按需加载 grammar 的标准代码语言。 */
+export type CodeHighlightLanguage =
+  | 'bash'
+  | 'css'
+  | 'javascript'
+  | 'json'
+  | 'markdown'
+  | 'scss'
+  | 'typescript'
+  | 'xml'
+  | 'yaml'
+
+/** 异步代码高亮的运行状态。 */
+export type CodeHighlightStatus = 'idle' | 'loading' | 'ready' | 'unsupported' | 'skipped' | 'failed'
+
+/** 可由 Vue 安全渲染的单段代码文本。 */
+export interface CodeHighlightSegment {
+  /** 代码文本。 */
+  value: string
+  /** 仅包含 hljs-* 的受控语义作用域。 */
+  scopes: string[]
+}
+
+/** 代码高亮的受控结果。 */
+export interface CodeHighlightResult {
+  /** 标准化后的语言；纯文本为空字符串。 */
+  language: CodeHighlightLanguage | ''
+  /** 是否已经完成语法高亮。 */
+  highlighted: boolean
+  /** 受控代码文本片段。 */
+  segments: CodeHighlightSegment[]
+}
+
+/** 高亮任务跳过的原因。 */
+export type CodeHighlightSkipReason = 'empty' | 'unsupported' | 'too-large' | 'too-many-lines' | null
+
+/** 单次允许高亮的最大 UTF-8 字节数。 */
+export const MAX_HIGHLIGHT_BYTES = 128 * 1024
+/** 单次允许高亮的最大行数。 */
+export const MAX_HIGHLIGHT_LINES = 4000
+
+/** 语言别名到标准语言的映射。 */
+const languageAliases: Readonly<Record<string, CodeHighlightLanguage>> = {
+  bash: 'bash',
+  cjs: 'javascript',
+  css: 'css',
+  html: 'xml',
+  javascript: 'javascript',
+  js: 'javascript',
+  json: 'json',
+  jsonc: 'json',
+  jsx: 'javascript',
+  markdown: 'markdown',
+  md: 'markdown',
+  mdx: 'markdown',
+  mjs: 'javascript',
+  scss: 'scss',
+  sh: 'bash',
+  shell: 'bash',
+  svg: 'xml',
+  ts: 'typescript',
+  tsx: 'typescript',
+  typescript: 'typescript',
+  vue: 'xml',
+  xml: 'xml',
+  yaml: 'yaml',
+  yml: 'yaml',
+  zsh: 'bash',
+}
+
+/** 不需要语法高亮的纯文本别名。 */
+const plaintextAliases = new Set(['', 'plain', 'plaintext', 'text', 'txt'])
+/** 文件名中不改变底层语法类型的模板后缀。 */
+const templateSuffixes = ['.example', '.sample', '.template'] as const
+
+/**
+ * 提取 Markdown fenced code 或调用方传入语言中的首个标识。
+ *
+ * @param language 原始语言字符串。
+ * @returns 适合查询映射表的小写语言标识。
+ */
+function normalizeLanguageToken(language: string): string {
+  return language.trim().toLowerCase().split(/[\s,{]/u, 1)[0] ?? ''
+}
+
+/**
+ * 从文件名提取扩展名。
+ *
+ * @param filename 文件名或相对路径。
+ * @returns 小写扩展名，无扩展名时为空字符串。
+ */
+function getFilenameExtension(filename: string): string {
+  const basename = (filename.trim().split(/[\\/]/u).pop() ?? '').toLowerCase()
+  const templateSuffix = templateSuffixes.find((suffix) => basename.endsWith(suffix))
+  const semanticName = templateSuffix ? basename.slice(0, -templateSuffix.length) : basename
+  const extensionIndex = semanticName.lastIndexOf('.')
+  return extensionIndex > 0 ? semanticName.slice(extensionIndex + 1) : ''
+}
+
+/**
+ * 根据显式语言和文件名解析标准高亮语言。
+ *
+ * @param language 调用方提供的语言。
+ * @param filename 用于兜底识别的文件名。
+ * @returns 标准语言；不支持或纯文本返回 null。
+ */
+export function resolveCodeHighlightLanguage(language = '', filename = ''): CodeHighlightLanguage | null {
+  const languageToken = normalizeLanguageToken(language)
+  if (plaintextAliases.has(languageToken)) {
+    const extension = getFilenameExtension(filename)
+    return languageAliases[extension] ?? null
+  }
+
+  return languageAliases[languageToken] ?? languageAliases[getFilenameExtension(filename)] ?? null
+}
+
+/**
+ * 计算代码行数，不创建额外数组。
+ *
+ * @param source 原始代码。
+ * @returns 至少为 1 的代码行数。
+ */
+function countSourceLines(source: string): number {
+  let lines = 1
+  for (let index = 0; index < source.length; index += 1) {
+    if (source.charCodeAt(index) === 10) lines += 1
+  }
+  return lines
+}
+
+/**
+ * 判断当前源码是否应该跳过高亮。
+ *
+ * @param source 原始代码。
+ * @param language 标准高亮语言。
+ * @returns 跳过原因；可以高亮时返回 null。
+ */
+export function getCodeHighlightSkipReason(source: string, language: CodeHighlightLanguage | null): CodeHighlightSkipReason {
+  if (!source) return 'empty'
+  if (!language) return 'unsupported'
+  if (source.length > MAX_HIGHLIGHT_BYTES || new TextEncoder().encode(source).byteLength > MAX_HIGHLIGHT_BYTES) return 'too-large'
+  if (countSourceLines(source) > MAX_HIGHLIGHT_LINES) return 'too-many-lines'
+  return null
+}
+
+/**
+ * 创建无需异步引擎的纯文本结果。
+ *
+ * @param source 原始代码。
+ * @param language 已解析的标准语言。
+ * @returns 只包含单个安全文本片段的结果。
+ */
+export function createPlainCodeHighlightResult(source: string, language: CodeHighlightLanguage | null = null): CodeHighlightResult {
+  return {
+    language: language ?? '',
+    highlighted: false,
+    segments: [{ value: source, scopes: [] }],
+  }
+}

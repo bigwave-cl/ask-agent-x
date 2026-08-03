@@ -54,7 +54,7 @@ pnpm dev:web
 
 `askx ui` 只监听 `127.0.0.1`，启动时会生成一次性会话 token。打开不带 token 的页面会进入欢迎登录页，可通过 `askx ui token` 获取当前 token；验证成功后使用 HttpOnly Cookie 保存本次会话。共享设置已支持 CLI/Web 双向写入。
 
-首次进入 `/skills-x` 会先选择 Codex、Claude Code、Cursor 管理范围，再执行只读扫描。扫描结果按平台展示并聚合同名 Skill；用户确认后，接管、合并、覆盖、重命名和可恢复删除均按 Skill 独立事务执行。AskX 只修改 manifest 明确登记的统一源与软链，需要替换的原平台目录会先移入 `~/.askx/backups/skills`。CLI 首次交互扫描提供 Ink 平台多选；非交互环境通过重复的 `--platform` 明确扫描范围。
+首次进入 `/skills-x` 会先选择 Codex、Claude Code、Cursor 管理范围，再执行只读目录扫描。平台只是 AskX 根据当前操作系统预设的 Skills 目录，自选文件夹与平台目录复用同一套枚举、读取、内容指纹和去重规则。用户确认后，AskX 先生成 `~/.askx/skills` 统一源，再逐个平台备份原 Skills 目录并接入统一源；单个平台失败只恢复并标记该平台。已接入平台可以随时无损取消或恢复软链：取消时隐藏 AskX 创建的根目录软链并原样放回接入前的平台目录，恢复时将该目录原样收回原备份位并放回软链；两种操作都不会扫描、同步或改写任何 Skill，任一步失败都会逆序恢复已经完成的路径移动。任何相关路径被占用时都会安全停止，不覆盖现有内容。macOS/Linux 使用目录软链，原生 Windows 使用目录 junction。CLI 首次交互扫描提供 Ink 平台多选；非交互环境通过重复的 `--platform` 明确扫描范围。
 
 CLI 和 Web 设置统一写入 `~/.askx/config.json`。配置带 revision 和来源标记，使用原子写入与锁避免两个入口静默覆盖；Web 会自动检测 CLI 产生的新 revision。界面支持简体中文与英文，语言选择同样在两个入口间同步；CLI 可通过 `askx settings set language zh-CN|en` 切换。Web 默认中文路由不带前缀，英文路由统一使用 `/en`，例如 `/settings` 与 `/en/settings`。主题色提供 `cyan` 与 `rose` 两套方案，可通过 Web 主题入口或 `askx settings set theme cyan|rose` 修改。
 

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { stableHash } from '@askx/core'
-import { skillDecisionSchema, skillsBatchPlanSchema, type SkillDecision, type SkillPlanOperation, type SkillPlanUnit, type SkillsBatchPlan, type SkillsScanReport } from './skill-types.js'
+import { skillDecisionSchema, skillsBatchPlanSchema, type SkillDecision, type SkillPlanOperation, type SkillPlanUnit, type SkillsBatchMode, type SkillsBatchPlan, type SkillsScanReport } from './skill-types.js'
 
 /** 计划输入。 */
 export interface CreateSkillsPlanInput {
@@ -11,6 +11,8 @@ export interface CreateSkillsPlanInput {
   settingsRevision: number
   /** 当前 manifest 版本。 */
   manifestRevision: number
+  /** 批量计划模式。 */
+  mode: SkillsBatchMode
   /** 用户决策。 */
   decisions: SkillDecision[]
   /** AskX 数据目录。 */
@@ -41,7 +43,7 @@ function createUnit(input: CreateSkillsPlanInput, decision: SkillDecision): Skil
   const locations = input.report.locations
   const location = (id: string) => {
     const resolved = locations.find((entry) => entry.id === id)
-    if (!resolved || resolved.platform === 'askx') throw new Error(`无效的 Skill 位置：${id}`)
+    if (!resolved) throw new Error(`无效的 Skill 位置：${id}`)
     return resolved
   }
   const operations: SkillPlanOperation[] = []
@@ -49,10 +51,13 @@ function createUnit(input: CreateSkillsPlanInput, decision: SkillDecision): Skil
 
   if (decision.kind === 'keep') operations.push({ kind: 'keep' })
   if (decision.kind === 'archive') {
+    if (input.mode === 'sync') throw new Error('单平台同步不能归档或修改平台原目录。')
     for (const id of decision.locationIds) {
       const target = location(id)
       if (!group.locations.some((entry) => entry.id === target.id)) throw new Error(`Skill ${group.name} 的归档目标跨越了其他分组。`)
-      if (target.platform === 'custom') throw new Error(`额外扫描目录只能作为接管来源，不能归档：${target.path}`)
+      if (target.platform === 'custom' || target.platform === 'askx') {
+        throw new Error(`额外扫描目录和 AskX 统一源不能归档或标记为平台备份：${target.path}`)
+      }
       operations.push({ kind: 'archive', path: target.path })
     }
   }
@@ -60,9 +65,7 @@ function createUnit(input: CreateSkillsPlanInput, decision: SkillDecision): Skil
     const source = location(decision.sourceLocationId)
     if (!source.metadata.valid || !source.contentHash || source.broken) throw new Error(`Skill ${source.name} 无法作为接管来源。`)
     if (decision.kind === 'merge' && group.status !== 'identical') throw new Error(`Skill ${group.name} 的内容不一致，不能合并。`)
-    if (decision.platforms.some((platform) => !input.report.platforms.includes(platform))) throw new Error(`Skill ${group.name} 引用了扫描范围外的平台。`)
     operations.push({ kind: 'copy-canonical', sourcePath: source.path, targetPath: join(input.dataDir, 'skills', source.name) })
-    for (const platform of decision.platforms) operations.push({ kind: 'bind-platform', platform })
   }
   if (decision.kind === 'replace') {
     const source = location(decision.sourceLocationId)
@@ -74,19 +77,15 @@ function createUnit(input: CreateSkillsPlanInput, decision: SkillDecision): Skil
       if (target.platform === 'custom') throw new Error(`额外扫描目录只能作为统一版本来源，不能被覆盖：${target.path}`)
     }
     operations.push({ kind: 'select-source', sourcePath: source.path })
-    for (const id of decision.targetLocationIds) operations.push({ kind: 'replace', path: location(id).path })
+    if (input.mode === 'connect') {
+      for (const id of decision.targetLocationIds) operations.push({ kind: 'replace', path: location(id).path })
+    }
   }
   if (decision.kind === 'rename-and-adopt') {
     const source = location(decision.sourceLocationId)
     if (!source.metadata.valid || !source.contentHash || source.broken) throw new Error(`Skill ${source.name} 无法重命名接管。`)
     if (input.report.locations.some((entry) => entry.name === decision.newName)) throw new Error(`Skill 名称已存在：${decision.newName}`)
-    if (decision.platforms.some((platform) => !input.report.platforms.includes(platform))) throw new Error(`Skill ${group.name} 引用了扫描范围外的平台。`)
     operations.push({ kind: 'write-renamed', name: decision.newName })
-    for (const platform of decision.platforms) operations.push({ kind: 'bind-platform', platform })
-  }
-  for (const operation of operations.filter((entry): entry is Extract<SkillPlanOperation, { kind: 'bind-platform' }> => entry.kind === 'bind-platform')) {
-    const platform = input.report.platformStatuses.find((entry) => entry.id === operation.platform)
-    if (platform && !platform.linkSupported) warnings.push(`${platform.name} 当前不可建立软链，将跳过绑定。`)
   }
   return { id: randomUUID(), skillName: group.name, decision, operations, warnings }
 }
@@ -122,15 +121,21 @@ function validateDecisionSet(report: SkillsScanReport, decisions: SkillDecision[
 export function createSkillsBatchPlan(input: CreateSkillsPlanInput): SkillsBatchPlan {
   const decisions = input.decisions.map((decision) => skillDecisionSchema.parse(decision))
   validateDecisionSet(input.report, decisions)
+  const canonicalRoot = join(input.dataDir, 'skills')
+  const platformOperations = input.mode === 'connect' ? input.report.platformStatuses.map((platform) => {
+    return { kind: 'bind-platform' as const, platform: platform.id, path: platform.skillsDir, target: canonicalRoot }
+  }) : []
   const unsigned = {
     id: randomUUID(),
     createdAt: new Date().toISOString(),
     detectionFingerprint: input.report.fingerprint,
     settingsRevision: input.settingsRevision,
     manifestRevision: input.manifestRevision,
+    mode: input.mode,
     platforms: input.report.platforms,
     customRoots: input.report.customRoots.map((root) => root.path),
     units: decisions.map((decision) => createUnit(input, decision)),
+    platformOperations,
   }
   return { ...unsigned, hash: stableHash(unsigned) }
 }
@@ -150,7 +155,7 @@ export function assertSkillsBatchPlan(plan: SkillsBatchPlan): void {
  * @param plan 已获用户授权的计划。
  * @param report 执行前重新生成的只读扫描报告。
  */
-export function assertSkillsPlanScope(plan: SkillsBatchPlan, report: SkillsScanReport): void {
+export function assertSkillsPlanScope(plan: SkillsBatchPlan, report: SkillsScanReport, dataDir: string): void {
   if (plan.platforms.join(',') !== report.platforms.join(',')) throw new Error('Skills 计划平台范围已经变化。')
   if (plan.customRoots.join('\0') !== report.customRoots.map((root) => root.path).join('\0')) throw new Error('Skills 计划额外扫描目录已经变化。')
   if (new Set(plan.units.map((unit) => unit.id)).size !== plan.units.length) throw new Error('Skills 计划包含重复事务单元。')
@@ -159,6 +164,14 @@ export function assertSkillsPlanScope(plan: SkillsBatchPlan, report: SkillsScanR
   plan.units.forEach((unit, index) => {
     const group = report.groups.find((entry) => entry.id === groupIds[index])
     if (!group || unit.skillName !== group.name) throw new Error('Skills 计划单元与扫描分组不匹配。')
-    createUnit({ report, settingsRevision: plan.settingsRevision, manifestRevision: plan.manifestRevision, decisions, dataDir: '' }, unit.decision)
+    createUnit({ report, settingsRevision: plan.settingsRevision, manifestRevision: plan.manifestRevision, mode: plan.mode, decisions, dataDir: '' }, unit.decision)
   })
+  const canonicalRoot = join(dataDir, 'skills')
+  const expectedOperations = plan.mode === 'connect'
+    ? report.platformStatuses.map((platform) => `${platform.id}\0${platform.skillsDir}\0${canonicalRoot}`).join('\n')
+    : ''
+  const actualOperations = plan.platformOperations.map((operation) => `${operation.platform}\0${operation.path}\0${operation.target}`).join('\n')
+  if (actualOperations !== expectedOperations) {
+    throw new Error('Skills 计划的平台根目录绑定范围已经变化。')
+  }
 }

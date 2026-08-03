@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn-vue/tailwind.css";
 @import "./md.css";
+@import "./code-highlight.css";
 
 @layer theme, base, components, utilities, project;
 
@@ -63,6 +64,15 @@
   --ds-color-danger-default: #ff4739;
   --ds-color-danger-hover: #fa2218;
   --ds-color-danger-active: #ff6f5e;
+  --ds-color-code-comment: var(--ds-color-text-helper);
+  --ds-color-code-keyword: var(--ds-color-text-brand);
+  --ds-color-code-string: #21883a;
+  --ds-color-code-number: #b56b00;
+  --ds-color-code-title: color-mix(in srgb, var(--ds-color-brand-hover) 78%, var(--ds-color-text-primary));
+  --ds-color-code-attribute: #7a55b5;
+  --ds-color-code-meta: var(--ds-color-text-tertiary);
+  --ds-color-code-addition: var(--ds-color-success-default);
+  --ds-color-code-deletion: var(--ds-color-danger-default);
   --ds-color-auth-bg: #060708;
   --ds-color-auth-surface: rgba(18, 19, 21, 0.82);
   --ds-color-auth-border: rgba(255, 255, 255, 0.11);
@@ -160,6 +170,15 @@ html.dark {
   --ds-color-danger-default: #f95244;
   --ds-color-danger-hover: #ff7d6d;
   --ds-color-danger-active: #f1271e;
+  --ds-color-code-comment: var(--ds-color-text-helper);
+  --ds-color-code-keyword: var(--ds-color-text-brand);
+  --ds-color-code-string: #77cf7a;
+  --ds-color-code-number: #f0b85a;
+  --ds-color-code-title: color-mix(in srgb, var(--ds-color-brand-hover) 82%, var(--ds-color-text-primary));
+  --ds-color-code-attribute: #c8a6f2;
+  --ds-color-code-meta: var(--ds-color-text-tertiary);
+  --ds-color-code-addition: var(--ds-color-success-default);
+  --ds-color-code-deletion: var(--ds-color-danger-default);
   --primary-foreground: #060708;
   --sidebar-primary-foreground: #060708;
 }

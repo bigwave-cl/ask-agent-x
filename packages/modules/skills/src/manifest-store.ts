@@ -1,11 +1,31 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { skillsManifestSchema, type SkillsManifest } from './skill-types.js'
+import { z } from 'zod'
+import { managedSkillRecordSchema, skillPlatformIdSchema, skillsManifestSchema, type SkillsManifest } from './skill-types.js'
 
 const LOCK_MAX_AGE_MS = 30_000
 const LOCK_RETRY_MS = 40
 const LOCK_RETRIES = 75
+
+/** 旧版逐 Skill 软链 Manifest，仅用于只读升级。 */
+const legacySkillsManifestSchema = z.object({
+  version: z.literal(1),
+  revision: z.number().int().nonnegative(),
+  initializedAt: z.string().datetime(),
+  lastScan: z.object({
+    scannedAt: z.string().datetime(),
+    fingerprint: z.string().min(1),
+    platforms: z.array(skillPlatformIdSchema).min(1),
+  }),
+  skills: z.array(managedSkillRecordSchema.extend({
+    bindings: z.array(z.object({
+      platform: skillPlatformIdSchema,
+      path: z.string().min(1),
+      target: z.string().min(1),
+    })),
+  })),
+})
 
 /** manifest revision 不匹配错误。 */
 export class SkillsManifestConflictError extends Error {
@@ -38,7 +58,19 @@ export class SkillsManifestStore {
   /** 读取 manifest，不存在时返回 null。 */
   async read(): Promise<SkillsManifest | null> {
     try {
-      return skillsManifestSchema.parse(JSON.parse(await readFile(this.path, 'utf8')))
+      const value: unknown = JSON.parse(await readFile(this.path, 'utf8'))
+      const current = skillsManifestSchema.safeParse(value)
+      if (current.success) return current.data
+      const legacy = legacySkillsManifestSchema.parse(value)
+      return {
+        version: 2,
+        revision: legacy.revision,
+        initializedAt: legacy.initializedAt,
+        lastScan: legacy.lastScan,
+        skills: legacy.skills.map(({ bindings: _bindings, ...skill }) => skill),
+        platformBindings: [],
+        migrationRequired: true,
+      }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
       throw error

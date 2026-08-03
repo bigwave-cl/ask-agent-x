@@ -34,10 +34,10 @@ const messages = {
     settings: 'settings', settingsUpdated: 'settings updated', revision: 'REVISION', source: 'SOURCE', platforms: 'Platforms', backup: 'Backup', language: 'Language', themeColor: 'Theme', updated: 'Updated',
     writeLocked: 'Write operations are intentionally locked in the foundation release.',
     appDescription: 'Extend every agent. Keep control.', modulesDescription: 'Inspect built-in AskAgent X modules',
-    doctorDescription: 'Detect Agent installations, paths, versions and link eligibility', jsonDescription: 'Print machine-readable JSON',
-    skillsDescription: 'Inspect and manage Skills topology', scanDescription: 'Read-only scan of all known Skill roots', statusDescription: 'Show current read-only Skills status',
+    doctorDescription: 'Detect Agent installations and whole Skills-directory proxy eligibility', jsonDescription: 'Print machine-readable JSON',
+    skillsDescription: 'Manage one canonical Skills source across Agent directories', scanDescription: 'Read-only scan of selected Skill roots', statusDescription: 'Show current read-only Skills status',
     settingsDescription: 'Read or update shared CLI/Web settings', settingsShowDescription: 'Show the current shared settings', settingsSetDescription: 'Update shared settings',
-    backupArgument: 'on or off', backupDescription: 'Enable or disable backup before linking', backupError: 'Backup must be "on" or "off"',
+    backupArgument: 'on or off', backupDescription: 'Enable or disable whole-directory backup before root cutover', backupError: 'Backup must be "on" or "off"',
     platformsArgument: 'codex, claude and/or cursor', platformsDescription: 'Set enabled Agent platforms', platformsError: 'Platforms must contain codex, claude and/or cursor',
     languageArgument: 'zh-CN or en', languageDescription: 'Set the shared CLI/Web language', languageError: 'Language must be "zh-CN" or "en"',
     themeArgument: 'cyan or rose', themeDescription: 'Set the shared CLI/Web theme color', themeError: 'Theme color must be "cyan" or "rose"',
@@ -54,10 +54,10 @@ const messages = {
     settings: '共享设置', settingsUpdated: '设置已更新', revision: '版本', source: '来源', platforms: '平台', backup: '备份', language: '语言', themeColor: '主题色', updated: '更新时间',
     writeLocked: '基础版本暂未开放写入操作。',
     appDescription: '扩展每一个 Agent，控制始终在你手中。', modulesDescription: '查看 AskAgent X 内置模块',
-    doctorDescription: '检测 Agent 安装、路径、版本与链接条件', jsonDescription: '输出机器可读的 JSON',
-    skillsDescription: '检查和管理 Skills 拓扑', scanDescription: '只读扫描所有已知的 Skill 根目录', statusDescription: '显示当前只读 Skills 状态',
+    doctorDescription: '检测 Agent 安装状态与整个 Skills 目录的代理条件', jsonDescription: '输出机器可读的 JSON',
+    skillsDescription: '以一份统一源管理各 Agent 的 Skills 目录', scanDescription: '只读扫描选中的 Skill 根目录', statusDescription: '显示当前只读 Skills 状态',
     settingsDescription: '读取或更新 CLI/Web 共享设置', settingsShowDescription: '显示当前共享设置', settingsSetDescription: '更新共享设置',
-    backupArgument: 'on 或 off', backupDescription: '启用或关闭挂接前备份', backupError: '备份参数必须是 "on" 或 "off"',
+    backupArgument: 'on 或 off', backupDescription: '启用或关闭根目录切换前的整目录备份', backupError: '备份参数必须是 "on" 或 "off"',
     platformsArgument: 'codex、claude 和/或 cursor', platformsDescription: '设置启用的 Agent 平台', platformsError: '平台必须包含 codex、claude 和/或 cursor',
     languageArgument: 'zh-CN 或 en', languageDescription: '设置 CLI/Web 共享语言', languageError: '语言必须是 "zh-CN" 或 "en"',
     themeArgument: 'cyan 或 rose', themeDescription: '设置 CLI/Web 共享主题色', themeError: '主题色必须是 "cyan" 或 "rose"',
@@ -107,13 +107,13 @@ function DoctorView({ detections, locale }: { detections: PlatformDetection[]; l
   return (
     <Frame title={t(locale, 'doctor')}>
       {detections.map((platform) => {
-        const state = platform.installed ? (platform.linkSupported ? 'ready' : 'blocked') : 'not found'
+        const state = platform.linkSupported ? 'ready' : 'blocked'
         return (
           <Box key={platform.id} flexDirection="column" marginBottom={1}>
             <Box gap={2}>
               <Text bold>{platform.name.padEnd(16)}</Text>
               <State value={state} locale={locale} />
-              {platform.version ? <Text dimColor>{platform.version}</Text> : null}
+              <Text dimColor>{platform.installed ? platform.version ?? '' : t(locale, 'notFound')}</Text>
             </Box>
             <Text dimColor>  {platform.skillsDir}</Text>
             {platform.notes.map((note) => <Text key={note} color="yellow">  ↳ {note}</Text>)}

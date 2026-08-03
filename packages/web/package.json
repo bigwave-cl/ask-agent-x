@@ -10,9 +10,11 @@
     }
   },
   "scripts": {
-    "build": "nuxt build && tsup src/server.ts --format esm --dts --out-dir dist/server --clean",
+    "build": "nuxt build && node scripts/verify-highlight-chunks.mjs && tsup src/server.ts --format esm --dts --out-dir dist/server --clean",
     "typecheck": "nuxt typecheck && tsc --noEmit -p tsconfig.server.json",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --passWithNoTests --exclude=perf/**",
+    "test:performance": "playwright test --config perf/playwright.config.ts",
+    "preview:performance": "NUXT_ASKX_SESSION_TOKEN=askx-local-dev HOST=127.0.0.1 PORT=4252 node .output/server/index.mjs",
     "dev": "NUXT_ASKX_SESSION_TOKEN=askx-local-dev nuxt dev --host 127.0.0.1 --port 4242"
   },
   "dependencies": {
@@ -26,6 +28,8 @@
     "class-variance-authority": "^0.7.1",
     "clipboard": "^2.0.11",
     "clsx": "^2.1.1",
+    "highlight.js": "^11.11.1",
+    "lowlight": "^3.3.0",
     "marked": "^17.0.6",
     "mitt": "^3.0.1",
     "nuxt": "^4.4.8",
@@ -42,6 +46,7 @@
   },
   "devDependencies": {
     "@nuxtjs/i18n": "^10.5.0",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/three": "^0.185.1",
     "tailwindcss": "^4.3.3",

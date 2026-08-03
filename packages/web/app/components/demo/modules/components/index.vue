@@ -2,6 +2,7 @@
 import { Badge } from '@/components/ui/badge'
 import DemoButton from './DemoButton.vue'
 import DemoChoice from './DemoChoice.vue'
+import DemoCodeEditor from './DemoCodeEditor.vue'
 import DemoMdcRender from './DemoMdcRender.vue'
 import DemoResponsiveOverlay from './DemoResponsiveOverlay.vue'
 import DemoScrollArea from './DemoScrollArea.vue'
@@ -12,7 +13,7 @@ import DemoTooltip from './DemoTooltip.vue'
 defineOptions({ name: 'DemoComponentsModule' })
 
 /** 基础组件 Demo 各 Section 的展开状态。 */
-const openSections = reactive({ button: true, choice: false, mdcRender: false, responsiveOverlay: false, scrollArea: false, select: false, tabs: false, tooltip: false })
+const openSections = reactive({ button: true, choice: false, codeEditor: false, mdcRender: false, responsiveOverlay: false, scrollArea: false, select: false, tabs: false, tooltip: false })
 </script>
 
 <template>
@@ -27,7 +28,7 @@ const openSections = reactive({ button: true, choice: false, mdcRender: false, r
         </div>
         <div class="grid min-w-56 gap-2 rounded-xl border bg-card/80 p-4 font-mono text-[10px] text-muted-foreground">
           <span class="flex items-center gap-2"><Icon name="askx-objects:layers" class="size-3.5 text-primary" />模块：基础组件</span>
-          <span class="flex items-center gap-2"><Icon name="askx-objects:model" class="size-3.5 text-primary" />Section：Button / Choice / Select / Tabs / Tooltip / ScrollArea / MDC / ResponsiveOverlay</span>
+          <span class="flex items-center gap-2"><Icon name="askx-objects:model" class="size-3.5 text-primary" />Section：Button / Choice / Select / Tabs / Tooltip / ScrollArea / CodeEditor / MDC / ResponsiveOverlay</span>
         </div>
       </div>
     </article>
@@ -38,6 +39,7 @@ const openSections = reactive({ button: true, choice: false, mdcRender: false, r
     <DemoTabs v-model="openSections.tabs" />
     <DemoTooltip v-model="openSections.tooltip" />
     <DemoScrollArea v-model="openSections.scrollArea" />
+    <DemoCodeEditor v-model="openSections.codeEditor" />
     <DemoMdcRender v-model="openSections.mdcRender" />
     <DemoResponsiveOverlay v-model="openSections.responsiveOverlay" />
   </div>

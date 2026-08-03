@@ -1,24 +1,26 @@
 import { randomUUID } from 'node:crypto'
-import { cp, lstat, mkdir, readFile, readdir, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { cp, lstat, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
+import type { RollbackResult } from '@askx/core'
+import { managedDirectoryLinkType } from '@askx/platform-adapters'
 import type { SkillsManifestStore } from './manifest-store.js'
 import { hashSkillDirectory, scanSkills } from './scanner.js'
 import { assertSkillsBatchPlan, assertSkillsPlanScope } from './skills-planner.js'
 import type {
-  ManagedSkillBinding,
+  ManagedPlatformBinding,
   ManagedSkillRecord,
+  PlatformBindingResult,
   SkillBackupMove,
+  SkillBindPlatformOperation,
   SkillDecision,
   SkillLocation,
   SkillPlanUnit,
-  SkillPlatformId,
   SkillTransactionResult,
   SkillsBatchPlan,
   SkillsBatchReceipt,
   SkillsManifest,
   SkillsScanReport,
 } from './skill-types.js'
-import type { RollbackResult } from '@askx/core'
 import { verifyCanonicalSkill, verifyManagedLink } from './skills-verifier.js'
 
 /** 批量执行输入。 */
@@ -35,14 +37,20 @@ export interface ApplySkillsPlanInput {
   manifestStore: SkillsManifestStore
 }
 
-/** 单元执行的内部恢复信息。 */
-interface AppliedUnit {
-  /** 对外回执。 */
-  result: SkillTransactionResult
-  /** 本次是否新建统一源。 */
+/** 根目录切换后的内部恢复信息。 */
+interface AppliedBatch {
+  /** 本次创建的平台根目录软链。 */
+  createdLinks: string[]
+  /** 被整体移动的平台根目录。 */
+  platformBackups: SkillBackupMove[]
+  /** 原 AskX 统一目录备份。 */
+  canonicalBackup?: SkillBackupMove
+  /** 本次是否从空状态创建统一目录。 */
   createdCanonical: boolean
-  /** 写入 manifest 的记录。 */
-  record?: ManagedSkillRecord
+  /** 应用后的统一目录记录。 */
+  records: ManagedSkillRecord[]
+  /** 平台根目录执行结果。 */
+  platformResults: PlatformBindingResult[]
 }
 
 /** 持久化批次回执。 */
@@ -51,8 +59,8 @@ interface StoredBatchReceipt {
   receipt: SkillsBatchReceipt
   /** 操作前 manifest。 */
   manifestBefore: SkillsManifest | null
-  /** 成功单元的内部恢复信息。 */
-  appliedUnits: AppliedUnit[]
+  /** 根目录切换的内部恢复信息。 */
+  appliedBatch: AppliedBatch
 }
 
 /** 判断路径是否存在，失效软链也视为存在。 */
@@ -77,195 +85,332 @@ async function writeInternalJson(path: string, value: unknown): Promise<void> {
 /** 根据 ID 获取当前扫描位置。 */
 function getLocation(report: SkillsScanReport, id: string): SkillLocation {
   const location = report.locations.find((entry) => entry.id === id)
-  if (!location || location.platform === 'askx') throw new Error(`找不到可操作的 Skill 位置：${id}`)
+  if (!location) throw new Error(`找不到可操作的 Skill 位置：${id}`)
   return location
 }
 
-/** 获取决策的统一源位置。 */
+/** 获取决策选择的统一源位置。 */
 function getSource(report: SkillsScanReport, decision: SkillDecision): SkillLocation | undefined {
   if (decision.kind === 'keep' || decision.kind === 'archive') return undefined
   return getLocation(report, decision.sourceLocationId)
 }
 
-/** 获取决策最终使用的 Skill 名称。 */
+/** 获取决策最终写入统一目录的 Skill 名称。 */
 function getCanonicalName(unit: SkillPlanUnit, source?: SkillLocation): string {
   return unit.decision.kind === 'rename-and-adopt' ? unit.decision.newName : source?.name ?? unit.skillName
 }
 
-/** 获取需要建立链接的平台。 */
-function getBindingPlatforms(report: SkillsScanReport, decision: SkillDecision, source?: SkillLocation): SkillPlatformId[] {
-  if (decision.kind === 'adopt' || decision.kind === 'merge' || decision.kind === 'rename-and-adopt') {
-    return decision.platforms
-  }
-  if (decision.kind === 'replace') {
-    const candidates = [
-      ...(source ? [source.platform] : []),
-      ...decision.targetLocationIds.map((id) => getLocation(report, id).platform),
-    ]
-    return [...new Set(candidates.filter((platform): platform is SkillPlatformId => report.platforms.includes(platform as SkillPlatformId)))]
-  }
-  return []
-}
-
-/** 将一个未受管路径安全移动到事务备份。 */
+/** 将一个路径安全移动到事务备份。 */
 async function moveToBackup(path: string, backupPath: string): Promise<SkillBackupMove> {
   await mkdir(dirname(backupPath), { recursive: true, mode: 0o700 })
   await rename(path, backupPath)
   return { originalPath: path, backupPath }
 }
 
-/** 回滚一个已经开始应用的 Skill 单元。 */
-async function rollbackUnit(unit: AppliedUnit): Promise<void> {
-  for (const linkPath of [...unit.result.createdLinks].reverse()) {
-    if (!await pathExists(linkPath)) continue
-    const stat = await lstat(linkPath)
-    if (!stat.isSymbolicLink()) throw new Error(`回滚被阻止，受管链接已变为真实目录：${linkPath}`)
-    if (unit.result.canonicalPath && resolve(dirname(linkPath), await readlink(linkPath)) !== resolve(unit.result.canonicalPath)) {
-      throw new Error(`回滚被阻止，软链目标已经变化：${linkPath}`)
+/**
+ * 将一个 Skill 来源复制进临时统一目录。
+ * @param source 只读扫描来源。
+ * @param target 临时统一目录中的目标路径。
+ * @param allowReplace 是否允许覆盖临时目录中的不同版本。
+ */
+async function copySkillIntoStaging(source: SkillLocation, target: string, allowReplace: boolean): Promise<void> {
+  if (!source.contentHash || !source.metadata.valid || source.broken) throw new Error(`Skill ${source.name} 无法作为统一来源。`)
+  if (await pathExists(target)) {
+    if (await hashSkillDirectory(target) === source.contentHash) return
+    if (!allowReplace) throw new Error(`统一目录中已经存在不同内容的 Skill：${source.name}`)
+    await rm(target, { recursive: true })
+  }
+  const temporaryPath = `${target}.${randomUUID()}.staging`
+  await cp(source.path, temporaryPath, { recursive: true, dereference: true, preserveTimestamps: true })
+  await verifyCanonicalSkill(temporaryPath, source.contentHash)
+  await rename(temporaryPath, target)
+}
+
+/**
+ * 在不修改平台目录的前提下构建最终统一目录。
+ * @param plan 用户确认的完整计划。
+ * @param report 执行前重新扫描结果。
+ * @param dataDir AskX 数据目录。
+ * @param manifestBefore 操作前 manifest。
+ * @returns 临时目录路径、Skill 结果和最终记录。
+ */
+async function buildCanonicalStaging(
+  plan: SkillsBatchPlan,
+  report: SkillsScanReport,
+  dataDir: string,
+  manifestBefore: SkillsManifest | null,
+): Promise<{ stagingRoot: string; results: SkillTransactionResult[]; records: ManagedSkillRecord[] }> {
+  const canonicalRoot = join(dataDir, 'skills')
+  const transactionRoot = join(dataDir, 'transactions', plan.id)
+  const stagingRoot = join(transactionRoot, 'canonical.staging')
+  await rm(stagingRoot, { recursive: true, force: true })
+  await mkdir(transactionRoot, { recursive: true, mode: 0o700 })
+  if (await pathExists(canonicalRoot)) {
+    const stat = await lstat(canonicalRoot)
+    if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error(`AskX 统一源不是可接管的真实目录：${canonicalRoot}`)
+    await cp(canonicalRoot, stagingRoot, { recursive: true, dereference: true, preserveTimestamps: true })
+  } else {
+    await mkdir(stagingRoot, { recursive: true, mode: 0o700 })
+  }
+
+  const results: SkillTransactionResult[] = []
+  for (const unit of plan.units) {
+    const result: SkillTransactionResult = {
+      receiptId: randomUUID(),
+      skillName: unit.skillName,
+      status: 'applied',
+      backups: [],
+      warnings: [...unit.warnings],
     }
-    await rm(linkPath)
+    try {
+      if (unit.decision.kind === 'keep' || unit.decision.kind === 'archive') {
+        result.status = 'skipped'
+        results.push(result)
+        continue
+      }
+      const source = getSource(report, unit.decision)
+      if (!source) throw new Error(`Skill ${unit.skillName} 缺少统一来源。`)
+      const canonicalName = getCanonicalName(unit, source)
+      result.canonicalPath = join(canonicalRoot, canonicalName)
+      await copySkillIntoStaging(source, join(stagingRoot, canonicalName), unit.decision.kind === 'replace')
+    } catch (error) {
+      result.status = 'failed'
+      result.warnings.push((error as Error).message)
+    }
+    results.push(result)
   }
-  for (const backup of [...unit.result.backups].reverse()) {
-    if (await pathExists(backup.originalPath)) throw new Error(`回滚目标已被占用：${backup.originalPath}`)
-    if (await pathExists(backup.backupPath)) await rename(backup.backupPath, backup.originalPath)
+
+  if (results.some((result) => result.status === 'failed')) {
+    await rm(stagingRoot, { recursive: true, force: true })
+    throw new Error(results.flatMap((result) => result.warnings).join('\n'))
   }
-  if (unit.createdCanonical && unit.result.canonicalPath && await pathExists(unit.result.canonicalPath)) {
-    await rm(unit.result.canonicalPath, { recursive: true })
+
+  const previousRecords = new Map((manifestBefore?.skills ?? []).map((record) => [record.name, record]))
+  const records: ManagedSkillRecord[] = []
+  const entries = await readdir(stagingRoot, { withFileTypes: true })
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    if (entry.name.startsWith('.') || !entry.isDirectory()) continue
+    const path = join(stagingRoot, entry.name)
+    records.push({
+      id: previousRecords.get(entry.name)?.id ?? randomUUID(),
+      name: entry.name,
+      canonicalPath: join(canonicalRoot, entry.name),
+      contentHash: await hashSkillDirectory(path),
+      updatedAt: new Date().toISOString(),
+    })
+  }
+  return { stagingRoot, results, records }
+}
+
+/**
+ * 将平台 Skills 根目录整体切换为统一目录软链。
+ * @param plan 已确认计划。
+ * @param stagingRoot 已完成校验的临时统一目录。
+ * @param records 最终 Skill 记录。
+ * @param dataDir AskX 数据目录。
+ * @returns 可用于回滚和写入 Manifest 的批次状态。
+ */
+async function switchPlatformRoots(
+  plan: SkillsBatchPlan,
+  stagingRoot: string,
+  records: ManagedSkillRecord[],
+  dataDir: string,
+): Promise<AppliedBatch> {
+  const canonicalRoot = join(dataDir, 'skills')
+  const applied: AppliedBatch = {
+    createdLinks: [],
+    platformBackups: [],
+    createdCanonical: !await pathExists(canonicalRoot),
+    records,
+    platformResults: [],
+  }
+  try {
+    if (await pathExists(canonicalRoot)) {
+      applied.canonicalBackup = await moveToBackup(canonicalRoot, join(dataDir, 'backups', 'skills', plan.id, 'askx-root.bak'))
+    }
+    await rename(stagingRoot, canonicalRoot)
+
+    for (const operation of plan.platformOperations) {
+      const { result, createdLink, backup } = await applyPlatformRoot(operation, dataDir, plan.id)
+      applied.platformResults.push(result)
+      if (createdLink) applied.createdLinks.push(createdLink)
+      if (backup) applied.platformBackups.push(backup)
+    }
+    for (const record of records) await verifyCanonicalSkill(record.canonicalPath, record.contentHash)
+    return applied
+  } catch (error) {
+    await rollbackAppliedBatch(applied, canonicalRoot)
+    throw error
+  }
+}
+
+/** 单个平台根目录成功切换后需要纳入批次恢复的信息。 */
+interface AppliedPlatformRoot {
+  /** 平台接入结果。 */
+  result: PlatformBindingResult
+  /** 本次新建的根目录软链。 */
+  createdLink?: string
+  /** 接入前的平台根目录备份。 */
+  backup?: SkillBackupMove
+}
+
+/**
+ * 恢复一个失败平台在当前子事务中产生的修改。
+ * @param operation 平台根目录绑定操作。
+ * @param createdLink 本次是否已经创建软链。
+ * @param backup 本次是否已经移动原平台目录。
+ */
+async function rollbackPlatformRoot(
+  operation: SkillBindPlatformOperation,
+  createdLink: boolean,
+  backup?: SkillBackupMove,
+): Promise<void> {
+  if (createdLink && await pathExists(operation.path)) {
+    const stat = await lstat(operation.path)
+    if (!stat.isSymbolicLink()) throw new Error(`平台回滚被阻止，目标已变为真实目录：${operation.path}`)
+    try {
+      await verifyManagedLink(operation.path, operation.target)
+    } catch {
+      throw new Error(`平台回滚被阻止，软链目标已经变化：${operation.path}`)
+    }
+    await rm(operation.path)
+  }
+  if (!backup || !await pathExists(backup.backupPath)) return
+  if (await pathExists(backup.originalPath)) throw new Error(`平台回滚目标已被占用：${backup.originalPath}`)
+  await rename(backup.backupPath, backup.originalPath)
+}
+
+/**
+ * 独立接入一个平台根目录；失败只恢复当前平台并返回失败结果。
+ * @param operation 平台根目录绑定操作。
+ * @param dataDir AskX 数据目录。
+ * @param transactionId 批次事务标识。
+ * @returns 当前平台结果及成功操作的恢复信息。
+ */
+async function applyPlatformRoot(
+  operation: SkillBindPlatformOperation,
+  dataDir: string,
+  transactionId: string,
+): Promise<AppliedPlatformRoot> {
+  const result: PlatformBindingResult = {
+    platform: operation.platform,
+    path: operation.path,
+    target: operation.target,
+    status: 'applied',
+    warnings: [],
+  }
+  let backup: SkillBackupMove | undefined
+  let createdLink = false
+  try {
+    if (await pathExists(operation.path)) {
+      const stat = await lstat(operation.path)
+      if (stat.isSymbolicLink()) {
+        try {
+          await verifyManagedLink(operation.path, operation.target)
+          return { result }
+        } catch {
+          // 目标不一致时按普通平台目录进入备份和重新接入流程。
+        }
+      }
+      backup = await moveToBackup(
+        operation.path,
+        join(dataDir, 'backups', 'skills', transactionId, operation.platform, 'skills-root.bak'),
+      )
+      result.backup = backup
+    }
+    await mkdir(dirname(operation.path), { recursive: true, mode: 0o700 })
+    await symlink(operation.target, operation.path, managedDirectoryLinkType())
+    createdLink = true
+    await verifyManagedLink(operation.path, operation.target)
+    return { result, createdLink: operation.path, ...(backup ? { backup } : {}) }
+  } catch (error) {
+    result.status = 'failed'
+    result.warnings.push((error as Error).message)
+    try {
+      await rollbackPlatformRoot(operation, createdLink, backup)
+    } catch (rollbackError) {
+      throw new Error(`平台 ${operation.platform} 接入失败且无法安全恢复：${(rollbackError as Error).message}`, { cause: error })
+    }
+    return { result }
   }
 }
 
 /**
- * 在显式恢复前验证所有受管路径仍保持事务完成时的状态。
- * @param unit 待恢复的事务单元。
+ * 回滚平台根目录和 AskX 统一目录切换。
+ * @param applied 已发生的批次副作用。
+ * @param canonicalRoot AskX 统一目录路径。
  */
-async function assertRollbackUnitSafe(unit: AppliedUnit): Promise<void> {
-  for (const linkPath of unit.result.createdLinks) {
+async function rollbackAppliedBatch(applied: AppliedBatch, canonicalRoot: string): Promise<void> {
+  for (const linkPath of [...applied.createdLinks].reverse()) {
     if (!await pathExists(linkPath)) continue
     const stat = await lstat(linkPath)
-    if (!stat.isSymbolicLink()) throw new Error(`恢复被阻止，受管链接已变为真实目录：${linkPath}`)
-    if (unit.result.canonicalPath && resolve(dirname(linkPath), await readlink(linkPath)) !== resolve(unit.result.canonicalPath)) {
-      throw new Error(`恢复被阻止，软链目标已经变化：${linkPath}`)
+    if (!stat.isSymbolicLink()) throw new Error(`回滚被阻止，平台根链接已变为真实目录：${linkPath}`)
+    try {
+      await verifyManagedLink(linkPath, canonicalRoot)
+    } catch {
+      throw new Error(`回滚被阻止，平台根链接目标已经变化：${linkPath}`)
     }
+    await rm(linkPath)
   }
-  for (const backup of unit.result.backups) {
-    if (await pathExists(backup.originalPath) && !unit.result.createdLinks.includes(backup.originalPath)) {
-      throw new Error(`恢复被阻止，原路径已被占用：${backup.originalPath}`)
-    }
-    if (!await pathExists(backup.backupPath)) throw new Error(`恢复被阻止，事务备份已经丢失：${backup.backupPath}`)
+  for (const backup of [...applied.platformBackups].reverse()) {
+    if (await pathExists(backup.originalPath)) throw new Error(`回滚目标已被占用：${backup.originalPath}`)
+    if (await pathExists(backup.backupPath)) await rename(backup.backupPath, backup.originalPath)
   }
-  if (unit.createdCanonical && unit.result.canonicalPath && await pathExists(unit.result.canonicalPath)) {
-    if (!unit.record || await hashSkillDirectory(unit.result.canonicalPath) !== unit.record.contentHash) {
-      throw new Error(`恢复被阻止，统一源内容已经变化：${unit.result.canonicalPath}`)
+  if (await pathExists(canonicalRoot)) await rm(canonicalRoot, { recursive: true })
+  if (applied.canonicalBackup && await pathExists(applied.canonicalBackup.backupPath)) {
+    await rename(applied.canonicalBackup.backupPath, applied.canonicalBackup.originalPath)
+  }
+}
+
+/**
+ * 验证回执对应的根目录状态仍可安全恢复。
+ * @param applied 已完成的批次状态。
+ * @param canonicalRoot AskX 统一目录路径。
+ */
+async function assertRollbackSafe(applied: AppliedBatch, canonicalRoot: string): Promise<void> {
+  for (const linkPath of applied.createdLinks) await verifyManagedLink(linkPath, canonicalRoot)
+  for (const backup of applied.platformBackups) {
+    if (!await pathExists(backup.backupPath)) throw new Error(`恢复被阻止，平台目录备份已经丢失：${backup.backupPath}`)
+  }
+  if (applied.canonicalBackup && !await pathExists(applied.canonicalBackup.backupPath)) {
+    throw new Error(`恢复被阻止，统一目录备份已经丢失：${applied.canonicalBackup.backupPath}`)
+  }
+  for (const record of applied.records) {
+    try {
+      await verifyCanonicalSkill(record.canonicalPath, record.contentHash)
+    } catch {
+      throw new Error(`统一源内容已经变化：${record.canonicalPath}`)
     }
   }
 }
 
-/** 应用一个独立 Skill 事务。 */
-async function applyUnit(
-  unit: SkillPlanUnit,
-  report: SkillsScanReport,
-  dataDir: string,
-  batchId: string,
-  manifest: SkillsManifest | null,
-): Promise<AppliedUnit> {
-  const receiptId = randomUUID()
-  const result: SkillTransactionResult = {
-    receiptId,
-    skillName: unit.skillName,
-    status: 'applied',
-    createdLinks: [],
-    backups: [],
-    warnings: [...unit.warnings],
-  }
-  const applied: AppliedUnit = { result, createdCanonical: false }
-  if (unit.decision.kind === 'keep') {
-    result.status = 'skipped'
-    return applied
-  }
-  if (unit.decision.kind === 'archive') {
-    try {
-      for (const locationId of unit.decision.locationIds) {
-        const location = getLocation(report, locationId)
-        const backupPath = join(dataDir, 'backups', 'skills', batchId, receiptId, location.platform, `${location.name}.bak`)
-        result.backups.push(await moveToBackup(location.path, backupPath))
-      }
-      return applied
-    } catch (error) {
-      result.warnings.push((error as Error).message)
-      await rollbackUnit(applied)
-      result.status = 'rolled-back'
-      return applied
+/**
+ * 将平台执行结果转换为 Manifest 根目录绑定。
+ * @param results 平台根目录执行结果。
+ * @param previousBindings 其他批次已经登记的平台根目录绑定。
+ * @returns 已成功接入的平台绑定。
+ */
+function createPlatformBindings(
+  results: PlatformBindingResult[],
+  previousBindings: ManagedPlatformBinding[],
+): ManagedPlatformBinding[] {
+  const updatedAt = new Date().toISOString()
+  const bindings = new Map(previousBindings.map((binding) => [binding.platform, binding]))
+  for (const result of results) {
+    if (result.status === 'applied') {
+      const previous = bindings.get(result.platform)
+      bindings.set(result.platform, {
+        platform: result.platform,
+        path: result.path,
+        target: result.target,
+        updatedAt,
+        ...(result.backup || previous?.originalRootBackup
+          ? { originalRootBackup: result.backup ?? previous?.originalRootBackup }
+          : {}),
+      })
     }
   }
-
-  const source = getSource(report, unit.decision)
-  if (!source?.contentHash) throw new Error(`Skill ${unit.skillName} 缺少内容指纹。`)
-  const canonicalName = getCanonicalName(unit, source)
-  const canonicalPath = join(dataDir, 'skills', canonicalName)
-  result.canonicalPath = canonicalPath
-  const existingRecord = manifest?.skills.find((record) => record.name === canonicalName)
-  const canonicalExists = await pathExists(canonicalPath)
-  if (canonicalExists && !existingRecord) throw new Error(`统一源存在未受管目录：${canonicalPath}`)
-  if (canonicalExists && await hashSkillDirectory(canonicalPath) !== source.contentHash) {
-    throw new Error(`统一源 ${canonicalName} 与所选版本内容不一致。`)
-  }
-
-  try {
-    if (!canonicalExists) {
-      await mkdir(join(dataDir, 'transactions', batchId, receiptId), { recursive: true, mode: 0o700 })
-      const stagingPath = join(dataDir, 'transactions', batchId, receiptId, 'canonical.staging')
-      await cp(source.path, stagingPath, { recursive: true, dereference: true, preserveTimestamps: true })
-      await verifyCanonicalSkill(stagingPath, source.contentHash)
-      await mkdir(dirname(canonicalPath), { recursive: true, mode: 0o700 })
-      await rename(stagingPath, canonicalPath)
-      applied.createdCanonical = true
-    }
-
-    const bindings: ManagedSkillBinding[] = [...(existingRecord?.bindings ?? [])]
-    const platforms = getBindingPlatforms(report, unit.decision, source)
-    for (const platform of platforms) {
-      const status = report.platformStatuses.find((entry) => entry.id === platform)
-      if (!status?.linkSupported) {
-        result.warnings.push(`${status?.name ?? platform} 当前不可绑定，已保留原路径。`)
-        continue
-      }
-      const linkPath = join(status.skillsDir, canonicalName)
-      if (await pathExists(linkPath)) {
-        const stat = await lstat(linkPath)
-        if (stat.isSymbolicLink() && resolve(dirname(linkPath), await readlink(linkPath)) === resolve(canonicalPath)) {
-          if (!bindings.some((binding) => binding.path === linkPath)) bindings.push({ platform, path: linkPath, target: canonicalPath })
-          continue
-        }
-        const backupPath = join(dataDir, 'backups', 'skills', batchId, receiptId, platform, `${canonicalName}.bak`)
-        result.backups.push(await moveToBackup(linkPath, backupPath))
-      }
-      await mkdir(dirname(linkPath), { recursive: true, mode: 0o700 })
-      await symlink(canonicalPath, linkPath, 'dir')
-      result.createdLinks.push(linkPath)
-      await verifyManagedLink(linkPath, canonicalPath)
-      bindings.push({ platform, path: linkPath, target: canonicalPath })
-    }
-    await verifyCanonicalSkill(canonicalPath, source.contentHash)
-    applied.record = {
-      id: existingRecord?.id ?? randomUUID(),
-      name: canonicalName,
-      canonicalPath,
-      contentHash: source.contentHash,
-      bindings: [...new Map(bindings.map((binding) => [binding.path, binding])).values()],
-      updatedAt: new Date().toISOString(),
-    }
-    return applied
-  } catch (error) {
-    result.warnings.push((error as Error).message)
-    try {
-      await rollbackUnit(applied)
-      result.status = 'rolled-back'
-    } catch (rollbackError) {
-      result.status = 'failed'
-      result.warnings.push(`自动回滚失败：${(rollbackError as Error).message}`)
-    }
-    return applied
-  }
+  return [...bindings.values()].sort((left, right) => left.platform.localeCompare(right.platform))
 }
 
 /**
@@ -278,57 +423,33 @@ export async function applySkillsBatchPlan(input: ApplySkillsPlanInput): Promise
   if (input.settingsRevision !== input.plan.settingsRevision) throw new Error('共享设置已经变化，请重新扫描。')
   const manifestBefore = await input.manifestStore.read()
   if ((manifestBefore?.revision ?? 0) !== input.plan.manifestRevision) throw new Error('Skills manifest 已经变化，请重新扫描。')
+  const suspendedPlatforms = (manifestBefore?.platformBindings ?? [])
+    .filter((binding) => binding.suspendedAt && input.plan.platformOperations.some((operation) => operation.platform === binding.platform))
+    .map((binding) => binding.platform)
+  if (suspendedPlatforms.length) throw new Error(`平台软链处于停用状态，请先恢复后再重新导入：${suspendedPlatforms.join(', ')}`)
   const report = await scanSkills(input.homeDir, input.dataDir, input.plan.platforms, input.plan.customRoots)
   if (report.fingerprint !== input.plan.detectionFingerprint) throw new Error('本地 Skill 已经变化，请重新扫描。')
-  assertSkillsPlanScope(input.plan, report)
+  assertSkillsPlanScope(input.plan, report, input.dataDir)
 
   const journalPath = join(input.dataDir, 'transactions', `${input.plan.id}.json`)
   await writeInternalJson(journalPath, { status: 'applying', plan: input.plan, startedAt: new Date().toISOString() })
-  const appliedUnits: AppliedUnit[] = []
-  for (const unit of input.plan.units) {
-    try {
-      appliedUnits.push(await applyUnit(unit, report, input.dataDir, input.plan.id, manifestBefore))
-    } catch (error) {
-      appliedUnits.push({
-        createdCanonical: false,
-        result: {
-          receiptId: randomUUID(),
-          skillName: unit.skillName,
-          status: 'failed',
-          createdLinks: [],
-          backups: [],
-          warnings: [(error as Error).message],
-        },
-      })
-    }
-  }
-
-  const successfulRecords = appliedUnits.flatMap((unit) => unit.result.status === 'applied' && unit.record ? [unit.record] : [])
-  const currentRecords = new Map((manifestBefore?.skills ?? []).map((record) => [record.name, record]))
-  for (const record of successfulRecords) currentRecords.set(record.name, record)
+  const { stagingRoot, results, records } = await buildCanonicalStaging(input.plan, report, input.dataDir, manifestBefore)
+  const appliedBatch = await switchPlatformRoots(input.plan, stagingRoot, records, input.dataDir)
   const now = new Date().toISOString()
   let manifestRevision = input.plan.manifestRevision
   try {
     const saved = await input.manifestStore.write({
-      version: 1,
+      version: 2,
       revision: input.plan.manifestRevision,
       initializedAt: manifestBefore?.initializedAt ?? now,
       lastScan: { scannedAt: report.scannedAt, fingerprint: report.fingerprint, platforms: report.platforms },
-      skills: [...currentRecords.values()].sort((left, right) => left.name.localeCompare(right.name)),
+      skills: records,
+      platformBindings: createPlatformBindings(appliedBatch.platformResults, manifestBefore?.platformBindings ?? []),
     }, input.plan.manifestRevision)
     manifestRevision = saved.revision
   } catch (error) {
-    for (const unit of [...appliedUnits].reverse()) {
-      if (unit.result.status !== 'applied') continue
-      try {
-        await rollbackUnit(unit)
-        unit.result.status = 'rolled-back'
-      } catch (rollbackError) {
-        unit.result.status = 'failed'
-        unit.result.warnings.push(`manifest 写入失败后的回滚失败：${(rollbackError as Error).message}`)
-      }
-    }
-    await writeInternalJson(journalPath, { status: 'failed', plan: input.plan, error: (error as Error).message, appliedUnits })
+    await rollbackAppliedBatch(appliedBatch, join(input.dataDir, 'skills'))
+    await writeInternalJson(journalPath, { status: 'failed', plan: input.plan, error: (error as Error).message })
     throw error
   }
 
@@ -337,32 +458,24 @@ export async function applySkillsBatchPlan(input: ApplySkillsPlanInput): Promise
     planHash: input.plan.hash,
     appliedAt: now,
     manifestRevision,
-    results: appliedUnits.map((unit) => unit.result),
+    results,
+    platformResults: appliedBatch.platformResults,
   }
-  const stored: StoredBatchReceipt = { receipt, manifestBefore, appliedUnits }
+  const stored: StoredBatchReceipt = { receipt, manifestBefore, appliedBatch }
   try {
     await writeInternalJson(journalPath, { status: 'complete', ...stored })
   } catch (error) {
     const rollbackWarnings: string[] = []
-    for (const unit of [...appliedUnits].reverse()) {
-      if (unit.result.status !== 'applied') continue
-      try {
-        await rollbackUnit(unit)
-        unit.result.status = 'rolled-back'
-      } catch (rollbackError) {
-        rollbackWarnings.push((rollbackError as Error).message)
-      }
+    try {
+      await rollbackAppliedBatch(appliedBatch, join(input.dataDir, 'skills'))
+    } catch (rollbackError) {
+      rollbackWarnings.push((rollbackError as Error).message)
     }
     try {
       if (manifestBefore) await input.manifestStore.write(manifestBefore, manifestRevision)
       else await input.manifestStore.remove(manifestRevision)
     } catch (manifestError) {
       rollbackWarnings.push((manifestError as Error).message)
-    }
-    try {
-      await writeInternalJson(journalPath, { status: 'failed', plan: input.plan, error: (error as Error).message, rollbackWarnings, appliedUnits })
-    } catch {
-      // 回执目录本身不可写时，只能将原始错误和回滚告警返回调用方。
     }
     throw new Error([`Skills 回执写入失败：${(error as Error).message}`, ...rollbackWarnings].join('\n'))
   }
@@ -386,7 +499,8 @@ export async function listSkillsReceipts(dataDir: string): Promise<SkillsBatchRe
   const receipts = await Promise.all(names.map(async (name) => {
     try {
       const stored = JSON.parse(await readFile(join(directory, name), 'utf8')) as { status?: string; receipt?: SkillsBatchReceipt }
-      return stored.status === 'complete' ? stored.receipt : undefined
+      if (stored.status !== 'complete' || !stored.receipt) return undefined
+      return { ...stored.receipt, platformResults: stored.receipt.platformResults ?? [] }
     } catch {
       return undefined
     }
@@ -395,7 +509,7 @@ export async function listSkillsReceipts(dataDir: string): Promise<SkillsBatchRe
 }
 
 /**
- * 按批次回执恢复首次接管操作。
+ * 按批次回执恢复根目录代理操作。
  * @param dataDir AskX 数据目录。
  * @param manifestStore manifest 存储。
  * @param receiptId 批次回执标识。
@@ -416,36 +530,21 @@ export async function rollbackSkillsReceipt(
   }
   if (stored.status !== 'complete') throw new Error(`Skills 回执当前不可回滚：${receiptId}`)
   const currentManifest = await manifestStore.read()
-  if ((currentManifest?.revision ?? 0) !== stored.receipt.manifestRevision) {
-    throw new Error('Skills manifest 已在该事务后发生变化，不能直接回滚。')
+  if ((currentManifest?.revision ?? 0) !== stored.receipt.manifestRevision) throw new Error('Skills manifest 已在该事务后发生变化，不能直接回滚。')
+
+  try {
+    await assertRollbackSafe(stored.appliedBatch, join(dataDir, 'skills'))
+  } catch (error) {
+    return { receiptId, rolledBack: false, restoredPaths: [], warnings: [(error as Error).message] }
   }
-  const restoredPaths: string[] = []
-  const warnings: string[] = []
-  for (const unit of [...stored.appliedUnits].reverse()) {
-    if (unit.result.status !== 'applied') continue
-    try {
-      await assertRollbackUnitSafe(unit)
-    } catch (error) {
-      warnings.push((error as Error).message)
-    }
-  }
-  if (warnings.length) return { receiptId, rolledBack: false, restoredPaths, warnings }
-  for (const unit of [...stored.appliedUnits].reverse()) {
-    if (unit.result.status !== 'applied') continue
-    try {
-      await rollbackUnit(unit)
-      restoredPaths.push(...unit.result.backups.map((backup) => backup.originalPath))
-    } catch (error) {
-      warnings.push((error as Error).message)
-      break
-    }
-  }
-  if (warnings.length) return { receiptId, rolledBack: false, restoredPaths, warnings }
-  if (stored.manifestBefore) {
-    await manifestStore.write(stored.manifestBefore, stored.receipt.manifestRevision)
-  } else {
-    await manifestStore.remove(stored.receipt.manifestRevision)
-  }
+  await rollbackAppliedBatch(stored.appliedBatch, join(dataDir, 'skills'))
+  if (stored.manifestBefore) await manifestStore.write(stored.manifestBefore, stored.receipt.manifestRevision)
+  else await manifestStore.remove(stored.receipt.manifestRevision)
   await writeInternalJson(path, { ...stored, status: 'rolled-back', rolledBackAt: new Date().toISOString() })
-  return { receiptId, rolledBack: true, restoredPaths, warnings }
+  return {
+    receiptId,
+    rolledBack: true,
+    restoredPaths: stored.appliedBatch.platformBackups.map((backup) => backup.originalPath),
+    warnings: [],
+  }
 }

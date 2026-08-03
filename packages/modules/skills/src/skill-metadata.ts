@@ -19,8 +19,14 @@ export async function readSkillMetadata(skillPath: string): Promise<SkillMetadat
     }
     const name = value('name')
     const description = value('description')
+    const version = value('version')
     if (!name) return { valid: false, error: 'SKILL.md frontmatter 缺少 name。' }
-    return { name, ...(description ? { description } : {}), valid: true }
+    return {
+      name,
+      ...(description ? { description } : {}),
+      ...(version ? { version } : {}),
+      valid: true,
+    }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       return { valid: false, error: '缺少 SKILL.md。' }

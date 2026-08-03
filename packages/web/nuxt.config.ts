@@ -68,6 +68,9 @@ export default defineNuxtConfig({
   },
   vite: {
     plugins: [tailwindcss()],
+    worker: {
+      format: 'es',
+    },
   },
   devServer: {
     host: '127.0.0.1',

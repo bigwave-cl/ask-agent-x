@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { MarkdownRenderNode, MarkdownTableAlign } from './markdownTokens'
+import RenderCodeBlock from './RenderCodeBlock.vue'
 import RenderImage from './RenderImage.vue'
 import { ScrollArea } from '@/components/ui/scroll-area'
 
@@ -72,9 +73,7 @@ function emitResolve() {
       <RenderNode :nodes="node.children" @resolve="emitResolve" />
     </del>
     <code v-else-if="node.type === 'inlineCode'">{{ node.value }}</code>
-    <ScrollArea v-else-if="node.type === 'codeBlock'" orientation="horizontal" type="auto" class="mdc-render-code" viewport-class="mdc-render-scroll-viewport">
-      <pre :data-language="node.language || undefined"><code>{{ node.value }}</code></pre>
-    </ScrollArea>
+    <RenderCodeBlock v-else-if="node.type === 'codeBlock'" :value="node.value" :language="node.language" @resolve="emitResolve" />
     <br v-else-if="node.type === 'lineBreak'" />
     <hr v-else-if="node.type === 'horizontalRule'" />
     <blockquote v-else-if="node.type === 'blockquote'">

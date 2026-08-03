@@ -1,4 +1,4 @@
-import { skillDecisionSchema, skillPlatformIdSchema } from '@askx/module-skills/skill-types'
+import { skillDecisionSchema, skillPlatformIdSchema, skillsBatchModeSchema } from '@askx/module-skills/skill-types'
 import { z } from 'zod'
 import { settingsStore } from '../../utils/settings.js'
 import { skillsManager, throwSkillsApiError } from '../../utils/skills.js'
@@ -9,6 +9,7 @@ const requestSchema = z.object({
   detectionFingerprint: z.string().min(1),
   settingsRevision: z.number().int().nonnegative(),
   decisions: z.array(skillDecisionSchema),
+  mode: skillsBatchModeSchema.default('connect'),
 })
 
 export default defineEventHandler(async (event) => {

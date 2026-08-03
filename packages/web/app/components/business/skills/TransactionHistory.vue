@@ -59,7 +59,7 @@ function formatTime(value: string): string {
           <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
             <span>{{ t('skills.transactionSkills', { count: receipt.results.length }) }}</span>
             <span>{{ t('skills.transactionApplied', { count: receipt.results.filter((result) => result.status === 'applied').length }) }}</span>
-            <span>{{ t('skills.transactionBackups', { count: receipt.results.reduce((count, result) => count + result.backups.length, 0) }) }}</span>
+            <span>{{ t('skills.transactionBackups', { count: receipt.results.reduce((count, result) => count + result.backups.length, 0) + (receipt.platformResults ?? []).filter((result) => result.backup).length }) }}</span>
           </div>
         </div>
         <div class="flex items-center justify-end gap-2">

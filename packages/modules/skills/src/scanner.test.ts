@@ -78,6 +78,19 @@ describe('scanSkills', () => {
     expect(result.groups.map((group) => group.name).sort()).toEqual(['alpha', 'beta', 'single-skill'])
   })
 
+  it('平台预设目录与自选目录使用同一目录扫描器并按绝对路径去重', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'askx-home-'))
+    const data = join(home, '.askx')
+    const platformRoot = join(home, '.codex', 'skills')
+    await writeSkill(join(platformRoot, 'demo'), 'same directory')
+
+    const result = await scanSkills(home, data, ['codex'], [platformRoot])
+
+    expect(result.customRoots).toMatchObject([{ name: 'skills', path: platformRoot }])
+    expect(result.locations).toHaveLength(1)
+    expect(result.locations[0]).toMatchObject({ platform: 'codex', name: 'demo' })
+  })
+
   it('将额外目录中的无效 Skill 保留在扫描报告中', async () => {
     const home = await mkdtemp(join(tmpdir(), 'askx-home-'))
     const data = join(home, '.askx')

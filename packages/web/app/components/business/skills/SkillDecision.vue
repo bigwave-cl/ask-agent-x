@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SkillCustomScanRoot, SkillDecision, SkillGroup, SkillLocation, SkillPlatformId } from '@askx/module-skills/skill-types'
+import type { SkillCustomScanRoot, SkillDecision, SkillGroup, SkillLocation } from '@askx/module-skills/skill-types'
 import type { AskxIconName } from '@/lib/iconCatalog'
 import type { ResponsiveSelectOption } from '@/components/common/responsive-select/types'
 import { getSkillPlatformPresentation } from '@/lib/skillPlatformPresentation'
@@ -22,8 +22,6 @@ interface Props {
   group: SkillGroup
   /** 当前用户决策。 */
   decision: SkillDecision
-  /** 默认管理平台。 */
-  platforms: SkillPlatformId[]
   /** 用户选择的额外扫描根目录。 */
   customRoots: SkillCustomScanRoot[]
 }
@@ -31,25 +29,30 @@ interface Props {
 const props = defineProps<Props>()
 const emit = defineEmits<{ /** 更新当前分组决策。 */ 'update:decision': [value: SkillDecision] }>()
 const { t } = useI18n()
-const renameName = ref(`${props.group.name}-alt`)
-const renameSourceId = ref(props.group.locations.find((location) => location.metadata.valid && !location.broken)?.id ?? '')
+/** 组件创建时的决策快照，用于稳定推导高级操作初值。 */
+const initialDecision = props.decision
+/** 首次打开高级操作时使用的重命名来源。 */
+const initialRenameSource = initialDecision.kind === 'rename-and-adopt'
+  ? props.group.locations.find(location => location.id === initialDecision.sourceLocationId)
+  : props.group.locations.find(location => location.metadata.valid && !location.broken)
+/** 重命名接管使用的目标名称，默认采用选中来源的 Skill 名称。 */
+const renameName = ref(initialDecision.kind === 'rename-and-adopt' ? initialDecision.newName : initialRenameSource?.name ?? props.group.name)
+/** 重命名接管当前选择的来源位置。 */
+const renameSourceId = ref(initialRenameSource?.id ?? '')
 /** 高级操作区域是否展开。 */
 const advancedOpen = ref(props.decision.kind === 'rename-and-adopt')
 /** 可用于重命名接管的来源选项。 */
 const renameSourceOptions = computed<ResponsiveSelectOption[]>(() => props.group.locations
   .filter((location) => location.metadata.valid && !location.broken)
-  .map((location) => ({ value: location.id, label: `${locationSourceName(location)} · ${location.name}` })))
+  .map((location) => ({ value: location.id, label: location.name, description: locationSourceName(location) })))
 /** 当前选择的重命名来源。 */
 const selectedRenameSource = computed(() => findLocation(renameSourceId.value))
-/** 可以进入备份区的平台副本；额外扫描目录始终保持只读。 */
-const archivableLocations = computed(() => props.group.locations.filter((location) => location.platform !== 'custom'))
 /** 当前分组允许直接选择的修改状态。 */
 const decisionOptions = computed<ResponsiveSelectOption[]>(() => {
   const kinds: SkillDecision['kind'][] = []
   if (props.group.status === 'unique') kinds.push('adopt')
   if (props.group.status === 'identical') kinds.push('merge')
   kinds.push('keep')
-  if (archivableLocations.value.length) kinds.push('archive')
   if (!kinds.includes(props.decision.kind)) kinds.unshift(props.decision.kind)
 
   return kinds.map((kind) => {
@@ -125,14 +128,12 @@ function renameSourcePlatformName(locationId: string): string {
 }
 
 /**
- * 返回重命名来源的次级信息。
+ * 返回重命名来源的 Skill 名称。
  * @param locationId 扫描位置标识。
- * @returns 自选来源返回根目录路径，平台来源返回 Skill 名称。
+ * @returns 扫描位置中的 Skill 目录名称。
  */
-function renameSourceDescription(locationId: string): string {
-  const location = findLocation(locationId)
-  if (!location) return ''
-  return locationSourcePath(location) ?? location.name
+function renameSourceSkillName(locationId: string): string {
+  return findLocation(locationId)?.name ?? ''
 }
 
 /**
@@ -176,47 +177,41 @@ function updateDecisionKind(kind: string | undefined): void {
     emit('update:decision', { kind: 'keep', groupId: props.group.id })
     return
   }
-  if (kind === 'archive' && archivableLocations.value.length) {
-    emit('update:decision', { kind: 'archive', locationIds: archivableLocations.value.map((location) => location.id) })
-  }
 }
 
 /** 选择接管或合并。 */
 function selectCanonical(kind: 'adopt' | 'merge'): void {
   const source = props.group.locations.find((location) => location.metadata.valid && !location.broken)
-  if (source) emit('update:decision', { kind, sourceLocationId: source.id, platforms: props.platforms })
+  if (source) emit('update:decision', { kind, sourceLocationId: source.id })
 }
 
 /** 选择某个冲突版本覆盖其他副本。 */
 function selectReplacement(sourceLocationId: string): void {
+  renameSourceId.value = sourceLocationId
   const targetLocationIds = props.group.locations
     .filter((location) => location.id !== sourceLocationId && location.platform !== 'custom')
     .map((location) => location.id)
   emit('update:decision', targetLocationIds.length
     ? { kind: 'replace', sourceLocationId, targetLocationIds }
-    : { kind: 'adopt', sourceLocationId, platforms: props.platforms })
+    : { kind: 'adopt', sourceLocationId })
 }
 
 /** 更新重命名接管决策。 */
 function updateRename(): void {
   if (!renameSourceId.value || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(renameName.value)) return
-  emit('update:decision', { kind: 'rename-and-adopt', sourceLocationId: renameSourceId.value, newName: renameName.value, platforms: props.platforms })
+  emit('update:decision', { kind: 'rename-and-adopt', sourceLocationId: renameSourceId.value, newName: renameName.value })
 }
 
 watch(() => props.decision.kind, (kind) => {
   if (kind === 'rename-and-adopt') advancedOpen.value = true
 })
 
-/**
- * 切换一个待移入备份区的平台副本。
- * @param locationId 扫描位置标识。
- * @param selected 是否选中。
- */
-function toggleArchiveLocation(locationId: string, selected: boolean): void {
-  const current = props.decision.kind === 'archive' ? props.decision.locationIds : archivableLocations.value.map((location) => location.id)
-  const next = selected ? [...new Set([...current, locationId])] : current.filter((id) => id !== locationId)
-  emit('update:decision', next.length ? { kind: 'archive', locationIds: next } : { kind: 'keep', groupId: props.group.id })
-}
+watch(renameSourceId, (locationId) => {
+  const location = findLocation(locationId)
+  if (!location) return
+  renameName.value = location.name
+}, { flush: 'sync' })
+
 </script>
 
 <template>
@@ -290,9 +285,11 @@ function toggleArchiveLocation(locationId: string, selected: boolean): void {
           :aria-pressed="(decision.kind === 'replace' || decision.kind === 'adopt') && decision.sourceLocationId === location.id"
           @click="selectReplacement(location.id)"
         >
-          <span class="flex items-center gap-1.5"><Icon :name="getSkillPlatformPresentation(location.platform).icon" class="size-4 shrink-0" aria-hidden="true" /><strong class="block truncate">{{ locationSourceName(location) }}</strong></span>
-          <span v-if="locationSourcePath(location)" class="mt-0.5 block truncate font-mono text-[9px] leading-3 text-muted-foreground" :title="locationSourcePath(location)">{{ locationSourcePath(location) }}</span>
-          <span class="mt-0.5 block font-mono text-[10px] leading-4 text-muted-foreground">{{ location.contentHash?.slice(0, 12) }}</span>
+          <span class="flex items-center gap-1.5"><Icon :name="getSkillPlatformPresentation(location.platform).icon" class="size-4 shrink-0" aria-hidden="true" /><strong class="block truncate">{{ location.name }}</strong></span>
+          <span class="mt-0.5 flex min-w-0 items-center justify-between gap-2 pl-5 text-[10px] leading-4 text-muted-foreground">
+            <span class="truncate" :title="locationSourcePath(location) ?? locationSourceName(location)">{{ locationSourceName(location) }}</span>
+            <span class="shrink-0 font-mono text-[9px] text-muted-foreground/70">{{ location.contentHash?.slice(0, 8) }}</span>
+          </span>
           <span
             v-if="(decision.kind === 'replace' || decision.kind === 'adopt') && decision.sourceLocationId === location.id"
             class="absolute right-0 top-0 grid size-7 origin-top-right place-items-center rounded-bl-xl bg-ds-brand-default text-ds-text-white shadow-sm animate-in fade-in zoom-in-50 duration-200"
@@ -340,7 +337,10 @@ function toggleArchiveLocation(locationId: string, selected: boolean): void {
               <template #value>
                 <span v-if="selectedRenameSource" class="flex min-w-0 items-center gap-2 text-left">
                   <Icon :name="getSkillPlatformPresentation(selectedRenameSource.platform).icon" class="size-4 shrink-0 text-foreground" aria-hidden="true" />
-                  <span class="truncate text-xs font-medium text-foreground">{{ locationSourceName(selectedRenameSource) }}</span>
+                  <span class="grid min-w-0 flex-1 leading-none">
+                    <strong class="truncate text-xs font-medium text-foreground">{{ selectedRenameSource.name }}</strong>
+                    <span class="mt-1 truncate text-[9px] text-muted-foreground">{{ locationSourceName(selectedRenameSource) }}</span>
+                  </span>
                 </span>
               </template>
               <template #item="{ option }">
@@ -349,8 +349,8 @@ function toggleArchiveLocation(locationId: string, selected: boolean): void {
                     <Icon :name="renameSourceIcon(option.value)" class="size-4" aria-hidden="true" />
                   </span>
                   <span class="grid min-w-0 flex-1 gap-0.5">
-                    <strong class="truncate text-xs font-medium text-foreground">{{ renameSourcePlatformName(option.value) }}</strong>
-                    <span class="truncate text-[10px] leading-4 text-muted-foreground" :title="renameSourceDescription(option.value)">{{ renameSourceDescription(option.value) }}</span>
+                    <strong class="truncate text-xs font-medium text-foreground">{{ renameSourceSkillName(option.value) }}</strong>
+                    <span class="truncate text-[10px] leading-4 text-muted-foreground">{{ renameSourcePlatformName(option.value) }}</span>
                   </span>
                 </span>
               </template>
@@ -376,10 +376,5 @@ function toggleArchiveLocation(locationId: string, selected: boolean): void {
       </div>
     </section>
 
-    <div v-if="decision.kind === 'archive'" class="border-t border-destructive/20 bg-destructive/5 px-4 py-4 sm:px-5">
-      <p class="flex items-center gap-2 text-xs text-destructive"><Icon name="askx-status:warning" class="size-3.5" />{{ t('skills.archiveHint') }}</p>
-      <p class="mt-3 text-xs font-medium">{{ t('skills.chooseArchiveCopies') }}</p>
-      <div class="mt-2 grid gap-2 sm:grid-cols-3"><label v-for="location in archivableLocations" :key="location.id" class="flex cursor-pointer items-center gap-2 rounded-lg border bg-background p-3 text-xs"><Checkbox :model-value="decision.locationIds.includes(location.id)" @update:model-value="toggleArchiveLocation(location.id, Boolean($event))" /><span><span class="flex items-center gap-2"><Icon :name="getSkillPlatformPresentation(location.platform).icon" class="size-4 shrink-0" aria-hidden="true" /><strong class="block">{{ locationSourceName(location) }}</strong></span><span class="mt-0.5 block text-muted-foreground">{{ location.name }}</span></span></label></div>
-    </div>
   </article>
 </template>

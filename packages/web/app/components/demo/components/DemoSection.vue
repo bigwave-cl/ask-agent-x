@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Ref } from 'vue'
 import { Button } from '@/components/ui/button'
+import { scrollDemoSectionIntoView } from '@/lib/demoSectionScroll'
 
 defineOptions({ name: 'DemoSection' })
 
@@ -43,27 +44,13 @@ function clearCorrectionTimers() {
   correctionTimers.splice(0).forEach(timer => clearTimeout(timer))
 }
 
-function scrollElementToTop(element: HTMLElement, behavior: ScrollBehavior) {
-  const viewport = scrollViewport.value
-  if (!viewport) {
-    element.scrollIntoView({ block: 'start', behavior })
-    return
-  }
-  const viewportRect = viewport.getBoundingClientRect()
-  const elementRect = element.getBoundingClientRect()
-  viewport.scrollTo({
-    top: viewport.scrollTop + elementRect.top - viewportRect.top - 20,
-    behavior,
-  })
-}
-
 function scrollToSection() {
   if (!import.meta.client) return
   clearCorrectionTimers()
   nextTick(() => {
-    ;[0, 100, 240].forEach((delay, index, delays) => {
+    ;[0, 120, 360].forEach((delay, index, delays) => {
       correctionTimers.push(setTimeout(() => {
-        if (sectionRef.value) scrollElementToTop(sectionRef.value, 'auto')
+        if (sectionRef.value) scrollDemoSectionIntoView(scrollViewport.value, sectionRef.value)
         if (index === delays.length - 1) notifyDemoSecKeyReady(props.secKey)
       }, delay))
     })

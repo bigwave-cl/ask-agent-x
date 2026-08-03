@@ -15,11 +15,15 @@
     "./skill-types": {
       "types": "./dist/skill-types.d.ts",
       "import": "./dist/skill-types.js"
+    },
+    "./canonical-source-manager": {
+      "types": "./dist/canonical-source-manager.d.ts",
+      "import": "./dist/canonical-source-manager.js"
     }
   },
   "scripts": {
-    "build": "tsup src/skills-module.ts src/scanner.ts src/skill-types.ts --format esm --dts --clean",
-    "dev": "tsup src/skills-module.ts src/scanner.ts src/skill-types.ts --format esm --dts --watch",
+    "build": "tsup src/skills-module.ts src/scanner.ts src/skill-types.ts src/canonical-source-manager.ts --format esm --dts --clean",
+    "dev": "tsup src/skills-module.ts src/scanner.ts src/skill-types.ts src/canonical-source-manager.ts --format esm --dts --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

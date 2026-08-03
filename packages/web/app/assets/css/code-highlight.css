@@ -1,0 +1,92 @@
+/* Highlight.js 语义颜色统一映射到 AskX DS token。 */
+@layer project {
+  .hljs {
+    color: var(--ds-color-text-secondary);
+  }
+
+  .hljs-comment,
+  .hljs-quote {
+    color: var(--ds-color-code-comment);
+    font-style: italic;
+  }
+
+  .hljs-keyword,
+  .hljs-selector-tag,
+  .hljs-literal,
+  .hljs-doctag {
+    color: var(--ds-color-code-keyword);
+    font-weight: 600;
+  }
+
+  .hljs-string,
+  .hljs-regexp,
+  .hljs-template-tag,
+  .hljs-template-variable {
+    color: var(--ds-color-code-string);
+  }
+
+  .hljs-number,
+  .hljs-symbol,
+  .hljs-bullet {
+    color: var(--ds-color-code-number);
+  }
+
+  .hljs-title,
+  .hljs-section,
+  .hljs-selector-id,
+  .hljs-selector-class {
+    color: var(--ds-color-code-title);
+    font-weight: 600;
+  }
+
+  .hljs-attr,
+  .hljs-attribute,
+  .hljs-variable,
+  .hljs-type,
+  .hljs-built_in {
+    color: var(--ds-color-code-attribute);
+  }
+
+  .hljs-meta,
+  .hljs-meta .hljs-keyword,
+  .hljs-tag,
+  .hljs-punctuation,
+  .hljs-operator {
+    color: var(--ds-color-code-meta);
+  }
+
+  .hljs-name {
+    color: var(--ds-color-code-keyword);
+    font-weight: 600;
+  }
+
+  .hljs-tag.hljs-attr {
+    color: var(--ds-color-code-attribute);
+  }
+
+  .hljs-tag.hljs-string {
+    color: var(--ds-color-code-string);
+  }
+
+  .hljs-link {
+    color: var(--ds-color-text-brand);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .hljs-addition {
+    color: var(--ds-color-code-addition);
+  }
+
+  .hljs-deletion {
+    color: var(--ds-color-code-deletion);
+  }
+
+  .hljs-emphasis {
+    font-style: italic;
+  }
+
+  .hljs-strong {
+    font-weight: 700;
+  }
+}

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SkillDecision, SkillGroup, SkillPlatformId, SkillsScanReport } from '@askx/module-skills/skill-types'
+import type { SkillDecision, SkillGroup, SkillsBatchMode, SkillsScanReport } from '@askx/module-skills/skill-types'
 import Tabs from '@/components/ui/tabs/Tabs.vue'
 import TabsList from '@/components/ui/tabs/TabsList.vue'
 import TabsTrigger from '@/components/ui/tabs/TabsTrigger.vue'
@@ -23,8 +23,8 @@ interface Props {
   report: SkillsScanReport
   /** 每个分组的当前决策。 */
   decisions: SkillDecision[]
-  /** 当前管理平台。 */
-  platforms: SkillPlatformId[]
+  /** 当前是平台接入还是只同步统一源。 */
+  mode: SkillsBatchMode
 }
 
 const props = defineProps<Props>()
@@ -111,8 +111,8 @@ const visibleGroups = computed<SkillGroup[]>(() => {
       <header class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
         <div class="min-w-0">
           <Badge variant="secondary" class="mb-3 gap-1.5"><Icon name="askx-status:check" class="size-3.5" />{{ t('skills.safeRead') }}</Badge>
-          <h2 class="text-2xl font-semibold tracking-[-0.03em] sm:text-3xl">{{ t('skills.scanTitle') }}</h2>
-          <p class="mt-2 text-sm leading-6 text-muted-foreground">{{ t('skills.scanDescription') }}</p>
+          <h2 class="text-2xl font-semibold tracking-[-0.03em] sm:text-3xl">{{ t(mode === 'sync' ? 'skills.syncScanTitle' : 'skills.scanTitle') }}</h2>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">{{ t(mode === 'sync' ? 'skills.syncScanDescription' : 'skills.scanDescription') }}</p>
         </div>
         <Button variant="outline" size="40" class="justify-self-start sm:justify-self-end" @click="emit('rescan')"><Icon name="askx-actions:refresh" />{{ t('skills.rescan') }}</Button>
       </header>
@@ -139,11 +139,10 @@ const visibleGroups = computed<SkillGroup[]>(() => {
           :key="group.id"
           :group="group"
           :decision="groupDecision(group)"
-          :platforms="platforms"
           :custom-roots="report.customRoots"
           @update:decision="emit('update-decision', group.id, $event)"
         />
-        <div v-if="!report.groups.length" class="p-8 text-center"><Icon name="askx-objects:skills" class="mx-auto size-8 text-primary" /><h3 class="mt-4 font-semibold">{{ t('skills.noFilesFound') }}</h3><p class="mt-2 text-sm text-muted-foreground">{{ t('skills.noFilesDescription') }}</p></div>
+        <div v-if="!report.groups.length" class="p-8 text-center"><Icon name="askx-objects:skills" class="mx-auto size-8 text-primary" /><h3 class="mt-4 font-semibold">{{ t('skills.noFilesFound') }}</h3><p class="mt-2 text-sm text-muted-foreground">{{ t(mode === 'sync' ? 'skills.noSyncFilesDescription' : 'skills.noFilesDescription') }}</p></div>
         <div v-else-if="!visibleGroups.length" class="p-8 text-center"><Icon name="askx-actions:search" class="mx-auto size-7 text-muted-foreground" /><h3 class="mt-3 font-semibold">{{ t('skills.noMatchingSkills') }}</h3><p class="mt-1 text-xs text-muted-foreground">{{ t('skills.noMatchingSkillsDescription') }}</p></div>
       </section>
     </div>

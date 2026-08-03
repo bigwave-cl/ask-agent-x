@@ -10,11 +10,12 @@ describe('SkillsManifestStore', () => {
     const store = new SkillsManifestStore(dataDir)
     const now = new Date().toISOString()
     const saved = await store.write({
-      version: 1,
+      version: 2,
       revision: 0,
       initializedAt: now,
       lastScan: { scannedAt: now, fingerprint: 'fingerprint', platforms: ['codex'] },
       skills: [],
+      platformBindings: [],
     }, 0)
 
     expect(saved.revision).toBe(1)

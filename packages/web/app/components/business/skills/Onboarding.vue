@@ -3,7 +3,11 @@ import type { AskXConfig, RollbackResult } from '@askx/core'
 import type {
   SkillDecision,
   SkillGroup,
+  PlatformLinkAction,
+  PlatformLinkPlan,
+  PlatformLinkReceipt,
   SkillPlatformId,
+  SkillsBatchMode,
   SkillsBatchPlan,
   SkillsBatchReceipt,
   SkillsBootstrap,
@@ -28,6 +32,8 @@ const SKILLS_REQUEST_ERROR_TOAST_ID = 'skills-request-error'
 type SkillsViewState = 'loading' | 'platforms' | 'scan' | 'confirm' | 'result' | 'dashboard'
 
 const state = ref<SkillsViewState>('loading')
+/** 当前引导是接入平台还是只同步单个平台内容。 */
+const flowMode = ref<SkillsBatchMode>('connect')
 const bootstrap = ref<SkillsBootstrap | null>(null)
 const selectedPlatforms = ref<SkillPlatformId[]>(['codex', 'claude', 'cursor'])
 /** 用户通过系统窗口额外选择的扫描目录。 */
@@ -41,13 +47,20 @@ const busy = ref(false)
 /** 系统原生目录窗口是否正在等待用户选择。 */
 const pickingDirectories = ref(false)
 const setupOpen = ref(false)
+/** 当前等待用户确认的平台软链计划。 */
+const platformLinkPlan = ref<PlatformLinkPlan | null>(null)
+/** 平台软链确认弹层是否打开。 */
+const platformLinkActionOpen = ref(false)
 
 /** 当前三步位置。 */
 const activeStep = computed(() => state.value === 'platforms' ? 0 : state.value === 'scan' ? 1 : 2)
 /** 顶部步骤文案。 */
 const stepLabels = computed(() => [t('skills.stepPlatform'), t('skills.stepScan'), t('skills.stepConfirm')])
 /** 当前引导弹层标题。 */
-const setupTitle = computed(() => state.value === 'result' ? t('skills.resultTitle') : t('skills.setupDialogTitle'))
+const setupTitle = computed(() => {
+  if (state.value === 'result') return t(flowMode.value === 'sync' ? 'skills.syncResultTitle' : 'skills.resultTitle')
+  return t(flowMode.value === 'sync' ? 'skills.syncDialogTitle' : 'skills.setupDialogTitle')
+})
 
 /** 将服务端错误收口为当前路由语言的文案。 */
 function localizedRequestError(error: unknown, fallback = 'requestFailed'): string {
@@ -72,8 +85,8 @@ function notifyRequestError(error: unknown, fallback = 'requestFailed'): void {
 /** 为分组创建安全的默认决策。 */
 function defaultDecision(group: SkillGroup): SkillDecision {
   const source = group.locations.find((location) => location.metadata.valid && !location.broken)
-  if (group.recommendedAction === 'adopt' && source) return { kind: 'adopt', sourceLocationId: source.id, platforms: selectedPlatforms.value }
-  if (group.recommendedAction === 'merge' && source) return { kind: 'merge', sourceLocationId: source.id, platforms: selectedPlatforms.value }
+  if (group.recommendedAction === 'adopt' && source) return { kind: 'adopt', sourceLocationId: source.id }
+  if (group.recommendedAction === 'merge' && source) return { kind: 'merge', sourceLocationId: source.id }
   return { kind: 'keep', groupId: group.id }
 }
 
@@ -131,12 +144,23 @@ async function loadHistory(): Promise<void> {
   history.value = await $fetch<SkillsBatchReceipt[]>('/api/skills/history')
 }
 
+/** 文件更新后刷新 manifest 和只读扫描状态，不离开管理页面。 */
+async function refreshManagedResources(): Promise<void> {
+  try {
+    bootstrap.value = await $fetch<SkillsBootstrap>('/api/skills/bootstrap')
+    await scan(false)
+  } catch (error) {
+    notifyRequestError(error, 'loadFailed')
+  }
+}
+
 /** 保存平台范围并执行扫描。 */
 async function startFirstScan(): Promise<void> {
   if (!props.settings || !selectedPlatforms.value.length) return
   busy.value = true
   clearRequestError()
   try {
+    flowMode.value = 'connect'
     let current = props.settings
     const changed = current.skills.platforms.join(',') !== selectedPlatforms.value.join(',')
     if (changed) {
@@ -191,7 +215,8 @@ async function preparePlan(): Promise<void> {
   busy.value = true
   clearRequestError()
   try {
-    plan.value = await $fetch<SkillsBatchPlan>('/api/skills/plan', {
+    /** 后端基于最新扫描生成的目录级接管计划。 */
+    const nextPlan = await $fetch<SkillsBatchPlan>('/api/skills/plan', {
       method: 'POST',
       body: {
         platforms: selectedPlatforms.value,
@@ -199,8 +224,11 @@ async function preparePlan(): Promise<void> {
         detectionFingerprint: report.value.fingerprint,
         settingsRevision: props.settings.revision,
         decisions: decisions.value,
+        mode: flowMode.value,
       },
     })
+    if (!Array.isArray(nextPlan.platformOperations)) throw new Error('Skills 服务仍在使用旧版逐 Skill 链接计划，请重启本地开发服务。')
+    plan.value = nextPlan
     state.value = 'confirm'
   } catch (error) {
     notifyRequestError(error)
@@ -269,13 +297,112 @@ async function rescanForManagement(): Promise<void> {
 }
 
 /** 从列表页打开初始化或重新扫描流程。 */
-async function openSetup(): Promise<void> {
-  if (!bootstrap.value?.initialized) {
-    state.value = 'platforms'
+function openSetup(): void {
+  flowMode.value = 'connect'
+  selectedPlatforms.value = [...(props.settings?.skills.platforms ?? ['codex', 'claude', 'cursor'])]
+  selectedDirectories.value = []
+  report.value = null
+  decisions.value = []
+  plan.value = null
+  receipt.value = null
+  state.value = 'platforms'
+  setupOpen.value = true
+}
+
+/**
+ * 只扫描并导入一个平台，其他平台保持当前状态。
+ * @param platform 要重试或首次导入的平台。
+ */
+async function openPlatformImport(platform: SkillPlatformId): Promise<void> {
+  busy.value = true
+  clearRequestError()
+  selectedPlatforms.value = [platform]
+  selectedDirectories.value = []
+  flowMode.value = 'connect'
+  try {
+    await scan(true)
     setupOpen.value = true
-    return
+  } catch (error) {
+    notifyRequestError(error)
+  } finally {
+    busy.value = false
   }
-  await rescanForManagement()
+}
+
+/**
+ * 扫描一个平台并进入只更新统一源的同步流程。
+ * @param platform 要同步到 AskX 统一源的平台。
+ */
+async function openPlatformSync(platform: SkillPlatformId): Promise<void> {
+  busy.value = true
+  clearRequestError()
+  selectedPlatforms.value = [platform]
+  selectedDirectories.value = []
+  flowMode.value = 'sync'
+  plan.value = null
+  receipt.value = null
+  try {
+    await scan(true)
+    setupOpen.value = true
+  } catch (error) {
+    notifyRequestError(error)
+  } finally {
+    busy.value = false
+  }
+}
+
+/** 从决策页返回平台选择，并切换回平台接入流程。 */
+function backToPlatformSelection(): void {
+  flowMode.value = 'connect'
+  selectedPlatforms.value = [...(props.settings?.skills.platforms ?? ['codex', 'claude', 'cursor'])]
+  selectedDirectories.value = []
+  state.value = 'platforms'
+}
+
+/**
+ * 生成一个平台软链停用或恢复计划并展示确认弹层。
+ * @param platform 目标平台。
+ * @param action 停用或恢复操作。
+ */
+async function preparePlatformLinkAction(platform: SkillPlatformId, action: PlatformLinkAction): Promise<void> {
+  busy.value = true
+  clearRequestError()
+  try {
+    platformLinkPlan.value = await $fetch<PlatformLinkPlan>('/api/skills/platform-link/plan', {
+      method: 'POST',
+      body: { platform, action },
+    })
+    platformLinkActionOpen.value = true
+  } catch (error) {
+    notifyRequestError(error, 'platformLinkActionFailed')
+  } finally {
+    busy.value = false
+  }
+}
+
+/** 应用当前已展示并确认的平台软链计划。 */
+async function applyPlatformLinkAction(): Promise<void> {
+  if (!platformLinkPlan.value) return
+  busy.value = true
+  clearRequestError()
+  const currentPlan = platformLinkPlan.value
+  try {
+    const result = await $fetch<PlatformLinkReceipt>('/api/skills/platform-link/apply', {
+      method: 'POST',
+      body: {
+        plan: currentPlan,
+        consent: { planHash: currentPlan.hash, confirmedAt: new Date().toISOString() },
+      },
+    })
+    bootstrap.value = await $fetch<SkillsBootstrap>('/api/skills/bootstrap')
+    platformLinkActionOpen.value = false
+    platformLinkPlan.value = null
+    toast.success(t(result.action === 'resume' ? 'skills.platformLinkResumed' : 'skills.platformLinkSuspended'))
+  } catch (error) {
+    notifyRequestError(error, 'platformLinkActionFailed')
+  } finally {
+    busy.value = false
+  }
 }
 
 /** 关闭引导后回到稳定的列表页状态。 */
@@ -303,11 +430,18 @@ onMounted(loadBootstrap)
 
     <div v-if="state === 'loading' || !bootstrap" class="grid gap-4"><Skeleton class="h-72 rounded-[28px]" /><div class="grid gap-4 sm:grid-cols-3"><Skeleton v-for="index in 3" :key="index" class="h-32 rounded-2xl" /></div></div>
     <template v-else>
-      <BusSkillsOverview :bootstrap="bootstrap" :configured-platforms="selectedPlatforms" :busy="busy" @action="openSetup" />
+      <BusSkillsOverview
+        :bootstrap="bootstrap"
+        :configured-platforms="props.settings?.skills.platforms ?? selectedPlatforms"
+        :busy="busy"
+        @action="openSetup"
+        @platform-action="openPlatformImport"
+        @platform-sync="openPlatformSync"
+        @platform-link-action="preparePlatformLinkAction"
+      />
 
       <template v-if="bootstrap.initialized && report">
-        <BusSkillsEmptyState v-if="!bootstrap.managedSkills.length && !report.groups.length" :initialized="true" @action="openSetup" />
-        <BusSkillsSkillList v-else :managed-skills="bootstrap.managedSkills" :health="bootstrap.managedHealth" :report="report" @scan="openSetup" />
+        <BusSkillsSkillList :managed-skills="bootstrap.managedSkills" :health="bootstrap.managedHealth" :platform-health="bootstrap.platformHealth ?? []" :report="report" :busy="busy" @scan="openSetup" @updated="refreshManagedResources" />
         <BusSkillsTransactionHistory :receipts="history" :busy="busy" @rollback="rollbackTransaction" />
       </template>
       <BusSkillsEmptyState v-else :initialized="false" @action="openSetup" />
@@ -315,7 +449,7 @@ onMounted(loadBootstrap)
       <CsResponsiveOverlayDialogDrawer
         v-model:open="setupOpen"
         :title="setupTitle"
-        :description="t('skills.setupDialogDescription')"
+        :description="t(flowMode === 'sync' ? 'skills.syncDialogDescription' : 'skills.setupDialogDescription')"
         :dismissible="!busy"
         :show-header="state !== 'result'"
         :close-disabled="busy"
@@ -350,9 +484,9 @@ onMounted(loadBootstrap)
           @select-directories="selectDirectories"
           @remove-directory="removeDirectory"
         />
-        <BusSkillsScanResult v-else-if="state === 'scan' && report" :report="report" :decisions="decisions" :platforms="selectedPlatforms" @update-decision="updateDecision" @rescan="rescanForManagement" />
+        <BusSkillsScanResult v-else-if="state === 'scan' && report" :report="report" :decisions="decisions" :mode="flowMode" @update-decision="updateDecision" @rescan="rescanForManagement" />
         <BusSkillsActionConfirmation v-else-if="state === 'confirm' && plan" :plan="plan" />
-        <BusSkillsExecutionResult v-else-if="state === 'result' && receipt" :receipt="receipt" />
+        <BusSkillsExecutionResult v-else-if="state === 'result' && receipt" :receipt="receipt" :mode="flowMode" />
 
         <template #footer>
           <template v-if="state === 'platforms'">
@@ -365,13 +499,13 @@ onMounted(loadBootstrap)
           </template>
 
           <template v-else-if="state === 'scan'">
-            <Button variant="ghost" size="40" @click="state = 'platforms'"><Icon name="askx-navigation:arrow-left" />{{ t('skills.back') }}</Button>
+            <Button variant="ghost" size="40" @click="backToPlatformSelection"><Icon name="askx-navigation:arrow-left" />{{ t('skills.back') }}</Button>
             <Button size="40" :disabled="busy" @click="preparePlan"><Icon name="askx-navigation:arrow-right" />{{ busy ? t('skills.preparing') : t('skills.preparePlan') }}</Button>
           </template>
 
           <template v-else-if="state === 'confirm'">
             <Button variant="ghost" size="40" :disabled="busy" @click="state = 'scan'"><Icon name="askx-navigation:arrow-left" />{{ t('skills.back') }}</Button>
-            <Button size="48" :disabled="busy" @click="applyPlan"><Icon name="askx-status:loading" :class="{ 'animate-spin': busy }" />{{ busy ? t('skills.applying') : t('skills.apply') }}</Button>
+            <Button size="48" :disabled="busy" @click="applyPlan"><Icon name="askx-status:loading" :class="{ 'animate-spin': busy }" />{{ busy ? t(flowMode === 'sync' ? 'skills.syncApplying' : 'skills.applying') : t(flowMode === 'sync' ? 'skills.saveSyncResult' : 'skills.apply') }}</Button>
           </template>
 
           <template v-else-if="state === 'result'">
@@ -380,6 +514,13 @@ onMounted(loadBootstrap)
           </template>
         </template>
       </CsResponsiveOverlayDialogDrawer>
+
+      <BusSkillsPlatformLinkAction
+        v-model:open="platformLinkActionOpen"
+        :plan="platformLinkPlan"
+        :busy="busy"
+        @confirm="applyPlatformLinkAction"
+      />
     </template>
   </div>
 </template>

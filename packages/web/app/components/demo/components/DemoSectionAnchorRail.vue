@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Ref } from 'vue'
 import { Button } from '@/components/ui/button'
+import { scrollDemoSectionIntoView } from '@/lib/demoSectionScroll'
 
 defineOptions({ name: 'DemoSectionAnchorRail' })
 
@@ -19,6 +20,8 @@ const activeSecKeys = ref<string[]>([])
 const hoveredSecKey = ref('')
 const scrollViewport = inject<Readonly<Ref<HTMLElement | null>>>('demoScrollViewport', ref(null))
 let observedViewport: HTMLElement | null = null
+/** 折叠 Section 展开后的滚动校正任务。 */
+const anchorCorrectionTimers: ReturnType<typeof setTimeout>[] = []
 
 function sectionElement(secKey: string) {
   return document.getElementById(secKey)
@@ -56,11 +59,26 @@ async function setSecKey(secKey?: string) {
   await router.replace({ path: route.path, query })
 }
 
+/** 清理尚未执行的锚点滚动校正。 */
+function clearAnchorCorrectionTimers(): void {
+  anchorCorrectionTimers.splice(0).forEach(timer => clearTimeout(timer))
+}
+
+/** 将查询参数和 ScrollArea 共同定位到指定 Section。 */
 async function scrollToAnchor(secKey: string) {
+  clearAnchorCorrectionTimers()
   activeSecKeys.value = [secKey]
   await setSecKey(secKey)
   await nextTick()
-  sectionElement(secKey)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const element = sectionElement(secKey)
+  if (!element) return
+  scrollDemoSectionIntoView(scrollViewport.value, element, { behavior: 'smooth' })
+  ;[360, 720].forEach((delay) => {
+    anchorCorrectionTimers.push(setTimeout(() => {
+      const expandedElement = sectionElement(secKey)
+      if (expandedElement) scrollDemoSectionIntoView(scrollViewport.value, expandedElement)
+    }, delay))
+  })
 }
 
 async function scrollToTop() {
@@ -80,6 +98,7 @@ onMounted(() => {
   window.addEventListener('resize', updateActiveSections)
 })
 onBeforeUnmount(() => {
+  clearAnchorCorrectionTimers()
   observedViewport?.removeEventListener('scroll', updateActiveSections)
   window.removeEventListener('resize', updateActiveSections)
 })

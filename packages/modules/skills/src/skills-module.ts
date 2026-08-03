@@ -10,19 +10,92 @@ import {
   type RollbackResult,
   type UserConsent,
 } from '@askx/core'
+import {
+  applyCanonicalSourceMutationPlan,
+  createCanonicalSourceMutationPlan,
+  listCanonicalSkillsBackups,
+  type CanonicalSkillsBackup,
+  type CanonicalSourceAction,
+  type CanonicalSourceMutationPlan,
+  type CanonicalSourceMutationReceipt,
+} from './canonical-source-manager.js'
 import { applySkillsBatchPlan, listSkillsReceipts, rollbackSkillsReceipt } from './skills-executor.js'
+import { applySkillFileUpdatePlan, createSkillFileUpdatePlan, inspectManagedSkillDetail, readManagedSkillFile } from './skill-file-manager.js'
 import { SkillsManifestStore } from './manifest-store.js'
+import { applyPlatformLinkPlan, createPlatformLinkPlan } from './platform-link-manager.js'
 import { detectSkillPlatforms, scanSkills, supportedSkillPlatforms } from './scanner.js'
 import { createSkillsBatchPlan } from './skills-planner.js'
-import { inspectManagedSkill } from './skills-verifier.js'
+import { inspectManagedPlatformBinding, inspectManagedSkill } from './skills-verifier.js'
 import type {
+  ManagedPlatformBinding,
+  ManagedPlatformHealth,
+  PlatformLinkAction,
+  PlatformLinkPlan,
+  PlatformLinkReceipt,
+  PlatformBindingResult,
+  ManagedSkillDetail,
+  ManagedSkillFile,
   SkillDecision,
+  SkillFileUpdatePlan,
+  SkillFileUpdateReceipt,
+  SkillBackupMove,
+  SkillsBatchMode,
   SkillPlatformId,
   SkillsBatchPlan,
   SkillsBatchReceipt,
   SkillsBootstrap,
   SkillsScanReport,
 } from './skill-types.js'
+
+/** 最近一次平台接入结果及发生时间。 */
+interface LatestPlatformAttempt {
+  /** 平台接入结果。 */
+  result: PlatformBindingResult
+  /** 批次完成时间。 */
+  attemptedAt: string
+}
+
+/**
+ * 从事务回执中提取每个平台最近一次接入结果。
+ * @param receipts 已按时间倒序排列的事务回执。
+ * @returns 平台到最近一次尝试的映射。
+ */
+function collectLatestPlatformAttempts(receipts: SkillsBatchReceipt[]): Map<SkillPlatformId, LatestPlatformAttempt> {
+  const attempts = new Map<SkillPlatformId, LatestPlatformAttempt>()
+  for (const receipt of receipts) {
+    for (const result of receipt.platformResults) {
+      if (!attempts.has(result.platform)) attempts.set(result.platform, { result, attemptedAt: receipt.appliedAt })
+    }
+  }
+  return attempts
+}
+
+/**
+ * 从历史回执中恢复旧 manifest 未保存的平台原目录备份关系。
+ * @param receipts 已按时间倒序排列的事务回执。
+ * @returns 平台到最近有效原目录备份的映射。
+ */
+function collectOriginalRootBackups(receipts: SkillsBatchReceipt[]): Map<SkillPlatformId, SkillBackupMove> {
+  const backups = new Map<SkillPlatformId, SkillBackupMove>()
+  for (const receipt of receipts) {
+    for (const result of receipt.platformResults) {
+      if (result.status === 'applied' && result.backup && !backups.has(result.platform)) backups.set(result.platform, result.backup)
+    }
+  }
+  return backups
+}
+
+/**
+ * 为旧 manifest 中的平台绑定补回原目录备份关系。
+ * @param bindings manifest 保存的平台绑定。
+ * @param backups 从历史回执恢复出的原目录备份。
+ * @returns 可用于校验和展示的完整绑定。
+ */
+function hydratePlatformBindings(bindings: ManagedPlatformBinding[], backups: ReadonlyMap<SkillPlatformId, SkillBackupMove>): ManagedPlatformBinding[] {
+  return bindings.map((binding) => binding.originalRootBackup || !backups.has(binding.platform)
+    ? binding
+    : { ...binding, originalRootBackup: backups.get(binding.platform) })
+}
 
 /** 创建接管计划的输入。 */
 export interface SkillsPlanRequest {
@@ -36,6 +109,8 @@ export interface SkillsPlanRequest {
   settingsRevision: number
   /** 用户的全部决策。 */
   decisions: SkillDecision[]
+  /** connect 接入平台根目录，sync 只更新统一源。 */
+  mode?: SkillsBatchMode
 }
 
 /** Skills 生命周期共享服务。 */
@@ -55,13 +130,46 @@ export class SkillsManager {
   async bootstrap(): Promise<SkillsBootstrap> {
     const manifest = await this.manifestStore.read()
     const managedSkills = manifest?.skills ?? []
+    const receipts = await listSkillsReceipts(this.context.dataDir)
+    const originalRootBackups = collectOriginalRootBackups(receipts)
+    const bindings = hydratePlatformBindings(manifest?.platformBindings ?? [], originalRootBackups)
+    const attempts = collectLatestPlatformAttempts(receipts)
+    const platformHealth: ManagedPlatformHealth[] = []
+    for (const platform of supportedSkillPlatforms) {
+      const binding = bindings.find((entry) => entry.platform === platform)
+      const attempt = attempts.get(platform)
+      if (binding) {
+        const health = await inspectManagedPlatformBinding(binding)
+        platformHealth.push({
+          ...health,
+          ...(attempt ? { lastAttemptAt: attempt.attemptedAt } : {}),
+          ...(health.connected || !attempt?.result.warnings.length
+            ? {}
+            : { issues: [...health.issues, ...attempt.result.warnings] }),
+        })
+        continue
+      }
+      if (attempt?.result.status === 'failed') {
+        platformHealth.push({
+          platform,
+          status: 'failed',
+          connected: false,
+          issues: [...attempt.result.warnings],
+          lastAttemptAt: attempt.attemptedAt,
+        })
+        continue
+      }
+      platformHealth.push({ platform, status: 'pending', connected: false, issues: [] })
+    }
     return {
-      initialized: Boolean(manifest?.initializedAt),
+      initialized: Boolean(manifest?.initializedAt && !manifest.migrationRequired),
       manifestRevision: manifest?.revision ?? 0,
       canonicalSkillsDir: join(this.context.dataDir, 'skills'),
       platforms: await detectSkillPlatforms(this.context.homeDir),
       managedSkills,
       managedHealth: await Promise.all(managedSkills.map(inspectManagedSkill)),
+      platformBindings: bindings,
+      platformHealth,
     }
   }
 
@@ -86,6 +194,7 @@ export class SkillsManager {
       report,
       settingsRevision: request.settingsRevision,
       manifestRevision: manifest?.revision ?? 0,
+      mode: request.mode ?? 'connect',
       decisions: request.decisions,
       dataDir: this.context.dataDir,
     })
@@ -104,6 +213,86 @@ export class SkillsManager {
       dataDir: this.context.dataDir,
       manifestStore: this.manifestStore,
     })
+  }
+
+  /**
+   * 生成一个平台根目录软链的停用或恢复计划。
+   * @param platform 目标平台。
+   * @param action 停用或恢复操作。
+   */
+  async planPlatformLink(platform: SkillPlatformId, action: PlatformLinkAction): Promise<PlatformLinkPlan> {
+    const originalRootBackups = collectOriginalRootBackups(await listSkillsReceipts(this.context.dataDir))
+    return createPlatformLinkPlan({ manifestStore: this.manifestStore, originalRootBackups }, platform, action)
+  }
+
+  /**
+   * 应用一个经过确认的平台软链计划。
+   * @param plan 平台软链计划。
+   * @param consent 与计划 hash 对应的用户授权。
+   */
+  async applyPlatformLink(plan: PlatformLinkPlan, consent: UserConsent): Promise<PlatformLinkReceipt> {
+    const originalRootBackups = collectOriginalRootBackups(await listSkillsReceipts(this.context.dataDir))
+    return applyPlatformLinkPlan({ manifestStore: this.manifestStore, originalRootBackups }, plan, consent)
+  }
+
+  /**
+   * 读取一个受管 Skill 的元数据和目录结构。
+   * @param skillId 受管 Skill 标识。
+   */
+  inspectSkill(skillId: string): Promise<ManagedSkillDetail> {
+    return inspectManagedSkillDetail({ manifestStore: this.manifestStore }, skillId)
+  }
+
+  /**
+   * 读取受管 Skill 中的 UTF-8 文本文件。
+   * @param skillId 受管 Skill 标识。
+   * @param path 相对于 Skill 根目录的文件路径。
+   */
+  readSkillFile(skillId: string, path: string): Promise<ManagedSkillFile> {
+    return readManagedSkillFile({ manifestStore: this.manifestStore }, skillId, path)
+  }
+
+  /**
+   * 为受管 Skill 文件更新生成确认计划。
+   * @param skillId 受管 Skill 标识。
+   * @param path 相对于 Skill 根目录的文件路径。
+   * @param nextContent 下一份 UTF-8 文本。
+   * @param previousContentHash 页面读取时的文件指纹。
+   */
+  planSkillFileUpdate(skillId: string, path: string, nextContent: string, previousContentHash: string): Promise<SkillFileUpdatePlan> {
+    return createSkillFileUpdatePlan({ manifestStore: this.manifestStore }, skillId, path, nextContent, previousContentHash)
+  }
+
+  /**
+   * 应用经过确认的受管 Skill 文件更新。
+   * @param plan 文件更新计划。
+   * @param consent 与计划 hash 对应的用户授权。
+   */
+  applySkillFileUpdate(plan: SkillFileUpdatePlan, consent: UserConsent): Promise<SkillFileUpdateReceipt> {
+    return applySkillFileUpdatePlan({ manifestStore: this.manifestStore }, plan, consent)
+  }
+
+  /** 列出统一 Skill 来源的用户可管理备份。 */
+  canonicalBackups(): Promise<CanonicalSkillsBackup[]> {
+    return listCanonicalSkillsBackups({ manifestStore: this.manifestStore })
+  }
+
+  /**
+   * 为统一源清空、备份恢复或永久删除生成确认计划。
+   * @param action 二次操作类型。
+   * @param backupVersion 要恢复或永久删除的备份版本。
+   */
+  planCanonicalSource(action: CanonicalSourceAction, backupVersion?: string): Promise<CanonicalSourceMutationPlan> {
+    return createCanonicalSourceMutationPlan({ manifestStore: this.manifestStore }, action, backupVersion)
+  }
+
+  /**
+   * 应用经过确认的统一源二次操作计划。
+   * @param plan 已重新校验的完整计划。
+   * @param consent 与计划 hash 对应的用户授权。
+   */
+  applyCanonicalSource(plan: CanonicalSourceMutationPlan, consent: UserConsent): Promise<CanonicalSourceMutationReceipt> {
+    return applyCanonicalSourceMutationPlan({ manifestStore: this.manifestStore }, plan, consent)
   }
 
   /** 列出已完成事务。 */

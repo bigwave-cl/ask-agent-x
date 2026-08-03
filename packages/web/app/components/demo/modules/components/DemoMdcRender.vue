@@ -52,6 +52,21 @@ const renderer = "BusMdcRender"
 const isSafe = true
 \`\`\`
 
+\`\`\`yaml
+name: askagent-x
+features:
+  - local-first
+  - controlled-rendering
+\`\`\`
+
+\`\`\`sh
+pnpm --filter @askx/web build
+\`\`\`
+
+\`\`\`json
+{"renderer":"BusMdcRender","safe":true}
+\`\`\`
+
 原始 HTML 会显示为文本：${rawHtmlExample}
 
 ## 图片
@@ -61,6 +76,10 @@ const isSafe = true
 ![山谷风景](https://picsum.photos/id/1067/640/360 "Markdown 图片预览")
 
 危险协议只保留 alt 文本：![Blocked image](data:image/png;base64,test)`)
+/** 防止连续输入同步触发大段 Markdown 解析的预览快照。 */
+const previewMarkdownValue = shallowRef(markdownValue.value)
+/** 预览快照更新计时器。 */
+let previewTimer: ReturnType<typeof setTimeout> | null = null
 /** MDC 渲染器的标准调用代码。 */
 const usageCode = `<BusMdcRender
   :value="markdown"
@@ -79,6 +98,17 @@ const securityItems: Array<{ icon: AskxIconName, title: string, text: string }> 
 function handleResolve() {
   resolveCount.value += 1
 }
+
+watch(markdownValue, (nextValue) => {
+  if (previewTimer) clearTimeout(previewTimer)
+  previewTimer = setTimeout(() => {
+    previewMarkdownValue.value = nextValue
+  }, 240)
+})
+
+onScopeDispose(() => {
+  if (previewTimer) clearTimeout(previewTimer)
+})
 </script>
 
 <template>
@@ -88,7 +118,7 @@ function handleResolve() {
     title="MDC Render"
     description="融合 IMA 排版层级与 PG DS 主题的安全 Markdown 预设。"
   >
-    <div class="grid gap-6 rounded-2xl border bg-background p-3 sm:p-5" data-testid="mdc-render-demo">
+    <div v-if="isOpen" class="grid gap-6 rounded-2xl border bg-background p-3 sm:p-5" data-testid="mdc-render-demo">
       <article class="grid gap-5 rounded-2xl border bg-card p-5 sm:p-6">
         <header class="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -105,11 +135,13 @@ function handleResolve() {
               <div><h4 class="text-sm font-semibold">Markdown 输入</h4><span class="mt-1 block font-mono text-[10px] text-muted-foreground">{{ markdownValue.length }} characters</span></div>
               <label class="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground"><Checkbox v-model="isPlainText" />纯文本模式</label>
             </div>
-            <textarea
+            <CsCodeEditor
               v-model="markdownValue"
-              class="h-[480px] w-full resize-none rounded-lg border bg-muted/35 p-4 font-mono text-[13px] leading-5 text-foreground outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25"
-              aria-label="Markdown 输入"
-              spellcheck="false"
+              class="h-[480px] w-full rounded-lg bg-muted/35"
+              filename="demo.md"
+              language="markdown"
+              label="Markdown 输入"
+              loading-label="正在加载 Markdown 语法…"
             />
           </section>
 
@@ -120,7 +152,7 @@ function handleResolve() {
             </div>
             <ScrollArea class="h-[480px] min-w-0 rounded-lg border bg-muted/35" type="always" aria-label="MDC 实时预览">
               <div class="min-w-0 p-4 pr-5">
-                <BusMdcRender :value="markdownValue" cache-key="demo-mdc-render" :plain-text="isPlainText" @resolve="handleResolve" />
+                <BusMdcRender :value="previewMarkdownValue" cache-key="demo-mdc-render" :plain-text="isPlainText" @resolve="handleResolve" />
               </div>
             </ScrollArea>
           </section>

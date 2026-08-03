@@ -17,6 +17,18 @@ import type {
 /** Skill 扫描默认支持的平台顺序。 */
 export const supportedSkillPlatforms: SkillPlatformId[] = ['codex', 'claude', 'cursor']
 
+/** 一个进入统一目录扫描器的根目录来源。 */
+interface SkillScanDirectory {
+  /** 目录来源；平台来源只是带有预设路径的普通目录。 */
+  platform: SkillLocation['platform']
+  /** 要枚举的绝对目录。 */
+  path: string
+  /** 自选目录标识，仅 custom 来源存在。 */
+  customRootId?: string | undefined
+  /** 是否允许当前根目录自身就是一个 Skill。 */
+  allowRootSkill: boolean
+}
+
 /**
  * 对目录业务内容生成稳定指纹。
  * @param root 要读取的目录。
@@ -83,15 +95,20 @@ function resolveGroupStatus(locations: SkillLocation[]): SkillGroupStatus {
  */
 export function groupSkillLocations(locations: SkillLocation[]): SkillGroup[] {
   const grouped = new Map<string, SkillLocation[]>()
-  for (const location of locations.filter((entry) => entry.platform !== 'askx')) {
+  for (const location of locations) {
     grouped.set(location.name, [...(grouped.get(location.name) ?? []), location])
   }
   return [...grouped.entries()]
+    .filter(([, entries]) => entries.some((entry) => entry.platform !== 'askx'))
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([name, entries]) => {
       const ordered = [...entries].sort((left, right) => {
-        const leftOrder = left.platform === 'custom' ? supportedSkillPlatforms.length : supportedSkillPlatforms.indexOf(left.platform as SkillPlatformId)
-        const rightOrder = right.platform === 'custom' ? supportedSkillPlatforms.length : supportedSkillPlatforms.indexOf(right.platform as SkillPlatformId)
+        const leftOrder = left.platform === 'askx'
+          ? supportedSkillPlatforms.length
+          : left.platform === 'custom' ? supportedSkillPlatforms.length + 1 : supportedSkillPlatforms.indexOf(left.platform)
+        const rightOrder = right.platform === 'askx'
+          ? supportedSkillPlatforms.length
+          : right.platform === 'custom' ? supportedSkillPlatforms.length + 1 : supportedSkillPlatforms.indexOf(right.platform)
         return leftOrder - rightOrder || left.path.localeCompare(right.path)
       })
       const status = resolveGroupStatus(ordered)
@@ -104,6 +121,90 @@ export function groupSkillLocations(locations: SkillLocation[]): SkillGroup[] {
         recommendedAction: status === 'unique' ? 'adopt' : status === 'identical' ? 'merge' : 'keep',
       }
     })
+}
+
+/**
+ * 使用同一规则扫描一个目录根，不区分平台预设目录和用户自选目录。
+ * @param root 已解析的扫描目录根。
+ * @param scannedPaths 当前扫描已经处理的绝对路径。
+ * @returns 当前目录中发现的 Skill 位置。
+ */
+async function scanSkillDirectory(root: SkillScanDirectory, scannedPaths: Set<string>): Promise<SkillLocation[]> {
+  let entries
+  try {
+    entries = await readdir(root.path, { withFileTypes: true })
+  } catch (error) {
+    if (['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) return []
+    throw error
+  }
+  const rootHasSkillFile = root.allowRootSkill && await lstat(join(root.path, 'SKILL.md'))
+    .then((stat) => stat.isFile())
+    .catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return false
+      throw error
+    })
+  const candidates = rootHasSkillFile
+    ? [{ name: basename(root.path), path: root.path }]
+    : entries.sort((left, right) => left.name.localeCompare(right.name)).flatMap((entry) => {
+        if (entry.name.startsWith('.') || (!entry.isDirectory() && !entry.isSymbolicLink())) return []
+        return [{ name: entry.name, path: join(root.path, entry.name) }]
+      })
+  const locations: SkillLocation[] = []
+  for (const entry of candidates) {
+    if (entry.name.startsWith('.')) continue
+    const path = entry.path
+    const normalizedPath = resolve(path)
+    if (scannedPaths.has(normalizedPath)) continue
+    scannedPaths.add(normalizedPath)
+    const stat = await lstat(path)
+    const id = stableHash({
+      platform: root.platform,
+      path,
+      customRootId: root.platform === 'custom' ? root.customRootId : undefined,
+    })
+    if (stat.isSymbolicLink()) {
+      const target = await readlink(path)
+      try {
+        locations.push({
+          id,
+          platform: root.platform,
+          ...(root.platform === 'custom' ? { customRootId: root.customRootId! } : {}),
+          name: entry.name,
+          path,
+          kind: 'symlink',
+          target,
+          contentHash: await hashSkillDirectory(path),
+          metadata: await readSkillMetadata(path),
+          broken: false,
+        })
+      } catch {
+        locations.push({
+          id,
+          platform: root.platform,
+          ...(root.platform === 'custom' ? { customRootId: root.customRootId! } : {}),
+          name: entry.name,
+          path,
+          kind: 'symlink',
+          target,
+          metadata: { valid: false, error: '软链目标不存在或不可读。' },
+          broken: true,
+        })
+      }
+      continue
+    }
+    locations.push({
+      id,
+      platform: root.platform,
+      ...(root.platform === 'custom' ? { customRootId: root.customRootId! } : {}),
+      name: entry.name,
+      path,
+      kind: 'directory',
+      contentHash: await hashSkillDirectory(path),
+      metadata: await readSkillMetadata(path),
+      broken: false,
+    })
+  }
+  return locations
 }
 
 /**
@@ -137,88 +238,20 @@ export async function scanSkills(
     if (!stat.isDirectory()) throw new Error(`额外扫描路径不是目录：${path}`)
     customRoots.push({ id: stableHash({ type: 'custom-skill-root', path }), name: basename(path), path })
   }
-  const roots = [
+  const roots: SkillScanDirectory[] = [
     ...uniquePlatforms.map((platform) => {
       const descriptor = descriptors.find((entry) => entry.id === platform)
       if (!descriptor) throw new Error(`缺少平台描述：${platform}`)
-      return { platform, path: descriptor.skillsDir }
+      return { platform, path: descriptor.skillsDir, allowRootSkill: false }
     }),
-    { platform: 'askx' as const, path: join(dataDir, 'skills') },
-    ...customRoots.map((root) => ({ platform: 'custom' as const, path: root.path, customRootId: root.id })),
+    { platform: 'askx', path: join(dataDir, 'skills'), allowRootSkill: false },
+    ...customRoots.map((root) => ({ platform: 'custom' as const, path: root.path, customRootId: root.id, allowRootSkill: true })),
   ]
   const locations: SkillLocation[] = []
   const scannedPaths = new Set<string>()
 
   for (const root of roots) {
-    let entries
-    try {
-      entries = await readdir(root.path, { withFileTypes: true })
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
-      throw error
-    }
-    const rootHasSkillFile = root.platform === 'custom' && await lstat(join(root.path, 'SKILL.md'))
-      .then((stat) => stat.isFile())
-      .catch((error: NodeJS.ErrnoException) => {
-        if (error.code === 'ENOENT') return false
-        throw error
-      })
-    const candidates = rootHasSkillFile
-      ? [{ name: basename(root.path), path: root.path, customRootSkill: true }]
-      : entries.sort((left, right) => left.name.localeCompare(right.name)).flatMap((entry) => {
-          if (entry.name.startsWith('.') || (!entry.isDirectory() && !entry.isSymbolicLink())) return []
-          return [{ name: entry.name, path: join(root.path, entry.name), customRootSkill: false }]
-        })
-    for (const entry of candidates) {
-      if (entry.name.startsWith('.')) continue
-      const path = entry.path
-      const normalizedPath = resolve(path)
-      if (scannedPaths.has(normalizedPath)) continue
-      scannedPaths.add(normalizedPath)
-      const stat = await lstat(path)
-      const id = stableHash({ platform: root.platform, path, customRootId: root.platform === 'custom' ? root.customRootId : undefined })
-      if (stat.isSymbolicLink()) {
-        const target = await readlink(path)
-        try {
-          locations.push({
-            id,
-            platform: root.platform,
-            ...(root.platform === 'custom' ? { customRootId: root.customRootId } : {}),
-            name: entry.name,
-            path,
-            kind: 'symlink',
-            target,
-            contentHash: await hashSkillDirectory(path),
-            metadata: await readSkillMetadata(path),
-            broken: false,
-          })
-        } catch {
-          locations.push({
-            id,
-            platform: root.platform,
-            ...(root.platform === 'custom' ? { customRootId: root.customRootId } : {}),
-            name: entry.name,
-            path,
-            kind: 'symlink',
-            target,
-            metadata: { valid: false, error: '软链目标不存在或不可读。' },
-            broken: true,
-          })
-        }
-      } else {
-        locations.push({
-          id,
-          platform: root.platform,
-          ...(root.platform === 'custom' ? { customRootId: root.customRootId } : {}),
-          name: entry.name,
-          path,
-          kind: 'directory',
-          contentHash: await hashSkillDirectory(path),
-          metadata: await readSkillMetadata(path),
-          broken: false,
-        })
-      }
-    }
+    locations.push(...await scanSkillDirectory(root, scannedPaths))
   }
 
   const platformStatuses = (await detectSkillPlatforms(homeDir)).filter((platform) => uniquePlatforms.includes(platform.id))
