@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MAX_CUSTOM_SKILL_DIRECTORIES } from '@askx/module-skills/skill-types'
 import type { PlatformLinkAction, SkillPlatformId, SkillsBootstrap } from '@askx/module-skills/skill-types'
 import { skillPlatformPresentations } from '@/lib/skillPlatformPresentation'
 
@@ -22,6 +23,10 @@ const emit = defineEmits<{
   'platform-sync': [platform: SkillPlatformId]
   /** 停用或恢复指定平台的受管根目录软链。 */
   'platform-link-action': [platform: SkillPlatformId, action: PlatformLinkAction]
+  /** 打开自定义扫描来源选择。 */
+  'add-custom-root': []
+  /** 移除一个已保存的自定义扫描来源。 */
+  'remove-custom-root': [rootId: string]
 }>()
 const { t } = useI18n()
 
@@ -126,6 +131,39 @@ function platformLinkAction(platform: SkillPlatformId): PlatformLinkAction {
           </div>
           <span v-else class="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"><Icon name="askx-status:info" class="size-3.5" /></span>
         </article>
+
+        <section v-if="bootstrap.customLinkBindings.length" class="overflow-hidden rounded-2xl border bg-background/65">
+          <div class="flex items-center gap-2 px-3.5 py-3"><Icon name="askx-objects:folder" class="size-4 text-primary" /><strong class="text-sm">{{ t('skills.customLinkTargetsTitle') }}</strong><Badge variant="outline">{{ bootstrap.customLinkBindings.length }}/{{ MAX_CUSTOM_SKILL_DIRECTORIES }}</Badge></div>
+          <div class="border-t">
+            <div v-for="binding in bootstrap.customLinkBindings" :key="binding.id" class="flex min-w-0 items-center gap-3 border-b px-3.5 py-2.5 last:border-b-0">
+              <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Icon name="askx-objects:file-link" class="size-4" /></span>
+              <span class="min-w-0 flex-1"><strong class="block truncate text-xs">{{ binding.name }}</strong><code class="mt-0.5 block truncate font-mono text-[9px] text-muted-foreground" :title="binding.path">{{ binding.path }}</code></span>
+              <Badge variant="secondary">{{ t('skills.rootConnected') }}</Badge>
+            </div>
+          </div>
+        </section>
+
+        <section class="overflow-hidden rounded-2xl border border-dashed bg-background/55">
+          <div class="flex items-center justify-between gap-3 px-3.5 py-3">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2"><Icon name="askx-objects:folder" class="size-4 text-primary" /><strong class="text-sm">{{ t('skills.customSourcesTitle') }}</strong><Badge variant="outline">{{ bootstrap.customRoots.length }}/{{ MAX_CUSTOM_SKILL_DIRECTORIES }}</Badge></div>
+              <p class="mt-1 text-[11px] text-muted-foreground">{{ t('skills.customSourcesHint') }}</p>
+            </div>
+            <Button size="36" variant="outline" class="shrink-0" :disabled="busy || bootstrap.customRoots.length >= MAX_CUSTOM_SKILL_DIRECTORIES" @click="emit('add-custom-root')"><Icon name="askx-actions:upload" />{{ t('skills.addCustomFolder') }}</Button>
+          </div>
+          <div v-if="bootstrap.customRoots.length" class="border-t">
+            <div v-for="root in bootstrap.customRoots" :key="root.id" class="flex min-w-0 items-center gap-3 border-b px-3.5 py-2.5 last:border-b-0">
+              <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Icon name="askx-objects:folder" class="size-4" /></span>
+              <span class="min-w-0 flex-1"><strong class="block truncate text-xs">{{ root.name }}</strong><code class="mt-0.5 block truncate font-mono text-[9px] text-muted-foreground" :title="root.path">{{ root.path }}</code></span>
+              <TooltipProvider :delay-duration="150">
+                <Tooltip>
+                  <TooltipTrigger as-child><Button size="icon-sm" variant="ghost" :disabled="busy" :aria-label="t('skills.removeFolder', { name: root.name })" @click="emit('remove-custom-root', root.id)"><Icon name="askx-actions:delete" class="size-3.5" /></Button></TooltipTrigger>
+                  <TooltipContent side="top">{{ t('skills.removeCustomRootTip') }}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   </section>

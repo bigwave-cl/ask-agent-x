@@ -1,4 +1,5 @@
 import { canonicalSourceMutationPlanSchema } from '@askx/module-skills/canonical-source-manager'
+import type { CanonicalSourceMutationReceipt } from '@askx/module-skills/canonical-source-manager'
 import { z } from 'zod'
 import { skillsManager, throwSkillsApiError } from '../../../utils/skills.js'
 
@@ -11,7 +12,7 @@ const requestSchema = z.object({
   }),
 })
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (event): Promise<CanonicalSourceMutationReceipt> => {
   try {
     const input = requestSchema.parse(await readBody(event))
     return await skillsManager.applyCanonicalSource(input.plan, input.consent)

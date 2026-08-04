@@ -19,6 +19,7 @@ import {
   type CanonicalSourceMutationPlan,
   type CanonicalSourceMutationReceipt,
 } from './canonical-source-manager.js'
+import { applySkillCustomRootRemovalPlan, createSkillCustomRootRemovalPlan } from './custom-root-manager.js'
 import { applySkillsBatchPlan, listSkillsReceipts, rollbackSkillsReceipt } from './skills-executor.js'
 import { applySkillFileUpdatePlan, createSkillFileUpdatePlan, inspectManagedSkillDetail, readManagedSkillFile } from './skill-file-manager.js'
 import { SkillsManifestStore } from './manifest-store.js'
@@ -35,6 +36,8 @@ import type {
   PlatformBindingResult,
   ManagedSkillDetail,
   ManagedSkillFile,
+  SkillCustomRootRemovalPlan,
+  SkillCustomRootRemovalReceipt,
   SkillDecision,
   SkillFileUpdatePlan,
   SkillFileUpdateReceipt,
@@ -111,6 +114,10 @@ export interface SkillsPlanRequest {
   decisions: SkillDecision[]
   /** connect 接入平台根目录，sync 只更新统一源。 */
   mode?: SkillsBatchMode
+  /** 用户明确选择建立根目录软链的平台。 */
+  linkPlatforms?: SkillPlatformId[]
+  /** 用户明确选择建立统一源软链的自定义目录。 */
+  linkCustomRoots?: string[]
 }
 
 /** Skills 生命周期共享服务。 */
@@ -168,7 +175,9 @@ export class SkillsManager {
       platforms: await detectSkillPlatforms(this.context.homeDir),
       managedSkills,
       managedHealth: await Promise.all(managedSkills.map(inspectManagedSkill)),
+      customRoots: manifest?.customRoots ?? [],
       platformBindings: bindings,
+      customLinkBindings: manifest?.customLinkBindings ?? [],
       platformHealth,
     }
   }
@@ -195,6 +204,9 @@ export class SkillsManager {
       settingsRevision: request.settingsRevision,
       manifestRevision: manifest?.revision ?? 0,
       mode: request.mode ?? 'connect',
+      ...(request.linkPlatforms ? { linkPlatforms: request.linkPlatforms } : {}),
+      linkPlatformStatuses: await detectSkillPlatforms(this.context.homeDir),
+      ...(request.linkCustomRoots ? { linkCustomRoots: request.linkCustomRoots } : {}),
       decisions: request.decisions,
       dataDir: this.context.dataDir,
     })
@@ -233,6 +245,23 @@ export class SkillsManager {
   async applyPlatformLink(plan: PlatformLinkPlan, consent: UserConsent): Promise<PlatformLinkReceipt> {
     const originalRootBackups = collectOriginalRootBackups(await listSkillsReceipts(this.context.dataDir))
     return applyPlatformLinkPlan({ manifestStore: this.manifestStore, originalRootBackups }, plan, consent)
+  }
+
+  /**
+   * 为移除一个自定义扫描来源生成确认计划。
+   * @param rootId 要移除的扫描来源标识。
+   */
+  planCustomRootRemoval(rootId: string): Promise<SkillCustomRootRemovalPlan> {
+    return createSkillCustomRootRemovalPlan({ manifestStore: this.manifestStore }, rootId)
+  }
+
+  /**
+   * 应用经过确认的自定义扫描来源移除计划。
+   * @param plan 已展示给用户的完整计划。
+   * @param consent 与计划 hash 对应的用户授权。
+   */
+  applyCustomRootRemoval(plan: SkillCustomRootRemovalPlan, consent: UserConsent): Promise<SkillCustomRootRemovalReceipt> {
+    return applySkillCustomRootRemovalPlan({ manifestStore: this.manifestStore }, plan, consent)
   }
 
   /**

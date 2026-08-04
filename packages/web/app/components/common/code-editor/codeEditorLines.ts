@@ -26,3 +26,19 @@ export function createCodeEditorLines(segments: CodeHighlightSegment[]): CodeEdi
 
   return lines
 }
+
+/**
+ * 根据文本光标偏移解析当前逻辑行索引。
+ * @param source 编辑器完整文本。
+ * @param selectionStart textarea 当前选择起点。
+ * @returns 从零开始的逻辑行索引。
+ */
+export function resolveCodeEditorLineIndex(source: string, selectionStart: number): number {
+  const normalizedOffset = Number.isFinite(selectionStart) ? Math.trunc(selectionStart) : 0
+  const safeOffset = Math.min(Math.max(normalizedOffset, 0), source.length)
+  let lineIndex = 0
+  for (let index = 0; index < safeOffset; index += 1) {
+    if (source.charCodeAt(index) === 10) lineIndex += 1
+  }
+  return lineIndex
+}

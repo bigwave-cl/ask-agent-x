@@ -1,5 +1,8 @@
 import { z } from 'zod'
 
+/** AskX 允许保存的自定义 Skill 文件夹数量上限。 */
+export const MAX_CUSTOM_SKILL_DIRECTORIES = 3
+
 /** 当前由 Skills 管理模块支持的平台。 */
 export const skillPlatformIdSchema = z.enum(['codex', 'claude', 'cursor'])
 
@@ -21,6 +24,30 @@ export interface SkillCustomScanRoot {
   /** 本机绝对路径。 */
   path: string
 }
+
+/** 用户额外选择的本地扫描目录 schema。 */
+export const skillCustomScanRootSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  path: z.string().min(1),
+})
+
+/** 用户额外选择的软链使用目录。 */
+export interface SkillCustomLinkRoot {
+  /** 基于绝对路径生成的稳定标识。 */
+  id: string
+  /** 用于界面展示的目录名称。 */
+  name: string
+  /** 最终会被替换为统一源软链的绝对路径。 */
+  path: string
+}
+
+/** 用户额外选择的软链使用目录 schema。 */
+export const skillCustomLinkRootSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  path: z.string().min(1),
+})
 
 /** 扫描到的 Skill 位置类型。 */
 export const skillLocationKindSchema = z.enum(['directory', 'symlink'])
@@ -139,6 +166,22 @@ export interface ManagedPlatformBinding {
   suspendedAt?: string | undefined
   /** 停用期间保留受管软链的隐藏路径。 */
   suspendedPath?: string | undefined
+}
+
+/** 一个受 AskX 管理的自定义目录软链绑定。 */
+export interface ManagedCustomLinkBinding {
+  /** 基于软链路径生成的稳定标识。 */
+  id: string
+  /** 用于界面展示的目录名称。 */
+  name: string
+  /** AskX 创建的目录软链路径。 */
+  path: string
+  /** 目录软链预期指向的统一源。 */
+  target: string
+  /** 首次接入前的目录及其备份位置。 */
+  originalRootBackup?: SkillBackupMove | undefined
+  /** 最近更新时间。 */
+  updatedAt: string
 }
 
 /** 一个受 AskX 管理的逻辑 Skill。 */
@@ -351,6 +394,34 @@ export interface PlatformLinkReceipt {
   originalRootBackup?: SkillBackupMove | undefined
 }
 
+/** 移除一个自定义扫描来源的确认计划。 */
+export interface SkillCustomRootRemovalPlan {
+  /** 计划标识。 */
+  id: string
+  /** 计划生成时间。 */
+  createdAt: string
+  /** 要从默认扫描来源中移除的目录。 */
+  root: SkillCustomScanRoot
+  /** 计划基于的 manifest 版本。 */
+  manifestRevision: number
+  /** 用户授权所对应的稳定指纹。 */
+  hash: string
+}
+
+/** 移除一个自定义扫描来源后的回执。 */
+export interface SkillCustomRootRemovalReceipt {
+  /** 回执标识。 */
+  id: string
+  /** 对应计划指纹。 */
+  planHash: string
+  /** 操作完成时间。 */
+  appliedAt: string
+  /** 被移除的扫描来源。 */
+  root: SkillCustomScanRoot
+  /** 操作完成后的 manifest 版本。 */
+  manifestRevision: number
+}
+
 /** 最近一次完成的扫描信息。 */
 export interface SkillsLastScan {
   /** 扫描完成时间。 */
@@ -373,8 +444,12 @@ export interface SkillsManifest {
   lastScan: SkillsLastScan
   /** AskX 已接管的 Skill。 */
   skills: ManagedSkillRecord[]
+  /** 后续添加 Skill 时默认复用的自定义扫描来源。 */
+  customRoots?: SkillCustomScanRoot[] | undefined
   /** AskX 创建的平台 Skills 根目录绑定。 */
   platformBindings: ManagedPlatformBinding[]
+  /** AskX 创建的自定义目录软链绑定。 */
+  customLinkBindings?: ManagedCustomLinkBinding[] | undefined
   /** 是否来自旧版逐 Skill 软链清单，等待重新接入平台根目录。 */
   migrationRequired?: boolean | undefined
 }
@@ -424,6 +499,20 @@ export interface SkillBindPlatformOperation {
   target: string
 }
 
+/** 建立自定义目录受管链接操作。 */
+export interface SkillBindCustomRootOperation {
+  /** 操作类型。 */
+  kind: 'bind-custom-root'
+  /** 基于目标路径生成的稳定标识。 */
+  id: string
+  /** 用于界面展示的目录名称。 */
+  name: string
+  /** 将被替换为软链的目录路径。 */
+  path: string
+  /** 目录最终指向的 AskX 统一目录。 */
+  target: string
+}
+
 /** 选择覆盖统一版本的来源。 */
 export interface SkillSelectSourceOperation {
   /** 操作类型。 */
@@ -454,6 +543,7 @@ export type SkillPlanOperation =
   | SkillArchiveOperation
   | SkillCopyCanonicalOperation
   | SkillBindPlatformOperation
+  | SkillBindCustomRootOperation
   | SkillSelectSourceOperation
   | SkillReplaceOperation
   | SkillWriteRenamedOperation
@@ -488,12 +578,14 @@ export interface SkillsBatchPlan {
   mode: SkillsBatchMode
   /** 本次管理平台。 */
   platforms: SkillPlatformId[]
-  /** 计划绑定的额外只读扫描目录。 */
+  /** 本次只读扫描使用的额外来源目录。 */
   customRoots: string[]
   /** 每个 Skill 的事务单元。 */
   units: SkillPlanUnit[]
   /** 每个平台最终创建的根目录绑定操作。 */
   platformOperations: SkillBindPlatformOperation[]
+  /** 每个自定义使用目录最终创建的根目录绑定操作。 */
+  customLinkOperations: SkillBindCustomRootOperation[]
   /** 整个批次的稳定授权指纹。 */
   hash: string
 }
@@ -538,6 +630,24 @@ export interface PlatformBindingResult {
   warnings: string[]
 }
 
+/** 一个自定义目录绑定的执行结果。 */
+export interface CustomLinkBindingResult {
+  /** 绑定稳定标识。 */
+  id: string
+  /** 用于界面展示的目录名称。 */
+  name: string
+  /** 自定义软链路径。 */
+  path: string
+  /** AskX 统一 Skills 根路径。 */
+  target: string
+  /** 执行状态。 */
+  status: 'applied' | 'failed' | 'rolled-back' | 'skipped'
+  /** 原目录备份，原路径不存在时为空。 */
+  backup?: SkillBackupMove
+  /** 错误或提示。 */
+  warnings: string[]
+}
+
 /** 一次批量操作的回执。 */
 export interface SkillsBatchReceipt {
   /** 批次回执标识。 */
@@ -552,6 +662,8 @@ export interface SkillsBatchReceipt {
   results: SkillTransactionResult[]
   /** 平台根目录代理结果。 */
   platformResults: PlatformBindingResult[]
+  /** 自定义目录代理结果。 */
+  customLinkResults: CustomLinkBindingResult[]
 }
 
 /** Skills 页面启动信息。 */
@@ -568,8 +680,12 @@ export interface SkillsBootstrap {
   managedSkills: ManagedSkillRecord[]
   /** 已接管 Skill 的实时只读健康状态。 */
   managedHealth: ManagedSkillHealth[]
+  /** 已保存的自定义扫描来源。 */
+  customRoots: SkillCustomScanRoot[]
   /** Manifest 登记的平台根目录绑定。 */
   platformBindings: ManagedPlatformBinding[]
+  /** Manifest 登记的自定义目录软链绑定。 */
+  customLinkBindings: ManagedCustomLinkBinding[]
   /** 平台根目录绑定的实时健康状态。 */
   platformHealth: ManagedPlatformHealth[]
 }
@@ -634,6 +750,28 @@ export const managedSkillRecordSchema = z.object({
   updatedAt: z.string().datetime(),
 })
 
+/** Zod 使用的自定义目录软链绑定 schema。 */
+export const managedCustomLinkBindingSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  path: z.string().min(1),
+  target: z.string().min(1),
+  originalRootBackup: z.object({ originalPath: z.string().min(1), backupPath: z.string().min(1) }).optional(),
+  updatedAt: z.string().datetime(),
+}).refine(
+  (binding) => !binding.originalRootBackup || binding.originalRootBackup.originalPath === binding.path,
+  { message: '自定义目录备份必须对应当前软链路径。' },
+)
+
+/** Zod 使用的自定义扫描来源移除计划 schema。 */
+export const skillCustomRootRemovalPlanSchema = z.object({
+  id: z.string().uuid(),
+  createdAt: z.string().datetime(),
+  root: skillCustomScanRootSchema,
+  manifestRevision: z.number().int().nonnegative(),
+  hash: z.string().min(1),
+})
+
 /** Zod 使用的受管 Skill 文件更新计划 schema。 */
 export const skillFileUpdatePlanSchema = z.object({
   id: z.string().uuid(),
@@ -660,7 +798,9 @@ export const skillsManifestSchema = z.object({
     platforms: z.array(skillPlatformIdSchema).min(1),
   }),
   skills: z.array(managedSkillRecordSchema),
+  customRoots: z.array(skillCustomScanRootSchema).max(MAX_CUSTOM_SKILL_DIRECTORIES).default([]),
   platformBindings: z.array(managedPlatformBindingSchema),
+  customLinkBindings: z.array(managedCustomLinkBindingSchema).max(MAX_CUSTOM_SKILL_DIRECTORIES).default([]),
   migrationRequired: z.boolean().optional(),
 })
 
@@ -680,6 +820,7 @@ export const skillPlanOperationSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('archive'), path: z.string().min(1) }),
   z.object({ kind: z.literal('copy-canonical'), sourcePath: z.string().min(1), targetPath: z.string().min(1) }),
   z.object({ kind: z.literal('bind-platform'), platform: skillPlatformIdSchema, path: z.string().min(1), target: z.string().min(1) }),
+  z.object({ kind: z.literal('bind-custom-root'), id: z.string().min(1), name: z.string().min(1), path: z.string().min(1), target: z.string().min(1) }),
   z.object({ kind: z.literal('select-source'), sourcePath: z.string().min(1) }),
   z.object({ kind: z.literal('replace'), path: z.string().min(1) }),
   z.object({ kind: z.literal('write-renamed'), name: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/) }),
@@ -694,7 +835,7 @@ export const skillsBatchPlanSchema = z.object({
   manifestRevision: z.number().int().nonnegative(),
   mode: skillsBatchModeSchema,
   platforms: z.array(skillPlatformIdSchema).min(1),
-  customRoots: z.array(z.string().min(1)).max(20),
+  customRoots: z.array(z.string().min(1)).max(MAX_CUSTOM_SKILL_DIRECTORIES),
   units: z.array(z.object({
     id: z.string().uuid(),
     skillName: z.string().min(1),
@@ -708,12 +849,30 @@ export const skillsBatchPlanSchema = z.object({
     path: z.string().min(1),
     target: z.string().min(1),
   })),
+  customLinkOperations: z.array(z.object({
+    kind: z.literal('bind-custom-root'),
+    id: z.string().min(1),
+    name: z.string().min(1),
+    path: z.string().min(1),
+    target: z.string().min(1),
+  })).max(MAX_CUSTOM_SKILL_DIRECTORIES).default([]),
   hash: z.string().min(1),
 })
 
 /** Zod 使用的平台根目录绑定执行结果 schema。 */
 export const platformBindingResultSchema = z.object({
   platform: skillPlatformIdSchema,
+  path: z.string().min(1),
+  target: z.string().min(1),
+  status: z.enum(['applied', 'failed', 'rolled-back', 'skipped']),
+  backup: z.object({ originalPath: z.string(), backupPath: z.string() }).optional(),
+  warnings: z.array(z.string()),
+})
+
+/** Zod 使用的自定义目录绑定执行结果 schema。 */
+export const customLinkBindingResultSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
   path: z.string().min(1),
   target: z.string().min(1),
   status: z.enum(['applied', 'failed', 'rolled-back', 'skipped']),

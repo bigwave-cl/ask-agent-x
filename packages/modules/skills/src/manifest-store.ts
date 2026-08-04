@@ -68,7 +68,9 @@ export class SkillsManifestStore {
         initializedAt: legacy.initializedAt,
         lastScan: legacy.lastScan,
         skills: legacy.skills.map(({ bindings: _bindings, ...skill }) => skill),
+        customRoots: [],
         platformBindings: [],
+        customLinkBindings: [],
         migrationRequired: true,
       }
     } catch (error) {

@@ -2,6 +2,7 @@ import type { CodeHighlightRequest, CodeHighlightResponse } from './codeHighligh
 import type { CodeHighlightWorkerLike } from './codeHighlightClient'
 import { describe, expect, it, vi } from 'vitest'
 import {
+  createOptimisticCodeHighlightResult,
   createPlainCodeHighlightResult,
   getCodeHighlightSkipReason,
   MAX_HIGHLIGHT_BYTES,
@@ -75,6 +76,62 @@ describe('代码高亮语言与容量规则', () => {
       language: 'xml',
       highlighted: false,
       segments: [{ value: '<script>alert(1)</script>', scopes: [] }],
+    })
+  })
+
+  it('编辑时保留未修改区域的高亮作用域', () => {
+    const previous = {
+      language: 'javascript' as const,
+      highlighted: true,
+      segments: [
+        { value: 'const', scopes: ['hljs-keyword'] },
+        { value: ' value = ', scopes: [] },
+        { value: '"ok"', scopes: ['hljs-string'] },
+      ],
+    }
+
+    expect(createOptimisticCodeHighlightResult(previous, 'const value = "okay"', 'javascript')).toEqual({
+      language: 'javascript',
+      highlighted: true,
+      segments: [
+        { value: 'const', scopes: ['hljs-keyword'] },
+        { value: ' value = ', scopes: [] },
+        { value: '"okay"', scopes: ['hljs-string'] },
+      ],
+    })
+  })
+
+  it('只让无法继承作用域的新片段暂时使用普通文本', () => {
+    const previous = {
+      language: 'javascript' as const,
+      highlighted: true,
+      segments: [
+        { value: 'const', scopes: ['hljs-keyword'] },
+        { value: ' value', scopes: [] },
+      ],
+    }
+
+    expect(createOptimisticCodeHighlightResult(previous, 'const async value', 'javascript')).toEqual({
+      language: 'javascript',
+      highlighted: true,
+      segments: [
+        { value: 'const', scopes: ['hljs-keyword'] },
+        { value: ' async value', scopes: [] },
+      ],
+    })
+  })
+
+  it('切换语言时放弃旧作用域并回退当前纯文本', () => {
+    const previous = {
+      language: 'javascript' as const,
+      highlighted: true,
+      segments: [{ value: 'const value = true', scopes: ['hljs-keyword'] }],
+    }
+
+    expect(createOptimisticCodeHighlightResult(previous, 'const value = true', 'typescript')).toEqual({
+      language: 'typescript',
+      highlighted: false,
+      segments: [{ value: 'const value = true', scopes: [] }],
     })
   })
 })

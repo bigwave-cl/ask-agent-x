@@ -157,3 +157,108 @@ export function createPlainCodeHighlightResult(source: string, language: CodeHig
     segments: [{ value: source, scopes: [] }],
   }
 }
+
+/**
+ * 判断两组高亮作用域是否完全一致。
+ * @param left 左侧作用域。
+ * @param right 右侧作用域。
+ * @returns 顺序和值均一致时返回 true。
+ */
+function areCodeHighlightScopesEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((scope, index) => scope === right[index])
+}
+
+/**
+ * 向结果中追加高亮片段，并合并相邻的相同作用域。
+ * @param target 接收片段的数组。
+ * @param segment 待追加片段。
+ */
+function appendCodeHighlightSegment(target: CodeHighlightSegment[], segment: CodeHighlightSegment): void {
+  if (!segment.value) return
+  const previous = target.at(-1)
+  if (previous && areCodeHighlightScopesEqual(previous.scopes, segment.scopes)) {
+    previous.value += segment.value
+    return
+  }
+  target.push({ value: segment.value, scopes: [...segment.scopes] })
+}
+
+/**
+ * 截取一段源码对应的高亮片段。
+ * @param segments 完整高亮片段。
+ * @param start 截取起点。
+ * @param end 截取终点。
+ * @returns 保留原作用域的局部片段。
+ */
+function sliceCodeHighlightSegments(segments: CodeHighlightSegment[], start: number, end: number): CodeHighlightSegment[] {
+  const sliced: CodeHighlightSegment[] = []
+  let offset = 0
+  for (const segment of segments) {
+    const segmentEnd = offset + segment.value.length
+    const overlapStart = Math.max(start, offset)
+    const overlapEnd = Math.min(end, segmentEnd)
+    if (overlapStart < overlapEnd) {
+      appendCodeHighlightSegment(sliced, {
+        value: segment.value.slice(overlapStart - offset, overlapEnd - offset),
+        scopes: segment.scopes,
+      })
+    }
+    offset = segmentEnd
+    if (offset >= end) break
+  }
+  return sliced
+}
+
+/**
+ * 在 Worker 返回前为新源码保留未修改区域的既有高亮样式。
+ * @param previous 上一次可用的高亮结果。
+ * @param source 当前编辑器源码。
+ * @param language 当前标准语言。
+ * @returns 文本与当前源码一致的乐观高亮结果。
+ */
+export function createOptimisticCodeHighlightResult(
+  previous: CodeHighlightResult,
+  source: string,
+  language: CodeHighlightLanguage | null,
+): CodeHighlightResult {
+  if (!source || !language || !previous.highlighted || previous.language !== language) {
+    return createPlainCodeHighlightResult(source, language)
+  }
+
+  const previousSource = previous.segments.map((segment) => segment.value).join('')
+  if (previousSource === source) return previous
+
+  const sharedLength = Math.min(previousSource.length, source.length)
+  let prefixLength = 0
+  while (prefixLength < sharedLength && previousSource[prefixLength] === source[prefixLength]) prefixLength += 1
+
+  let suffixLength = 0
+  while (
+    suffixLength < sharedLength - prefixLength
+    && previousSource[previousSource.length - suffixLength - 1] === source[source.length - suffixLength - 1]
+  ) suffixLength += 1
+
+  const segments: CodeHighlightSegment[] = []
+  const prefixSegments = sliceCodeHighlightSegments(previous.segments, 0, prefixLength)
+  const suffixSegments = sliceCodeHighlightSegments(
+    previous.segments,
+    previousSource.length - suffixLength,
+    previousSource.length,
+  )
+  for (const segment of prefixSegments) appendCodeHighlightSegment(segments, segment)
+
+  const middleValue = source.slice(prefixLength, source.length - suffixLength)
+  const prefixScopes = prefixSegments.at(-1)?.scopes ?? []
+  const suffixScopes = suffixSegments[0]?.scopes ?? []
+  appendCodeHighlightSegment(segments, {
+    value: middleValue,
+    scopes: prefixScopes.length > 0 && areCodeHighlightScopesEqual(prefixScopes, suffixScopes) ? prefixScopes : [],
+  })
+  for (const segment of suffixSegments) appendCodeHighlightSegment(segments, segment)
+
+  return {
+    language,
+    highlighted: true,
+    segments,
+  }
+}

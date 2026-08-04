@@ -2,6 +2,7 @@ import type { MaybeRefOrGetter, Ref } from 'vue'
 import type { CodeHighlightPriority } from '@/lib/codeHighlightProtocol'
 import type { CodeHighlightResult, CodeHighlightStatus } from '@/lib/codeHighlight'
 import {
+  createOptimisticCodeHighlightResult,
   createPlainCodeHighlightResult,
   getCodeHighlightSkipReason,
   resolveCodeHighlightLanguage,
@@ -88,7 +89,7 @@ export function useCodeHighlight(options: UseCodeHighlightOptions): UseCodeHighl
     const currentRevision = ++revision
     const skipReason = getCodeHighlightSkipReason(currentSource, language)
 
-    result.value = createPlainCodeHighlightResult(currentSource, language)
+    result.value = createOptimisticCodeHighlightResult(result.value, currentSource, language)
     durationMs.value = 0
 
     if (!enabled.value) {
@@ -96,12 +97,14 @@ export function useCodeHighlight(options: UseCodeHighlightOptions): UseCodeHighl
       return
     }
     if (skipReason) {
+      result.value = createPlainCodeHighlightResult(currentSource, language)
       status.value = skipReason === 'unsupported' ? 'unsupported' : skipReason === 'empty' ? 'idle' : 'skipped'
       return
     }
 
     const client = getCodeHighlightWorkerClient()
     if (!client || !language) {
+      result.value = createPlainCodeHighlightResult(currentSource, language)
       status.value = 'unsupported'
       return
     }
@@ -138,8 +141,12 @@ export function useCodeHighlight(options: UseCodeHighlightOptions): UseCodeHighl
     if (!mounted) return
     clearSchedule()
     revision += 1
-    result.value = createPlainCodeHighlightResult(source.value, normalizedLanguage.value)
-    status.value = enabled.value ? 'loading' : 'idle'
+    result.value = createOptimisticCodeHighlightResult(result.value, source.value, normalizedLanguage.value)
+    if (!enabled.value) {
+      status.value = 'idle'
+      return
+    }
+    status.value = 'loading'
     debounceTimer = setTimeout(() => {
       animationFrame = requestAnimationFrame(() => void runHighlight())
     }, options.debounceMs ?? 80)

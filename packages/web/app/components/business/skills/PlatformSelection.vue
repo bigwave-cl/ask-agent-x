@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MAX_CUSTOM_SKILL_DIRECTORIES } from '@askx/module-skills/skill-types'
 import type { SkillPlatformId, SkillPlatformStatus } from '@askx/module-skills/skill-types'
 import { skillPlatformPresentations } from '@/lib/skillPlatformPresentation'
 
@@ -83,10 +84,10 @@ function togglePlatform(platform: SkillPlatformId): void {
           <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-ds-fill-brand-transparent-10 text-primary"><Icon name="askx-objects:file" class="size-5" aria-hidden="true" /></span>
           <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2"><h3 class="text-sm font-semibold sm:text-base">{{ t('skills.customFolderTitle') }}</h3><Badge variant="outline">{{ t('skills.folderCount', { count: directories.length }) }}</Badge></div>
-            <p class="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">{{ t('skills.customFolderDescription') }}</p>
+            <p class="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">{{ t('skills.customFolderDescription', { max: MAX_CUSTOM_SKILL_DIRECTORIES }) }}</p>
           </div>
         </div>
-        <Button variant="outline" size="40" :disabled="busy || pickingDirectories || directories.length >= 20" @click="emit('select-directories')">
+        <Button variant="outline" size="40" :disabled="busy || pickingDirectories || directories.length >= MAX_CUSTOM_SKILL_DIRECTORIES" @click="emit('select-directories')">
           <Icon name="askx-actions:upload" :class="['size-4', { 'animate-pulse': pickingDirectories }]" />
           {{ pickingDirectories ? t('skills.choosingFolders') : t('skills.chooseFolders') }}
         </Button>

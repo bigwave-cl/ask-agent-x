@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import type { AskXConfig, RollbackResult } from '@askx/core'
+import { MAX_CUSTOM_SKILL_DIRECTORIES } from '@askx/module-skills/skill-types'
 import type {
   SkillDecision,
+  SkillCustomRootRemovalPlan,
+  SkillCustomRootRemovalReceipt,
   SkillGroup,
   PlatformLinkAction,
   PlatformLinkPlan,
@@ -29,15 +32,21 @@ const toast = useToast()
 const SKILLS_REQUEST_ERROR_TOAST_ID = 'skills-request-error'
 
 /** 首次接入和管理页面状态。 */
-type SkillsViewState = 'loading' | 'platforms' | 'scan' | 'confirm' | 'result' | 'dashboard'
+type SkillsViewState = 'loading' | 'platforms' | 'scan' | 'links' | 'confirm' | 'result' | 'dashboard'
 
 const state = ref<SkillsViewState>('loading')
 /** 当前引导是接入平台还是只同步单个平台内容。 */
 const flowMode = ref<SkillsBatchMode>('connect')
 const bootstrap = ref<SkillsBootstrap | null>(null)
 const selectedPlatforms = ref<SkillPlatformId[]>(['codex', 'claude', 'cursor'])
+/** 用户在独立步骤明确选择建立根目录软链的平台。 */
+const selectedLinkPlatforms = ref<SkillPlatformId[]>([])
 /** 用户通过系统窗口额外选择的扫描目录。 */
 const selectedDirectories = ref<Array<{ name: string; path: string }>>([])
+/** 用户在软链配置步骤选择的额外使用目录。 */
+const selectedLinkDirectories = ref<Array<{ name: string; path: string }>>([])
+/** 当前扫描结果是否已经初始化过软链默认选择。 */
+const linkSelectionInitialized = ref(false)
 const report = ref<SkillsScanReport | null>(null)
 const decisions = ref<SkillDecision[]>([])
 const plan = ref<SkillsBatchPlan | null>(null)
@@ -51,11 +60,22 @@ const setupOpen = ref(false)
 const platformLinkPlan = ref<PlatformLinkPlan | null>(null)
 /** 平台软链确认弹层是否打开。 */
 const platformLinkActionOpen = ref(false)
+/** 当前等待用户确认移除的自定义扫描来源计划。 */
+const customRootRemovalPlan = ref<SkillCustomRootRemovalPlan | null>(null)
+/** 自定义扫描来源移除确认弹层是否打开。 */
+const customRootRemovalOpen = ref(false)
 
-/** 当前三步位置。 */
-const activeStep = computed(() => state.value === 'platforms' ? 0 : state.value === 'scan' ? 1 : 2)
+/** 当前向导步骤位置。 */
+const activeStep = computed(() => {
+  if (state.value === 'platforms') return 0
+  if (state.value === 'scan') return 1
+  if (flowMode.value === 'connect' && state.value === 'links') return 2
+  return flowMode.value === 'connect' ? 3 : 2
+})
 /** 顶部步骤文案。 */
-const stepLabels = computed(() => [t('skills.stepPlatform'), t('skills.stepScan'), t('skills.stepConfirm')])
+const stepLabels = computed(() => flowMode.value === 'connect'
+  ? [t('skills.stepSource'), t('skills.stepScan'), t('skills.stepLink'), t('skills.stepConfirm')]
+  : [t('skills.stepSource'), t('skills.stepScan'), t('skills.stepConfirm')])
 /** 当前引导弹层标题。 */
 const setupTitle = computed(() => {
   if (state.value === 'result') return t(flowMode.value === 'sync' ? 'skills.syncResultTitle' : 'skills.resultTitle')
@@ -96,7 +116,10 @@ async function loadBootstrap(): Promise<void> {
   clearRequestError()
   try {
     bootstrap.value = await $fetch<SkillsBootstrap>('/api/skills/bootstrap')
-    selectedDirectories.value = []
+    selectedDirectories.value = [...(bootstrap.value.customRoots ?? [])]
+    selectedLinkPlatforms.value = []
+    selectedLinkDirectories.value = []
+    linkSelectionInitialized.value = false
     selectedPlatforms.value = [...(props.settings?.skills.platforms ?? ['codex', 'claude', 'cursor'])]
     if (bootstrap.value.initialized) {
       await Promise.all([scan(false), loadHistory()])
@@ -115,20 +138,51 @@ async function loadBootstrap(): Promise<void> {
   }
 }
 
-/** 调起本机目录多选窗口并合并用户选择。 */
-async function selectDirectories(): Promise<void> {
+/**
+ * 调起本机目录多选窗口并合并用户选择。
+ * @returns 自定义文件夹配置是否发生变化。
+ */
+async function selectDirectories(): Promise<boolean> {
+  let changed = false
   pickingDirectories.value = true
   clearRequestError()
   try {
+    const previousPaths = selectedDirectories.value.map((directory) => directory.path).join('\0')
     const result = await $fetch<{ directories: Array<{ name: string; path: string }> }>('/api/skills/folders/select', { method: 'POST' })
     const merged = new Map(selectedDirectories.value.map((directory) => [directory.path, directory]))
-    for (const directory of result.directories) merged.set(directory.path, directory)
-    selectedDirectories.value = [...merged.values()].sort((left, right) => left.path.localeCompare(right.path))
+    for (const directory of result.directories) {
+      if (merged.size >= MAX_CUSTOM_SKILL_DIRECTORIES && !merged.has(directory.path)) break
+      merged.set(directory.path, directory)
+    }
+    selectedDirectories.value = [...merged.values()]
+      .sort((left, right) => left.path.localeCompare(right.path))
+      .slice(0, MAX_CUSTOM_SKILL_DIRECTORIES)
+    changed = selectedDirectories.value.map((directory) => directory.path).join('\0') !== previousPaths
   } catch (error) {
     notifyRequestError(error, 'folderSelectionFailed')
   } finally {
     pickingDirectories.value = false
   }
+  return changed
+}
+
+/** 将当前平台扫描范围保存到 CLI/Web 共享设置。 */
+async function persistSelectedPlatforms(): Promise<void> {
+  if (!props.settings) throw new Error('共享设置尚未加载。')
+  const current = props.settings
+  if (current.skills.platforms.join(',') === selectedPlatforms.value.join(',')) return
+  const updated = await $fetch<AskXConfig>('/api/settings', {
+    method: 'PUT',
+    body: {
+      revision: current.revision,
+      patch: {
+        locale: current.locale,
+        themeColor: current.themeColor,
+        skills: { backupBeforeLink: current.skills.backupBeforeLink, platforms: selectedPlatforms.value },
+      },
+    },
+  })
+  emit('settings-updated', updated)
 }
 
 /**
@@ -161,22 +215,7 @@ async function startFirstScan(): Promise<void> {
   clearRequestError()
   try {
     flowMode.value = 'connect'
-    let current = props.settings
-    const changed = current.skills.platforms.join(',') !== selectedPlatforms.value.join(',')
-    if (changed) {
-      current = await $fetch<AskXConfig>('/api/settings', {
-        method: 'PUT',
-        body: {
-          revision: current.revision,
-          patch: {
-            locale: current.locale,
-            themeColor: current.themeColor,
-            skills: { backupBeforeLink: current.skills.backupBeforeLink, platforms: selectedPlatforms.value },
-          },
-        },
-      })
-      emit('settings-updated', current)
-    }
+    await persistSelectedPlatforms()
     await scan(true)
   } catch (error) {
     notifyRequestError(error)
@@ -225,6 +264,8 @@ async function preparePlan(): Promise<void> {
         settingsRevision: props.settings.revision,
         decisions: decisions.value,
         mode: flowMode.value,
+        linkPlatforms: selectedLinkPlatforms.value,
+        linkCustomRoots: selectedLinkDirectories.value.map((directory) => directory.path),
       },
     })
     if (!Array.isArray(nextPlan.platformOperations)) throw new Error('Skills 服务仍在使用旧版逐 Skill 链接计划，请重启本地开发服务。')
@@ -248,7 +289,6 @@ async function applyPlan(): Promise<void> {
       body: { plan: plan.value, consent: { planHash: plan.value.hash, confirmedAt: new Date().toISOString() } },
     })
     bootstrap.value = await $fetch<SkillsBootstrap>('/api/skills/bootstrap')
-    selectedDirectories.value = []
     await Promise.all([scan(false), loadHistory()])
     state.value = 'result'
   } catch (error) {
@@ -300,13 +340,23 @@ async function rescanForManagement(): Promise<void> {
 function openSetup(): void {
   flowMode.value = 'connect'
   selectedPlatforms.value = [...(props.settings?.skills.platforms ?? ['codex', 'claude', 'cursor'])]
-  selectedDirectories.value = []
+  selectedDirectories.value = [...(bootstrap.value?.customRoots ?? [])]
+  selectedLinkPlatforms.value = []
+  selectedLinkDirectories.value = []
+  linkSelectionInitialized.value = false
   report.value = null
   decisions.value = []
   plan.value = null
   receipt.value = null
   state.value = 'platforms'
   setupOpen.value = true
+}
+
+/** 从管理页打开添加 Skill 向导并立即选择自定义文件夹。 */
+async function openCustomRootPicker(): Promise<void> {
+  openSetup()
+  await nextTick()
+  await selectDirectories()
 }
 
 /**
@@ -318,6 +368,9 @@ async function openPlatformImport(platform: SkillPlatformId): Promise<void> {
   clearRequestError()
   selectedPlatforms.value = [platform]
   selectedDirectories.value = []
+  selectedLinkPlatforms.value = []
+  selectedLinkDirectories.value = []
+  linkSelectionInitialized.value = false
   flowMode.value = 'connect'
   try {
     await scan(true)
@@ -338,6 +391,9 @@ async function openPlatformSync(platform: SkillPlatformId): Promise<void> {
   clearRequestError()
   selectedPlatforms.value = [platform]
   selectedDirectories.value = []
+  selectedLinkPlatforms.value = []
+  selectedLinkDirectories.value = []
+  linkSelectionInitialized.value = false
   flowMode.value = 'sync'
   plan.value = null
   receipt.value = null
@@ -355,8 +411,93 @@ async function openPlatformSync(platform: SkillPlatformId): Promise<void> {
 function backToPlatformSelection(): void {
   flowMode.value = 'connect'
   selectedPlatforms.value = [...(props.settings?.skills.platforms ?? ['codex', 'claude', 'cursor'])]
-  selectedDirectories.value = []
+  selectedDirectories.value = [...(bootstrap.value?.customRoots ?? [])]
+  selectedLinkPlatforms.value = []
+  selectedLinkDirectories.value = []
+  linkSelectionInitialized.value = false
   state.value = 'platforms'
+}
+
+/** 从扫描决策进入独立的软链接入选择步骤。 */
+function continueAfterScan(): void {
+  if (flowMode.value === 'sync') {
+    void preparePlan()
+    return
+  }
+  if (!linkSelectionInitialized.value) {
+    const supported = new Set(bootstrap.value?.platforms.filter((platform) => platform.linkSupported).map((platform) => platform.id) ?? [])
+    selectedLinkPlatforms.value = selectedPlatforms.value.filter((platform) => supported.has(platform))
+    selectedLinkDirectories.value = [...selectedDirectories.value]
+    linkSelectionInitialized.value = true
+  }
+  state.value = 'links'
+}
+
+/** 从软链配置补充自定义使用目录，不改变扫描来源和扫描结果。 */
+async function selectLinkDirectories(): Promise<void> {
+  pickingDirectories.value = true
+  clearRequestError()
+  try {
+    const result = await $fetch<{ directories: Array<{ name: string; path: string }> }>('/api/skills/folders/select', { method: 'POST' })
+    const merged = new Map(selectedLinkDirectories.value.map((directory) => [directory.path, directory]))
+    for (const directory of result.directories) {
+      if (merged.size >= MAX_CUSTOM_SKILL_DIRECTORIES && !merged.has(directory.path)) break
+      merged.set(directory.path, directory)
+    }
+    selectedLinkDirectories.value = [...merged.values()]
+      .sort((left, right) => left.path.localeCompare(right.path))
+      .slice(0, MAX_CUSTOM_SKILL_DIRECTORIES)
+  } catch (error) {
+    notifyRequestError(error, 'folderSelectionFailed')
+  } finally {
+    pickingDirectories.value = false
+  }
+}
+
+/**
+ * 为移除已保存的自定义扫描来源生成确认计划。
+ * @param rootId 要移除的扫描来源标识。
+ */
+async function prepareCustomRootRemoval(rootId: string): Promise<void> {
+  busy.value = true
+  clearRequestError()
+  try {
+    customRootRemovalPlan.value = await $fetch<SkillCustomRootRemovalPlan>('/api/skills/custom-root/plan', {
+      method: 'POST',
+      body: { rootId },
+    })
+    customRootRemovalOpen.value = true
+  } catch (error) {
+    notifyRequestError(error, 'customRootRemoveFailed')
+  } finally {
+    busy.value = false
+  }
+}
+
+/** 应用已确认的自定义扫描来源移除计划。 */
+async function applyCustomRootRemoval(): Promise<void> {
+  if (!customRootRemovalPlan.value) return
+  busy.value = true
+  clearRequestError()
+  const currentPlan = customRootRemovalPlan.value
+  try {
+    await $fetch<SkillCustomRootRemovalReceipt>('/api/skills/custom-root/apply', {
+      method: 'POST',
+      body: {
+        plan: currentPlan,
+        consent: { planHash: currentPlan.hash, confirmedAt: new Date().toISOString() },
+      },
+    })
+    bootstrap.value = await $fetch<SkillsBootstrap>('/api/skills/bootstrap')
+    selectedDirectories.value = [...bootstrap.value.customRoots]
+    customRootRemovalOpen.value = false
+    customRootRemovalPlan.value = null
+    toast.success(t('skills.customRootRemoved'))
+  } catch (error) {
+    notifyRequestError(error, 'customRootRemoveFailed')
+  } finally {
+    busy.value = false
+  }
 }
 
 /**
@@ -438,13 +579,15 @@ onMounted(loadBootstrap)
         @platform-action="openPlatformImport"
         @platform-sync="openPlatformSync"
         @platform-link-action="preparePlatformLinkAction"
+        @add-custom-root="openCustomRootPicker"
+        @remove-custom-root="prepareCustomRootRemoval"
       />
 
       <template v-if="bootstrap.initialized && report">
-        <BusSkillsSkillList :managed-skills="bootstrap.managedSkills" :health="bootstrap.managedHealth" :platform-health="bootstrap.platformHealth ?? []" :report="report" :busy="busy" @scan="openSetup" @updated="refreshManagedResources" />
+        <BusSkillsSkillList :managed-skills="bootstrap.managedSkills" :health="bootstrap.managedHealth" :platform-health="bootstrap.platformHealth ?? []" :report="report" :busy="busy" @add="openSetup" @updated="refreshManagedResources" />
         <BusSkillsTransactionHistory :receipts="history" :busy="busy" @rollback="rollbackTransaction" />
       </template>
-      <BusSkillsEmptyState v-else :initialized="false" @action="openSetup" />
+      <BusSkillsEmptyState v-else :initialized="bootstrap.initialized" @action="openSetup" />
 
       <CsResponsiveOverlayDialogDrawer
         v-model:open="setupOpen"
@@ -485,6 +628,17 @@ onMounted(loadBootstrap)
           @remove-directory="removeDirectory"
         />
         <BusSkillsScanResult v-else-if="state === 'scan' && report" :report="report" :decisions="decisions" :mode="flowMode" @update-decision="updateDecision" @rescan="rescanForManagement" />
+        <BusSkillsPlatformLinkSelection
+          v-else-if="state === 'links' && report"
+          v-model:selected="selectedLinkPlatforms"
+          v-model:directories="selectedLinkDirectories"
+          :platforms="bootstrap.platforms"
+          :source-platforms="report.platforms"
+          :source-directories="selectedDirectories"
+          :busy="busy"
+          :picking-directories="pickingDirectories"
+          @select-directories="selectLinkDirectories"
+        />
         <BusSkillsActionConfirmation v-else-if="state === 'confirm' && plan" :plan="plan" />
         <BusSkillsExecutionResult v-else-if="state === 'result' && receipt" :receipt="receipt" :mode="flowMode" />
 
@@ -500,11 +654,16 @@ onMounted(loadBootstrap)
 
           <template v-else-if="state === 'scan'">
             <Button variant="ghost" size="40" @click="backToPlatformSelection"><Icon name="askx-navigation:arrow-left" />{{ t('skills.back') }}</Button>
+            <Button size="40" :disabled="busy" @click="continueAfterScan"><Icon name="askx-navigation:arrow-right" />{{ busy ? t('skills.preparing') : t(flowMode === 'sync' ? 'skills.preparePlan' : 'skills.continueToLinks') }}</Button>
+          </template>
+
+          <template v-else-if="state === 'links'">
+            <Button variant="ghost" size="40" @click="state = 'scan'"><Icon name="askx-navigation:arrow-left" />{{ t('skills.back') }}</Button>
             <Button size="40" :disabled="busy" @click="preparePlan"><Icon name="askx-navigation:arrow-right" />{{ busy ? t('skills.preparing') : t('skills.preparePlan') }}</Button>
           </template>
 
           <template v-else-if="state === 'confirm'">
-            <Button variant="ghost" size="40" :disabled="busy" @click="state = 'scan'"><Icon name="askx-navigation:arrow-left" />{{ t('skills.back') }}</Button>
+            <Button variant="ghost" size="40" :disabled="busy" @click="state = flowMode === 'connect' ? 'links' : 'scan'"><Icon name="askx-navigation:arrow-left" />{{ t('skills.back') }}</Button>
             <Button size="48" :disabled="busy" @click="applyPlan"><Icon name="askx-status:loading" :class="{ 'animate-spin': busy }" />{{ busy ? t(flowMode === 'sync' ? 'skills.syncApplying' : 'skills.applying') : t(flowMode === 'sync' ? 'skills.saveSyncResult' : 'skills.apply') }}</Button>
           </template>
 
@@ -521,6 +680,28 @@ onMounted(loadBootstrap)
         :busy="busy"
         @confirm="applyPlatformLinkAction"
       />
+
+      <CsResponsiveOverlayDialogDrawer
+        v-model:open="customRootRemovalOpen"
+        :title="t('skills.removeCustomRootTitle')"
+        :description="t('skills.removeCustomRootDescription', { name: customRootRemovalPlan?.root.name ?? '' })"
+        :dismissible="!busy"
+        :close-disabled="busy"
+        :close-label="t('skills.cancelCustomRootRemoval')"
+        :dialog="{ content: { class: 'sm:max-w-lg' } }"
+        :drawer="{ root: { handleOnly: true }, content: { class: '[&>div:first-child]:hidden' } }"
+      >
+        <template #trigger><button type="button" tabindex="-1" aria-hidden="true" class="sr-only">{{ t('skills.removeCustomRootTitle') }}</button></template>
+        <div v-if="customRootRemovalPlan" class="rounded-2xl border bg-muted/20 p-4">
+          <strong class="block text-sm">{{ customRootRemovalPlan.root.name }}</strong>
+          <code class="mt-1 block break-all font-mono text-[10px] text-muted-foreground">{{ customRootRemovalPlan.root.path }}</code>
+          <p class="mt-3 text-xs leading-5 text-muted-foreground">{{ t('skills.removeCustomRootSafety') }}</p>
+        </div>
+        <template #footer>
+          <Button variant="outline" :disabled="busy" @click="customRootRemovalOpen = false">{{ t('skills.cancelCustomRootRemoval') }}</Button>
+          <Button variant="destructive" :disabled="busy" @click="applyCustomRootRemoval"><Icon name="askx-actions:delete" />{{ t('skills.confirmCustomRootRemoval') }}</Button>
+        </template>
+      </CsResponsiveOverlayDialogDrawer>
     </template>
   </div>
 </template>

@@ -13,6 +13,7 @@ import type {
   SkillPlatformStatus,
   SkillsScanReport,
 } from './skill-types.js'
+import { MAX_CUSTOM_SKILL_DIRECTORIES } from './skill-types.js'
 
 /** Skill 扫描默认支持的平台顺序。 */
 export const supportedSkillPlatforms: SkillPlatformId[] = ['codex', 'claude', 'cursor']
@@ -224,7 +225,9 @@ export async function scanSkills(
   const uniquePlatforms = supportedSkillPlatforms.filter((platform) => platforms.includes(platform))
   if (!uniquePlatforms.length) throw new Error('至少选择一个 Skill 平台。')
   const descriptors = platformDescriptors(homeDir)
-  if (customRootPaths.length > 20) throw new Error('一次最多选择 20 个额外扫描目录。')
+  if (customRootPaths.length > MAX_CUSTOM_SKILL_DIRECTORIES) {
+    throw new Error(`一次最多选择 ${MAX_CUSTOM_SKILL_DIRECTORIES} 个额外扫描目录。`)
+  }
   const normalizedCustomPaths = [...new Set(customRootPaths.map((path) => {
     if (!isAbsolute(path)) throw new Error(`额外扫描目录必须是绝对路径：${path}`)
     return resolve(path)

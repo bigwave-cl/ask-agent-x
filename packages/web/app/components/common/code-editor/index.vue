@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { CodeHighlightSegment } from '@/lib/codeHighlight'
-import { createCodeEditorLines } from './codeEditorLines'
+import { applyCodeEditorIndent } from './codeEditorIndent'
+import { createCodeEditorLines, resolveCodeEditorLineIndex } from './codeEditorLines'
 
 defineOptions({ name: 'CsCodeEditor', inheritAttrs: false })
 
@@ -38,6 +39,10 @@ const attrs = useAttrs()
 const isComposing = ref(false)
 /** 当前是否正在等待新语言完成首次渲染。 */
 const languageTransition = ref(true)
+/** 负责接收编辑输入的原生 textarea。 */
+const textareaElement = ref<HTMLTextAreaElement | null>(null)
+/** 当前光标所在的逻辑行索引。 */
+const activeLineIndex = ref(0)
 /** 根节点接收的调用方 class。 */
 const rootClass = computed(() => attrs.class)
 /** 除 class 外透传给 textarea 的原生属性。 */
@@ -56,14 +61,16 @@ const { result, status, refresh } = useCodeHighlight({
   priority: 'interactive',
   debounceMs: 80,
 })
-/** 是否已经显示与当前文本一致的高亮镜像。 */
-const highlightReady = computed(() => status.value === 'ready' && result.value.highlighted)
+/** 当前镜像是否包含可持续复用的高亮作用域。 */
+const highlightReady = computed(() => result.value.highlighted)
 /** 是否展示阻止误编辑的语言加载反馈。 */
 const languageLoading = computed(() => languageTransition.value && status.value === 'loading')
 /** 未完成高亮时用于保持输入布局稳定的纯文本片段。 */
 const plainSegments = computed<CodeHighlightSegment[]>(() => [{ value: modelValue.value, scopes: [] }])
 /** 与 textarea 软换行宽度一致的逻辑代码行。 */
 const editorLines = computed(() => createCodeEditorLines(highlightReady.value ? result.value.segments : plainSegments.value))
+/** 是否由镜像层持续展示当前文本。 */
+const mirrorVisible = computed(() => modelValue.value.length > 0)
 
 /** 暂停组合输入期间的异步高亮。 */
 function handleCompositionStart(): void {
@@ -76,8 +83,59 @@ function handleCompositionEnd(): void {
   refresh()
 }
 
+/**
+ * 同步 textarea 的实时文本，组合输入期间也保持高亮镜像内容完整。
+ * @param event textarea 输入事件。
+ */
+function handleInput(event: Event): void {
+  const element = event.currentTarget
+  if (element instanceof HTMLTextAreaElement) modelValue.value = element.value
+  updateActiveLine()
+}
+
+/** 根据 textarea 当前光标位置更新高亮行号。 */
+function updateActiveLine(): void {
+  const element = textareaElement.value
+  if (!element) return
+  activeLineIndex.value = resolveCodeEditorLineIndex(element.value, element.selectionStart)
+}
+
+/**
+ * 将 Tab 键转换为编辑器缩进，并保持更新后的光标或选区。
+ * @param event textarea 键盘事件。
+ */
+async function handleKeydown(event: KeyboardEvent): Promise<void> {
+  if (
+    event.key !== 'Tab'
+    || event.isComposing
+    || props.readonly
+    || props.disabled
+    || event.altKey
+    || event.ctrlKey
+    || event.metaKey
+  ) return
+  const element = textareaElement.value
+  if (!element) return
+  event.preventDefault()
+  const result = applyCodeEditorIndent(
+    element.value,
+    element.selectionStart,
+    element.selectionEnd,
+    event.shiftKey ? 'outdent' : 'indent',
+  )
+  modelValue.value = result.value
+  await nextTick()
+  element.setSelectionRange(result.selectionStart, result.selectionEnd)
+  updateActiveLine()
+}
+
 watch(() => [props.language, props.filename], () => {
   languageTransition.value = true
+  activeLineIndex.value = 0
+})
+watch(modelValue, async () => {
+  await nextTick()
+  updateActiveLine()
 })
 watch(status, (nextStatus) => {
   if (nextStatus !== 'loading') languageTransition.value = false
@@ -93,18 +151,20 @@ watch(status, (nextStatus) => {
     :data-highlight-status="status"
     :data-language-loading="languageLoading"
   >
+    <span aria-hidden="true" class="pointer-events-none absolute inset-y-0 left-0 w-12 border-r border-ds-border-subtle-10 bg-ds-fill-bw-transparent-3" />
     <div class="absolute inset-0">
-      <ScrollArea type="always" orientation="vertical" class="size-full" viewport-class="overflow-x-hidden overscroll-contain">
+      <ScrollArea type="auto" orientation="vertical" class="size-full" viewport-class="overflow-x-hidden overscroll-contain">
         <div class="relative min-h-full w-full">
-          <span aria-hidden="true" class="pointer-events-none absolute inset-y-0 left-0 w-12 border-r border-ds-border-subtle-10 bg-ds-fill-bw-transparent-3" />
           <pre
             aria-hidden="true"
             class="code-editor__mirror pointer-events-none relative m-0 min-h-full w-full whitespace-pre-wrap bg-transparent py-4 font-mono text-xs leading-6 text-foreground [overflow-wrap:anywhere] [tab-size:2]"
-          ><span v-for="(line, lineIndex) in editorLines" :key="lineIndex" class="grid min-h-6 grid-cols-[3rem_minmax(0,1fr)]"><span class="select-none pr-3 text-right text-[10px] leading-6 text-muted-foreground/55">{{ lineIndex + 1 }}</span><code class="code-editor__mirror-code hljs block min-w-0 whitespace-pre-wrap pl-3 pr-4 [overflow-wrap:anywhere]" :class="highlightReady ? 'opacity-100' : 'opacity-0'"><template v-if="line.segments.length"><span v-for="(segment, segmentIndex) in line.segments" :key="segmentIndex" :class="segment.scopes">{{ segment.value }}</span></template><span v-else>&#8203;</span></code></span></pre>
+            :class="mirrorVisible ? disabled ? 'opacity-50' : 'opacity-100' : 'opacity-0'"
+          ><span v-for="(line, lineIndex) in editorLines" :key="lineIndex" class="grid min-h-6 grid-cols-[3rem_minmax(0,1fr)]"><span class="select-none pr-3 text-right text-[10px] leading-6" :class="lineIndex === activeLineIndex ? 'bg-ds-fill-brand-transparent-10 font-semibold text-ds-text-brand' : 'text-muted-foreground/55'">{{ lineIndex + 1 }}</span><code class="code-editor__mirror-code hljs block min-w-0 whitespace-pre-wrap pl-3 pr-4 [overflow-wrap:anywhere]"><template v-if="line.segments.length"><span v-for="(segment, segmentIndex) in line.segments" :key="segmentIndex" :class="segment.scopes">{{ segment.value }}</span></template><span v-else>&#8203;</span></code></span></pre>
 
           <textarea
+            ref="textareaElement"
             v-bind="textareaAttrs"
-            v-model="modelValue"
+            :value="modelValue"
             :aria-label="label"
             :aria-busy="status === 'loading'"
             :readonly="readonly"
@@ -113,9 +173,15 @@ watch(status, (nextStatus) => {
             spellcheck="false"
             wrap="soft"
             class="absolute inset-0 size-full resize-none overflow-hidden whitespace-pre-wrap bg-transparent py-4 pl-[3.75rem] pr-4 font-mono text-xs leading-6 outline-none [overflow-wrap:anywhere] [tab-size:2] placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            :class="highlightReady ? 'code-editor__input--highlighted' : 'text-foreground'"
+            :class="mirrorVisible ? 'code-editor__input--mirrored' : 'text-foreground'"
             @compositionstart="handleCompositionStart"
             @compositionend="handleCompositionEnd"
+            @click="updateActiveLine"
+            @focus="updateActiveLine"
+            @input="handleInput"
+            @keydown="handleKeydown"
+            @keyup="updateActiveLine"
+            @select="updateActiveLine"
           />
         </div>
       </ScrollArea>
@@ -144,19 +210,13 @@ watch(status, (nextStatus) => {
 </template>
 
 <style scoped>
-.code-editor__input--highlighted {
+.code-editor__input--mirrored {
   color: transparent;
   caret-color: var(--ds-color-text-primary);
   -webkit-text-fill-color: transparent;
 }
 
-.code-editor__input--highlighted::selection {
+.code-editor__input--mirrored::selection {
   background: color-mix(in srgb, var(--ds-color-brand-default) 28%, transparent);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .code-editor__mirror-code {
-    transition: opacity 120ms ease;
-  }
 }
 </style>

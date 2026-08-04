@@ -17,7 +17,7 @@ const { t } = useI18n()
       <span class="mx-auto grid size-16 place-items-center rounded-[22px] border bg-background shadow-xl"><Icon name="askx-objects:skills" class="size-7 text-primary" /></span>
       <h2 class="mt-6 text-2xl font-semibold tracking-[-0.03em]">{{ initialized ? t('skills.emptyTitle') : t('skills.setupEmptyTitle') }}</h2>
       <p class="mt-3 text-sm leading-6 text-muted-foreground">{{ initialized ? t('skills.emptyDescription') : t('skills.setupEmptyDescription') }}</p>
-      <Button class="mt-7" size="40" :variant="initialized ? 'outline' : 'default'" @click="emit('action')"><Icon :name="initialized ? 'askx-actions:refresh' : 'askx-actions:adjust'" />{{ initialized ? t('skills.scanAgain') : t('skills.startSetup') }}</Button>
+      <Button class="mt-7" size="40" :variant="initialized ? 'outline' : 'default'" @click="emit('action')"><Icon :name="initialized ? 'askx-actions:upload' : 'askx-actions:adjust'" />{{ initialized ? t('skills.addSkill') : t('skills.startSetup') }}</Button>
     </div>
   </section>
 </template>

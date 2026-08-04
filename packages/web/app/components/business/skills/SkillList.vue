@@ -32,8 +32,8 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), { busy: false })
 const emit = defineEmits<{
-  /** 发起重新扫描。 */
-  'scan': []
+  /** 打开添加 Skill 流程。 */
+  'add': []
   /** 文件保存后要求父级刷新 manifest 状态。 */
   'updated': []
 }>()
@@ -67,16 +67,6 @@ const descriptionOverflow = ref(false)
 /** 完整描述响应式弹层是否打开。 */
 const descriptionOpen = ref(false)
 
-/** 已受管 Skill 名称集合。 */
-const managedNames = computed(() => new Set(props.managedSkills.map((skill) => skill.name)))
-/** 扫描到但尚未受管的 Skill。 */
-const unmanagedGroups = computed(() => props.report.groups.filter((group) => !managedNames.value.has(group.name)))
-/** 内容冲突数量。 */
-const conflictCount = computed(() => props.report.groups.filter((group) => group.status === 'conflict').length)
-/** 内容漂移数量。 */
-const driftCount = computed(() => props.health.filter((health) => health.drifted).length)
-/** 失效目录代理和坏链数量。 */
-const brokenCount = computed(() => props.platformHealth.filter((health) => health.status === 'failed' || health.status === 'broken').length + props.report.groups.filter((group) => group.status === 'broken').length)
 /** 受管 Skill 的健康状态索引。 */
 const healthById = computed(() => new Map(props.health.map((health) => [health.skillId, health])))
 /** 与搜索词匹配的受管 Skill。 */
@@ -93,6 +83,19 @@ const markdownFile = computed(() => /\.mdx?$/i.test(currentFile.value?.path ?? '
 const selectedHealth = computed(() => healthById.value.get(selectedSkillId.value))
 /** 当前打开文件对应的类型图标。 */
 const currentFileIcon = computed(() => resolveSkillTreeIcon(currentFile.value?.path.split('/').pop() ?? '', 'file'))
+
+/**
+ * 将文件字节数格式化为紧凑的可读单位。
+ * @param bytes 文件字节数。
+ * @returns 按 G、M、KB、B 递减选择的大小文本。
+ */
+function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} G`
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} M`
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${Math.round(bytes)} B`
+}
 
 /** 检查当前描述是否需要提供完整内容入口。 */
 function measureDescriptionOverflow(): void {
@@ -243,17 +246,13 @@ onMounted(() => {
         <p class="mt-2 text-sm text-muted-foreground">{{ t('skills.resourceDescription') }}</p>
       </div>
       <div class="flex flex-wrap items-center justify-end gap-2">
-        <Button variant="outline" size="40" :disabled="busy" @click="emit('scan')"><Icon name="askx-actions:refresh" />{{ t('skills.rescan') }}</Button>
+        <Button variant="outline" size="40" :disabled="busy" @click="emit('add')"><Icon name="askx-actions:upload" />{{ t('skills.addSkill') }}</Button>
         <BusSkillsCanonicalSourceManager :disabled="busy" @updated="emit('updated')" />
       </div>
     </header>
 
-    <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-      <div v-for="item in [{ key: 'managed', value: managedSkills.length }, { key: 'unmanaged', value: unmanagedGroups.length }, { key: 'conflicts', value: conflictCount }, { key: 'drifted', value: driftCount }, { key: 'brokenBindings', value: brokenCount }, { key: 'platforms', value: report.platforms.length }]" :key="item.key" class="rounded-xl border bg-card px-4 py-3"><span class="text-[11px] text-muted-foreground">{{ t(`skills.${item.key}`) }}</span><strong class="mt-1 block text-xl tabular-nums">{{ item.value }}</strong></div>
-    </div>
-
-    <div class="overflow-hidden rounded-[28px] border bg-card shadow-sm">
-      <div class="grid min-h-[680px] lg:grid-cols-[280px_minmax(0,1fr)]">
+    <div class="h-[1630px] overflow-hidden rounded-[28px] border bg-card shadow-sm sm:h-[1530px] lg:h-[760px]">
+      <div class="grid h-full lg:grid-cols-[280px_minmax(0,1fr)]">
         <aside class="flex min-h-0 flex-col border-b bg-ds-fill-bw-transparent-3 lg:border-r lg:border-b-0">
           <div class="border-b p-4">
             <div class="flex items-center justify-between gap-3"><div><strong class="text-sm">{{ t('skills.canonicalSkills') }}</strong><span class="ml-2 font-mono text-[10px] text-muted-foreground">{{ managedSkills.length }}</span></div><Icon name="askx-objects:skills" class="size-4 text-primary" aria-hidden="true" /></div>
@@ -289,7 +288,7 @@ onMounted(() => {
               <div class="relative flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
                 <div class="min-w-0">
                   <div class="flex flex-wrap items-center gap-2"><h3 class="text-2xl font-semibold tracking-[-0.03em]">{{ detail.name }}</h3><Badge variant="secondary">{{ detail.version ? `v${detail.version}` : t('skills.versionUnspecified') }}</Badge><Badge v-if="selectedHealth?.drifted" variant="destructive">{{ t('skills.drifted') }}</Badge></div>
-                  <div class="mt-2 flex max-w-3xl items-end gap-2">
+                  <div class="mt-2 flex h-[4.5rem] max-w-3xl items-start gap-2">
                     <p ref="descriptionElement" class="line-clamp-3 min-w-0 flex-1 text-sm leading-6 text-muted-foreground">{{ detail.description || t('skills.noSkillDescription') }}</p>
                     <CsResponsiveOverlayPopoverDrawer
                       v-if="descriptionOverflow"
@@ -314,8 +313,8 @@ onMounted(() => {
                 </div>
                 <div class="flex shrink-0 items-center gap-4 text-xs"><span><strong class="block text-lg tabular-nums">{{ detail.fileCount }}</strong><span class="text-muted-foreground">{{ t('skills.resourceFiles') }}</span></span><span class="h-8 w-px bg-border" /><span><strong class="block text-lg tabular-nums">{{ detail.tree.length }}</strong><span class="text-muted-foreground">{{ t('skills.rootEntries') }}</span></span></div>
               </div>
-              <div class="relative mt-4 flex max-w-full flex-wrap items-center gap-2">
-                <button type="button" class="flex min-w-0 max-w-full items-center gap-2 rounded-lg bg-ds-fill-bw-transparent-3 px-3 py-2 font-mono text-[10px] text-muted-foreground transition hover:bg-ds-fill-bw-transparent-5 hover:text-foreground" @click="copyPath(detail.canonicalPath)"><Icon name="askx-actions:copy" class="size-3.5 shrink-0" /><span class="truncate">{{ detail.canonicalPath }}</span></button>
+              <div class="relative mt-4 flex w-full max-w-full flex-wrap items-center justify-between gap-2">
+                <button type="button" class="flex h-9 min-w-0 max-w-full items-center gap-2 rounded-lg bg-ds-fill-bw-transparent-3 px-3 font-mono text-[10px] text-muted-foreground transition hover:bg-ds-fill-bw-transparent-5 hover:text-foreground" @click="copyPath(detail.canonicalPath)"><Icon name="askx-actions:copy" class="size-3.5 shrink-0" /><span class="truncate">{{ detail.canonicalPath }}</span></button>
                 <CsLocalPathOpener :path="detail.canonicalPath" />
               </div>
             </header>
@@ -333,7 +332,12 @@ onMounted(() => {
                   <div class="flex min-h-12 flex-wrap items-center justify-between gap-2 border-b px-4 py-2">
                     <div class="flex min-w-0 items-center gap-2"><Icon :name="currentFileIcon" class="size-4 shrink-0 text-primary" /><span class="truncate font-mono text-[11px]">{{ currentFile.path }}</span><span v-if="dirty" class="size-2 shrink-0 rounded-full bg-ds-warning-default" :title="t('skills.unsaved')" /></div>
                     <div class="flex items-center gap-2">
-                      <Tabs v-if="markdownFile" v-model="viewMode" default-value="edit"><TabsList variant="line" class="h-8"><TabsTrigger value="edit" class="h-8 px-3 text-xs">{{ t('skills.editFile') }}</TabsTrigger><TabsTrigger value="preview" class="h-8 px-3 text-xs">{{ t('skills.previewFile') }}</TabsTrigger></TabsList></Tabs>
+                      <Tabs v-if="markdownFile" v-model="viewMode" default-value="edit">
+                        <TabsList variant="segment" size="36" shape="regular" :aria-label="`${t('skills.editFile')} / ${t('skills.previewFile')}`">
+                          <TabsTrigger value="edit"><Icon name="askx-actions:edit" />{{ t('skills.editFile') }}</TabsTrigger>
+                          <TabsTrigger value="preview"><Icon name="askx-actions:preview" />{{ t('skills.previewFile') }}</TabsTrigger>
+                        </TabsList>
+                      </Tabs>
                       <Button v-if="dirty" variant="ghost" size="36" @click="resetDraft">{{ t('skills.discardChanges') }}</Button>
                       <Button size="36" :disabled="!dirty || saving" @click="prepareSave"><Icon name="askx-actions:edit" />{{ saving ? t('skills.preparingFileSave') : t('skills.saveFile') }}</Button>
                     </div>
@@ -350,7 +354,7 @@ onMounted(() => {
                     />
                     <ScrollArea v-else class="h-[440px] rounded-xl border bg-background" viewport-class="p-6"><BusMdcRender :value="draft" :cache-key="`${currentFile.path}:${draft.length}`" /></ScrollArea>
                   </div>
-                  <footer class="flex items-center justify-between gap-3 border-t px-4 py-2 font-mono text-[9px] text-muted-foreground"><span>{{ currentFile.language.toUpperCase() }} · {{ currentFile.size }} B</span><span>{{ t('skills.contentFingerprint') }} {{ currentFile.contentHash.slice(0, 12) }}</span></footer>
+                  <footer class="flex items-center justify-between gap-3 border-t px-4 py-2 font-mono text-[9px] text-muted-foreground"><span>{{ currentFile.language.toUpperCase() }} · {{ formatFileSize(currentFile.size) }}</span><span>{{ t('skills.contentFingerprint') }} {{ currentFile.contentHash.slice(0, 12) }}</span></footer>
                 </template>
                 <div v-else class="grid min-h-[500px] place-items-center p-8 text-center"><div><span class="mx-auto grid size-12 place-items-center rounded-2xl bg-ds-fill-brand-transparent-10 text-primary"><Icon name="askx-objects:file" class="size-5" /></span><h4 class="mt-4 font-semibold">{{ t('skills.selectFileTitle') }}</h4><p class="mt-2 text-xs text-muted-foreground">{{ t('skills.selectFileDescription') }}</p></div></div>
               </section>

@@ -77,6 +77,38 @@ describe('SkillsManager', () => {
     expect(await readlink(join(homeDir, '.codex', 'skills'))).toBe(join(dataDir, 'skills'))
   })
 
+  it('添加 Skill 时可以跳过平台软链并保存可移除的自定义扫描来源', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-custom-source-home-'))
+    const dataDir = join(homeDir, '.askx')
+    const customRoot = join(homeDir, 'shared-skills')
+    await createSkill(homeDir, 'codex', 'platform-demo', 'platform body')
+    await mkdir(join(customRoot, 'custom-demo'), { recursive: true })
+    await writeFile(join(customRoot, 'custom-demo', 'SKILL.md'), '---\nname: custom-demo\ndescription: 自定义来源\n---\n')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const report = await manager.scan(['codex'], [customRoot])
+    const plan = await manager.planOnboarding({
+      platforms: ['codex'],
+      customRoots: [customRoot],
+      linkPlatforms: [],
+      detectionFingerprint: report.fingerprint,
+      settingsRevision: 0,
+      decisions: report.groups.map((group) => ({ kind: 'adopt' as const, sourceLocationId: group.locations.find((location) => location.metadata.valid)!.id })),
+    })
+
+    const receipt = await manager.applyOnboarding(plan, 0)
+    const bootstrap = await manager.bootstrap()
+
+    expect(receipt.platformResults).toEqual([])
+    expect((await lstat(join(homeDir, '.codex', 'skills'))).isDirectory()).toBe(true)
+    expect(bootstrap.customRoots).toMatchObject([{ name: 'shared-skills', path: customRoot }])
+    const removalPlan = await manager.planCustomRootRemoval(bootstrap.customRoots[0]!.id)
+    await manager.applyCustomRootRemoval(removalPlan, { planHash: removalPlan.hash, confirmedAt: new Date().toISOString() })
+
+    expect((await manager.bootstrap()).customRoots).toEqual([])
+    expect(await readFile(join(customRoot, 'custom-demo', 'SKILL.md'), 'utf8')).toContain('custom-demo')
+    expect(await readFile(join(dataDir, 'skills', 'custom-demo', 'SKILL.md'), 'utf8')).toContain('custom-demo')
+  })
+
   it('可以幂等停用并恢复单个平台根目录软链且不修改统一源', async () => {
     const homeDir = await mkdtemp(join(tmpdir(), 'askx-suspend-link-home-'))
     const dataDir = join(homeDir, '.askx')
@@ -258,6 +290,86 @@ describe('SkillsManager', () => {
     expect(await readlink(join(homeDir, '.claude', 'skills'))).toBe(join(dataDir, 'skills'))
     expect(await readFile(join(homeDir, '.codex', 'skills', 'beta', 'SKILL.md'), 'utf8')).toContain('beta body')
     expect(await readFile(join(homeDir, '.claude', 'skills', 'alpha', 'SKILL.md'), 'utf8')).toContain('alpha body')
+  })
+
+  it('软链步骤可以接入未参与扫描的平台且不会扩展扫描来源', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-extra-link-platform-home-'))
+    const dataDir = join(homeDir, '.askx')
+    await createSkill(homeDir, 'claude', 'source-only', 'source body')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const report = await manager.scan(['claude'])
+    const source = report.groups[0]!.locations[0]!
+    const plan = await manager.planOnboarding({
+      platforms: ['claude'],
+      linkPlatforms: ['claude', 'cursor'],
+      detectionFingerprint: report.fingerprint,
+      settingsRevision: 0,
+      decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
+    })
+
+    expect(plan.platforms).toEqual(['claude'])
+    expect(plan.platformOperations.map((operation) => operation.platform)).toEqual(['claude', 'cursor'])
+
+    await manager.applyOnboarding(plan, 0)
+
+    expect(await readlink(join(homeDir, '.cursor', 'skills'))).toBe(join(dataDir, 'skills'))
+    expect(await readFile(join(homeDir, '.cursor', 'skills', 'source-only', 'SKILL.md'), 'utf8')).toContain('source body')
+  })
+
+  it('自定义来源可默认转为软链使用目录且不会再次作为扫描来源保存', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-custom-link-root-home-'))
+    const dataDir = join(homeDir, '.askx')
+    const customRoot = join(homeDir, 'shared-skills')
+    await mkdir(join(customRoot, 'custom-demo'), { recursive: true })
+    await writeFile(join(customRoot, 'custom-demo', 'SKILL.md'), '---\nname: custom-demo\ndescription: 自定义来源\n---\n\ncustom body\n')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const report = await manager.scan(['codex'], [customRoot])
+    const source = report.groups[0]!.locations[0]!
+    const plan = await manager.planOnboarding({
+      platforms: ['codex'],
+      customRoots: [customRoot],
+      linkPlatforms: [],
+      linkCustomRoots: [customRoot],
+      detectionFingerprint: report.fingerprint,
+      settingsRevision: 0,
+      decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
+    })
+
+    const receipt = await manager.applyOnboarding(plan, 0)
+    const bootstrap = await manager.bootstrap()
+
+    expect(receipt.customLinkResults).toMatchObject([{ name: 'shared-skills', path: customRoot, status: 'applied' }])
+    expect((await lstat(customRoot)).isSymbolicLink()).toBe(true)
+    expect(await readFile(join(customRoot, 'custom-demo', 'SKILL.md'), 'utf8')).toContain('custom body')
+    expect(bootstrap.customRoots).toEqual([])
+    expect(bootstrap.customLinkBindings).toMatchObject([{ name: 'shared-skills', path: customRoot, target: join(dataDir, 'skills') }])
+  })
+
+  it('自定义软链目录保存失败时会恢复接入前的完整目录', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-custom-link-rollback-home-'))
+    const dataDir = join(homeDir, '.askx')
+    const customRoot = join(homeDir, 'shared-skills')
+    await mkdir(join(customRoot, 'custom-demo'), { recursive: true })
+    await writeFile(join(customRoot, 'custom-demo', 'SKILL.md'), '---\nname: custom-demo\ndescription: 回滚来源\n---\n\noriginal body\n')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const report = await manager.scan(['codex'], [customRoot])
+    const source = report.groups[0]!.locations[0]!
+    const plan = await manager.planOnboarding({
+      platforms: ['codex'],
+      customRoots: [customRoot],
+      linkPlatforms: [],
+      linkCustomRoots: [customRoot],
+      detectionFingerprint: report.fingerprint,
+      settingsRevision: 0,
+      decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
+    })
+    vi.spyOn(manager.manifestStore, 'write').mockRejectedValueOnce(new Error('模拟自定义软链 manifest 写入失败'))
+
+    await expect(manager.applyOnboarding(plan, 0)).rejects.toThrow('模拟自定义软链 manifest 写入失败')
+
+    expect((await lstat(customRoot)).isDirectory()).toBe(true)
+    expect(await readFile(join(customRoot, 'custom-demo', 'SKILL.md'), 'utf8')).toContain('original body')
+    await expect(access(join(dataDir, 'skills'))).rejects.toThrow()
   })
 
   it('可以从额外目录接管 Skill，但不会归档原目录', async () => {

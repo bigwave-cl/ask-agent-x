@@ -4,14 +4,17 @@ import { dirname, join } from 'node:path'
 import type { RollbackResult } from '@askx/core'
 import { managedDirectoryLinkType } from '@askx/platform-adapters'
 import type { SkillsManifestStore } from './manifest-store.js'
-import { hashSkillDirectory, scanSkills } from './scanner.js'
+import { detectSkillPlatforms, hashSkillDirectory, scanSkills } from './scanner.js'
 import { assertSkillsBatchPlan, assertSkillsPlanScope } from './skills-planner.js'
 import type {
   ManagedPlatformBinding,
+  ManagedCustomLinkBinding,
   ManagedSkillRecord,
+  CustomLinkBindingResult,
   PlatformBindingResult,
   SkillBackupMove,
   SkillBindPlatformOperation,
+  SkillBindCustomRootOperation,
   SkillDecision,
   SkillLocation,
   SkillPlanUnit,
@@ -21,6 +24,7 @@ import type {
   SkillsManifest,
   SkillsScanReport,
 } from './skill-types.js'
+import { MAX_CUSTOM_SKILL_DIRECTORIES } from './skill-types.js'
 import { verifyCanonicalSkill, verifyManagedLink } from './skills-verifier.js'
 
 /** 批量执行输入。 */
@@ -51,6 +55,8 @@ interface AppliedBatch {
   records: ManagedSkillRecord[]
   /** 平台根目录执行结果。 */
   platformResults: PlatformBindingResult[]
+  /** 自定义目录执行结果。 */
+  customLinkResults: CustomLinkBindingResult[]
 }
 
 /** 持久化批次回执。 */
@@ -223,6 +229,7 @@ async function switchPlatformRoots(
     createdCanonical: !await pathExists(canonicalRoot),
     records,
     platformResults: [],
+    customLinkResults: [],
   }
   try {
     if (await pathExists(canonicalRoot)) {
@@ -233,6 +240,12 @@ async function switchPlatformRoots(
     for (const operation of plan.platformOperations) {
       const { result, createdLink, backup } = await applyPlatformRoot(operation, dataDir, plan.id)
       applied.platformResults.push(result)
+      if (createdLink) applied.createdLinks.push(createdLink)
+      if (backup) applied.platformBackups.push(backup)
+    }
+    for (const operation of plan.customLinkOperations) {
+      const { result, createdLink, backup } = await applyCustomLinkRoot(operation, dataDir, plan.id)
+      applied.customLinkResults.push(result)
       if (createdLink) applied.createdLinks.push(createdLink)
       if (backup) applied.platformBackups.push(backup)
     }
@@ -261,7 +274,7 @@ interface AppliedPlatformRoot {
  * @param backup 本次是否已经移动原平台目录。
  */
 async function rollbackPlatformRoot(
-  operation: SkillBindPlatformOperation,
+  operation: SkillBindPlatformOperation | SkillBindCustomRootOperation,
   createdLink: boolean,
   backup?: SkillBackupMove,
 ): Promise<void> {
@@ -278,6 +291,72 @@ async function rollbackPlatformRoot(
   if (!backup || !await pathExists(backup.backupPath)) return
   if (await pathExists(backup.originalPath)) throw new Error(`平台回滚目标已被占用：${backup.originalPath}`)
   await rename(backup.backupPath, backup.originalPath)
+}
+
+/** 单个自定义目录成功切换后需要纳入批次恢复的信息。 */
+interface AppliedCustomLinkRoot {
+  /** 自定义目录接入结果。 */
+  result: CustomLinkBindingResult
+  /** 本次新建的根目录软链。 */
+  createdLink?: string
+  /** 接入前的目录备份。 */
+  backup?: SkillBackupMove
+}
+
+/**
+ * 独立接入一个自定义使用目录；失败只恢复当前目录并返回失败结果。
+ * @param operation 自定义目录绑定操作。
+ * @param dataDir AskX 数据目录。
+ * @param transactionId 批次事务标识。
+ * @returns 当前目录结果及成功操作的恢复信息。
+ */
+async function applyCustomLinkRoot(
+  operation: SkillBindCustomRootOperation,
+  dataDir: string,
+  transactionId: string,
+): Promise<AppliedCustomLinkRoot> {
+  const result: CustomLinkBindingResult = {
+    id: operation.id,
+    name: operation.name,
+    path: operation.path,
+    target: operation.target,
+    status: 'applied',
+    warnings: [],
+  }
+  let backup: SkillBackupMove | undefined
+  let createdLink = false
+  try {
+    if (await pathExists(operation.path)) {
+      const stat = await lstat(operation.path)
+      if (stat.isSymbolicLink()) {
+        try {
+          await verifyManagedLink(operation.path, operation.target)
+          return { result }
+        } catch {
+          // 目标不一致时按普通目录进入备份和重新接入流程。
+        }
+      }
+      backup = await moveToBackup(
+        operation.path,
+        join(dataDir, 'backups', 'skills', transactionId, 'custom', operation.id, 'skills-root.bak'),
+      )
+      result.backup = backup
+    }
+    await mkdir(dirname(operation.path), { recursive: true, mode: 0o700 })
+    await symlink(operation.target, operation.path, managedDirectoryLinkType())
+    createdLink = true
+    await verifyManagedLink(operation.path, operation.target)
+    return { result, createdLink: operation.path, ...(backup ? { backup } : {}) }
+  } catch (error) {
+    result.status = 'failed'
+    result.warnings.push((error as Error).message)
+    try {
+      await rollbackPlatformRoot(operation, createdLink, backup)
+    } catch (rollbackError) {
+      throw new Error(`自定义目录 ${operation.path} 接入失败且无法安全恢复：${(rollbackError as Error).message}`, { cause: error })
+    }
+    return { result }
+  }
 }
 
 /**
@@ -414,6 +493,35 @@ function createPlatformBindings(
 }
 
 /**
+ * 将自定义目录执行结果转换为 Manifest 绑定。
+ * @param results 自定义目录执行结果。
+ * @param previousBindings 其他批次已经登记的自定义目录绑定。
+ * @returns 已成功接入的自定义目录绑定。
+ */
+function createCustomLinkBindings(
+  results: CustomLinkBindingResult[],
+  previousBindings: ManagedCustomLinkBinding[],
+): ManagedCustomLinkBinding[] {
+  const updatedAt = new Date().toISOString()
+  const bindings = new Map(previousBindings.map((binding) => [binding.id, binding]))
+  for (const result of results) {
+    if (result.status !== 'applied') continue
+    const previous = bindings.get(result.id)
+    bindings.set(result.id, {
+      id: result.id,
+      name: result.name,
+      path: result.path,
+      target: result.target,
+      updatedAt,
+      ...(result.backup || previous?.originalRootBackup
+        ? { originalRootBackup: result.backup ?? previous?.originalRootBackup }
+        : {}),
+    })
+  }
+  return [...bindings.values()].sort((left, right) => left.path.localeCompare(right.path))
+}
+
+/**
  * 应用用户确认的 Skills 批量计划。
  * @param input 计划、revision 与运行目录。
  * @returns 批量回执。
@@ -429,7 +537,7 @@ export async function applySkillsBatchPlan(input: ApplySkillsPlanInput): Promise
   if (suspendedPlatforms.length) throw new Error(`平台软链处于停用状态，请先恢复后再重新导入：${suspendedPlatforms.join(', ')}`)
   const report = await scanSkills(input.homeDir, input.dataDir, input.plan.platforms, input.plan.customRoots)
   if (report.fingerprint !== input.plan.detectionFingerprint) throw new Error('本地 Skill 已经变化，请重新扫描。')
-  assertSkillsPlanScope(input.plan, report, input.dataDir)
+  assertSkillsPlanScope(input.plan, report, input.dataDir, await detectSkillPlatforms(input.homeDir))
 
   const journalPath = join(input.dataDir, 'transactions', `${input.plan.id}.json`)
   await writeInternalJson(journalPath, { status: 'applying', plan: input.plan, startedAt: new Date().toISOString() })
@@ -438,13 +546,22 @@ export async function applySkillsBatchPlan(input: ApplySkillsPlanInput): Promise
   const now = new Date().toISOString()
   let manifestRevision = input.plan.manifestRevision
   try {
+    /** 已保存来源只能通过独立移除计划删除，单平台导入不会意外清空它们。 */
+    const linkedCustomPaths = new Set(input.plan.customLinkOperations.map((operation) => operation.path))
+    const persistedCustomRoots = input.plan.mode === 'sync'
+      ? manifestBefore?.customRoots ?? []
+      : [...new Map([...(manifestBefore?.customRoots ?? []), ...report.customRoots].map((root) => [root.path, root])).values()]
+          .filter((root) => !linkedCustomPaths.has(root.path))
+          .slice(0, MAX_CUSTOM_SKILL_DIRECTORIES)
     const saved = await input.manifestStore.write({
       version: 2,
       revision: input.plan.manifestRevision,
       initializedAt: manifestBefore?.initializedAt ?? now,
       lastScan: { scannedAt: report.scannedAt, fingerprint: report.fingerprint, platforms: report.platforms },
       skills: records,
+      customRoots: persistedCustomRoots,
       platformBindings: createPlatformBindings(appliedBatch.platformResults, manifestBefore?.platformBindings ?? []),
+      customLinkBindings: createCustomLinkBindings(appliedBatch.customLinkResults, manifestBefore?.customLinkBindings ?? []),
     }, input.plan.manifestRevision)
     manifestRevision = saved.revision
   } catch (error) {
@@ -460,6 +577,7 @@ export async function applySkillsBatchPlan(input: ApplySkillsPlanInput): Promise
     manifestRevision,
     results,
     platformResults: appliedBatch.platformResults,
+    customLinkResults: appliedBatch.customLinkResults,
   }
   const stored: StoredBatchReceipt = { receipt, manifestBefore, appliedBatch }
   try {
@@ -500,7 +618,11 @@ export async function listSkillsReceipts(dataDir: string): Promise<SkillsBatchRe
     try {
       const stored = JSON.parse(await readFile(join(directory, name), 'utf8')) as { status?: string; receipt?: SkillsBatchReceipt }
       if (stored.status !== 'complete' || !stored.receipt) return undefined
-      return { ...stored.receipt, platformResults: stored.receipt.platformResults ?? [] }
+      return {
+        ...stored.receipt,
+        platformResults: stored.receipt.platformResults ?? [],
+        customLinkResults: stored.receipt.customLinkResults ?? [],
+      }
     } catch {
       return undefined
     }

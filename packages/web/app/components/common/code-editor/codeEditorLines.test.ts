@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createCodeEditorLines } from './codeEditorLines'
+import { createCodeEditorLines, resolveCodeEditorLineIndex } from './codeEditorLines'
 
 describe('createCodeEditorLines', () => {
   it('为空内容保留第一行', () => {
@@ -22,5 +22,13 @@ describe('createCodeEditorLines', () => {
       { segments: [] },
       { segments: [] },
     ])
+  })
+
+  it('根据光标偏移解析当前逻辑行并限制越界位置', () => {
+    const source = 'first\nsecond\nthird'
+    expect(resolveCodeEditorLineIndex(source, 0)).toBe(0)
+    expect(resolveCodeEditorLineIndex(source, 6)).toBe(1)
+    expect(resolveCodeEditorLineIndex(source, source.length)).toBe(2)
+    expect(resolveCodeEditorLineIndex(source, Number.POSITIVE_INFINITY)).toBe(0)
   })
 })
