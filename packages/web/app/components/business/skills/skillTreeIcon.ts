@@ -4,7 +4,7 @@ import type { AskxIconName } from '@/lib/iconCatalog'
 /** 不改变底层文件类型的模板后缀。 */
 const templateSuffixes = ['.example', '.sample', '.template'] as const
 /** 脚本与程序源码扩展名。 */
-const codeExtensions = new Set(['cjs', 'js', 'jsx', 'mjs', 'py', 'ts', 'tsx'])
+const codeExtensions = new Set(['c', 'cc', 'cjs', 'cpp', 'cs', 'go', 'java', 'js', 'jsx', 'kt', 'kts', 'mjs', 'php', 'py', 'rb', 'rs', 'sql', 'swift', 'ts', 'tsx'])
 /** 配置文件扩展名。 */
 const configExtensions = new Set(['env', 'ini', 'toml', 'yaml', 'yml'])
 /** HTML 与结构化标记扩展名。 */

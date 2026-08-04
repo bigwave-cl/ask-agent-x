@@ -22,10 +22,10 @@ const MAX_TREE_NODES = 4_000
 /** 单个 Skill 允许展示的最大目录深度。 */
 const MAX_TREE_DEPTH = 24
 /** 无扩展名但明确属于文本的文件名。 */
-const TEXT_FILENAMES = new Set(['SKILL.md', 'AGENTS.md', 'LICENSE', '.gitignore', '.npmignore'])
+const TEXT_FILENAMES = new Set(['SKILL.md', 'AGENTS.md', 'LICENSE', 'Dockerfile', 'Makefile', '.gitignore', '.npmignore'])
 /** 允许在线查看和编辑的文本扩展名。 */
 const TEXT_EXTENSIONS = new Set([
-  '.cjs', '.css', '.csv', '.html', '.js', '.json', '.jsx', '.md', '.mdx', '.mjs', '.py', '.sh', '.svg', '.toml', '.ts', '.tsx', '.txt', '.vue', '.xml', '.yaml', '.yml', '.zsh',
+  '.c', '.cc', '.cjs', '.cpp', '.cs', '.css', '.csv', '.go', '.html', '.ini', '.java', '.js', '.json', '.jsx', '.kt', '.kts', '.md', '.mdx', '.mjs', '.php', '.py', '.rb', '.rs', '.sh', '.sql', '.svg', '.swift', '.toml', '.ts', '.tsx', '.txt', '.vue', '.xml', '.yaml', '.yml', '.zsh',
 ])
 /** 文本模板文件允许追加的安全后缀。 */
 const TEXT_TEMPLATE_SUFFIXES = ['.example', '.sample', '.template'] as const
@@ -58,11 +58,20 @@ function resolveTextExtension(name: string): string {
 
 /** 判断文件名是否属于可安全编辑的 UTF-8 文本。 */
 function isEditableTextFile(name: string, size: number): boolean {
-  return size <= MAX_EDITABLE_FILE_BYTES && (TEXT_FILENAMES.has(name) || TEXT_EXTENSIONS.has(resolveTextExtension(name)))
+  return size <= MAX_EDITABLE_FILE_BYTES && (TEXT_FILENAMES.has(name) || name.toLowerCase().startsWith('.env') || TEXT_EXTENSIONS.has(resolveTextExtension(name)))
+}
+
+/** 判断文件名是否属于可安全在线预览的 UTF-8 文本。 */
+function isPreviewableTextFile(name: string, size: number): boolean {
+  return isEditableTextFile(name, size)
 }
 
 /** 根据文件扩展名返回编辑器语言标识。 */
 function resolveFileLanguage(path: string): string {
+  const name = basename(path).toLowerCase()
+  if (name.startsWith('.env')) return 'ini'
+  if (name === 'dockerfile') return 'dockerfile'
+  if (name === 'makefile') return 'text'
   const extension = resolveTextExtension(path).slice(1)
   if (extension === 'yml') return 'yaml'
   if (extension === 'md' || extension === 'mdx') return 'markdown'
@@ -85,7 +94,7 @@ async function resolveManagedSkill(context: SkillFileManagerContext, skillId: st
 }
 
 /** 校验并解析 Skill 根目录内的既有普通文件，拒绝路径穿越和软链接。 */
-async function resolveManagedFile(record: ManagedSkillRecord, portablePath: string): Promise<{ absolutePath: string, stat: Awaited<ReturnType<typeof stat>> }> {
+async function resolveManagedFile(record: ManagedSkillRecord, portablePath: string, access: 'preview' | 'edit'): Promise<{ absolutePath: string, stat: Awaited<ReturnType<typeof stat>> }> {
   if (!portablePath || portablePath.includes('\0') || isAbsolute(portablePath)) throw new Error('Skill 文件路径无效。')
   const normalizedParts = portablePath.split('/').filter(Boolean)
   if (!normalizedParts.length || normalizedParts.some((part) => part === '.' || part === '..')) throw new Error('Skill 文件路径无效。')
@@ -100,7 +109,9 @@ async function resolveManagedFile(record: ManagedSkillRecord, portablePath: stri
   if (!child || child.startsWith('..') || isAbsolute(child)) throw new Error('Skill 文件路径超出受管目录。')
   const fileStat = await stat(current)
   if (!fileStat.isFile()) throw new Error('目标不是普通文件。')
-  if (!isEditableTextFile(basename(current), fileStat.size)) throw new Error('该文件不是支持在线查看和编辑的文本文件。')
+  const name = basename(current)
+  if (!isPreviewableTextFile(name, fileStat.size)) throw new Error('该文件不支持在线预览。')
+  if (access === 'edit' && !isEditableTextFile(name, fileStat.size)) throw new Error('该文件只允许在线查看，不能编辑。')
   return { absolutePath: current, stat: fileStat }
 }
 
@@ -131,17 +142,24 @@ async function readSkillTree(root: string): Promise<{ tree: ManagedSkillTreeNode
       const absolutePath = join(directory, entry.name)
       const path = toPortablePath(relative(root, absolutePath))
       if (entry.isSymbolicLink()) {
-        nodes.push({ name: entry.name, path, kind: 'symlink', editable: false })
+        nodes.push({ name: entry.name, path, kind: 'symlink', previewable: false, editable: false })
         continue
       }
       if (entry.isDirectory()) {
-        nodes.push({ name: entry.name, path, kind: 'directory', editable: false, children: await visit(absolutePath, depth + 1) })
+        nodes.push({ name: entry.name, path, kind: 'directory', previewable: false, editable: false, children: await visit(absolutePath, depth + 1) })
         continue
       }
       if (!entry.isFile()) continue
       const fileStat = await stat(absolutePath)
       fileCount += 1
-      nodes.push({ name: entry.name, path, kind: 'file', size: fileStat.size, editable: isEditableTextFile(entry.name, fileStat.size) })
+      nodes.push({
+        name: entry.name,
+        path,
+        kind: 'file',
+        size: fileStat.size,
+        previewable: isPreviewableTextFile(entry.name, fileStat.size),
+        editable: isEditableTextFile(entry.name, fileStat.size),
+      })
     }
     return nodes
   }
@@ -167,9 +185,9 @@ export async function inspectManagedSkillDetail(context: SkillFileManagerContext
 /** 读取受管 Skill 中的一个 UTF-8 文本文件。 */
 export async function readManagedSkillFile(context: SkillFileManagerContext, skillId: string, path: string): Promise<ManagedSkillFile> {
   const { record } = await resolveManagedSkill(context, skillId)
-  const file = await resolveManagedFile(record, path)
+  const file = await resolveManagedFile(record, path, 'preview')
   const bytes = await readFile(file.absolutePath)
-  if (bytes.includes(0)) throw new Error('该文件包含二进制内容，不能在线编辑。')
+  if (bytes.includes(0)) throw new Error('该文件包含二进制内容，不支持在线预览。')
   return {
     skillId,
     path: toPortablePath(relative(record.canonicalPath, file.absolutePath)),
@@ -177,6 +195,7 @@ export async function readManagedSkillFile(context: SkillFileManagerContext, ski
     contentHash: hashContent(bytes),
     size: bytes.byteLength,
     language: resolveFileLanguage(path),
+    editable: isEditableTextFile(basename(file.absolutePath), bytes.byteLength),
   }
 }
 
@@ -187,6 +206,7 @@ export async function createSkillFileUpdatePlan(context: SkillFileManagerContext
   const currentSkillHash = await hashSkillDirectory(record.canonicalPath)
   if (currentSkillHash !== record.contentHash) throw new Error('Skill 内容已经变化，请刷新后再编辑。')
   const currentFile = await readManagedSkillFile(context, skillId, path)
+  if (!currentFile.editable) throw new Error('该文件只允许在线查看，不能编辑。')
   if (currentFile.contentHash !== previousContentHash) throw new Error('Skill 文件已经变化，请刷新后再编辑。')
   const nextContentHash = hashContent(nextContent)
   if (nextContentHash === previousContentHash) throw new Error('文件内容没有变化。')
@@ -214,6 +234,7 @@ export async function applySkillFileUpdatePlan(context: SkillFileManagerContext,
   if (manifest.revision !== plan.manifestRevision || record.name !== plan.skillName || record.contentHash !== plan.skillContentHash) throw new Error('Skills manifest 已经变化，请重新打开文件。')
   if (await hashSkillDirectory(record.canonicalPath) !== plan.skillContentHash) throw new Error('Skill 内容已经变化，请重新打开文件。')
   const currentFile = await readManagedSkillFile(context, plan.skillId, plan.path)
+  if (!currentFile.editable) throw new Error('该文件只允许在线查看，不能编辑。')
   if (currentFile.contentHash !== plan.previousContentHash) throw new Error('Skill 文件已经变化，请重新打开文件。')
   if (hashContent(plan.nextContent) !== plan.nextContentHash) throw new Error('Skill 文件更新内容与计划不一致。')
 

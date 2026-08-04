@@ -208,6 +208,8 @@ export interface ManagedSkillTreeNode {
   kind: 'directory' | 'file' | 'symlink'
   /** 普通文件的字节数。 */
   size?: number
+  /** 普通文件是否允许在线预览。 */
+  previewable: boolean
   /** 普通文本文件是否允许在线编辑。 */
   editable: boolean
   /** 目录下按名称排序的子节点。 */
@@ -250,6 +252,8 @@ export interface ManagedSkillFile {
   size: number
   /** 根据扩展名推导的编辑语言。 */
   language: string
+  /** 当前文本文件是否允许在线编辑。 */
+  editable: boolean
 }
 
 /** 更新受管 Skill 文件时需要确认的计划。 */

@@ -21,6 +21,8 @@ async function createFixture() {
   await writeFile(join(skillPath, 'references', 'guide.md'), '# 指南\n')
   await writeFile(join(skillPath, '.skill-manager.json'), '{"version":"2.0.0"}\n')
   await writeFile(join(skillPath, 'config.local.json.example'), '{"endpoint":"http://127.0.0.1"}\n')
+  await writeFile(join(skillPath, '.env.local'), 'TOKEN=fixture\n')
+  await writeFile(join(skillPath, 'compiled.pyc'), Buffer.from([0x42, 0x0d, 0x0a, 0x00]))
   const contentHash = await hashSkillDirectory(skillPath)
   const manifestStore = new SkillsManifestStore(dataDir)
   await manifestStore.write({
@@ -44,7 +46,7 @@ describe('Skill 文件管理', () => {
     const detail = await inspectManagedSkillDetail({ manifestStore: fixture.manifestStore }, fixture.skillId)
     expect(detail.version).toBe('2.0.0')
     expect(detail.description).toBe('用于验证资源编辑')
-    expect(detail.fileCount).toBe(4)
+    expect(detail.fileCount).toBe(6)
     expect(detail.tree.map((node) => node.name)).toContain('references')
   })
 
@@ -60,6 +62,22 @@ describe('Skill 文件管理', () => {
     const plan = await createSkillFileUpdatePlan({ manifestStore: fixture.manifestStore }, fixture.skillId, current.path, nextContent, current.contentHash)
     await applySkillFileUpdatePlan({ manifestStore: fixture.manifestStore }, plan, { planHash: plan.hash, confirmedAt: new Date().toISOString() })
     expect(await readFile(join(fixture.skillPath, 'config.local.json.example'), 'utf8')).toContain('localhost')
+  })
+
+  it('允许查看和编辑环境文件并明确拒绝预览二进制文件', async () => {
+    const fixture = await createFixture()
+    const detail = await inspectManagedSkillDetail({ manifestStore: fixture.manifestStore }, fixture.skillId)
+    const environmentNode = detail.tree.find((node) => node.name === '.env.local')
+    const binaryNode = detail.tree.find((node) => node.name === 'compiled.pyc')
+    expect(environmentNode).toMatchObject({ previewable: true, editable: true })
+    expect(binaryNode).toMatchObject({ previewable: false, editable: false })
+
+    const environmentFile = await readManagedSkillFile({ manifestStore: fixture.manifestStore }, fixture.skillId, '.env.local')
+    expect(environmentFile).toMatchObject({ content: 'TOKEN=fixture\n', editable: true, language: 'ini' })
+    await expect(readManagedSkillFile({ manifestStore: fixture.manifestStore }, fixture.skillId, 'compiled.pyc')).rejects.toThrow('不支持在线预览')
+    const plan = await createSkillFileUpdatePlan({ manifestStore: fixture.manifestStore }, fixture.skillId, '.env.local', 'TOKEN=changed\n', environmentFile.contentHash)
+    await applySkillFileUpdatePlan({ manifestStore: fixture.manifestStore }, plan, { planHash: plan.hash, confirmedAt: new Date().toISOString() })
+    expect(await readFile(join(fixture.skillPath, '.env.local'), 'utf8')).toBe('TOKEN=changed\n')
   })
 
   it('经过计划和授权后原子更新文件并推进 manifest revision', async () => {

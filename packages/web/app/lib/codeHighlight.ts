@@ -1,11 +1,25 @@
 /** 支持按需加载 grammar 的标准代码语言。 */
 export type CodeHighlightLanguage =
   | 'bash'
+  | 'c'
+  | 'cpp'
+  | 'csharp'
   | 'css'
+  | 'dockerfile'
+  | 'go'
+  | 'ini'
+  | 'java'
   | 'javascript'
   | 'json'
+  | 'kotlin'
   | 'markdown'
+  | 'php'
+  | 'python'
+  | 'ruby'
+  | 'rust'
   | 'scss'
+  | 'sql'
+  | 'swift'
   | 'typescript'
   | 'xml'
   | 'yaml'
@@ -42,22 +56,46 @@ export const MAX_HIGHLIGHT_LINES = 4000
 /** 语言别名到标准语言的映射。 */
 const languageAliases: Readonly<Record<string, CodeHighlightLanguage>> = {
   bash: 'bash',
+  c: 'c',
+  cc: 'cpp',
   cjs: 'javascript',
+  cpp: 'cpp',
+  cs: 'csharp',
+  csharp: 'csharp',
   css: 'css',
+  docker: 'dockerfile',
+  dockerfile: 'dockerfile',
+  env: 'ini',
+  go: 'go',
   html: 'xml',
+  ini: 'ini',
+  java: 'java',
   javascript: 'javascript',
   js: 'javascript',
   json: 'json',
   jsonc: 'json',
   jsx: 'javascript',
+  kotlin: 'kotlin',
+  kt: 'kotlin',
+  kts: 'kotlin',
   markdown: 'markdown',
   md: 'markdown',
   mdx: 'markdown',
   mjs: 'javascript',
+  php: 'php',
+  py: 'python',
+  python: 'python',
+  rb: 'ruby',
+  ruby: 'ruby',
+  rs: 'rust',
+  rust: 'rust',
   scss: 'scss',
   sh: 'bash',
   shell: 'bash',
+  sql: 'sql',
   svg: 'xml',
+  swift: 'swift',
+  toml: 'ini',
   ts: 'typescript',
   tsx: 'typescript',
   typescript: 'typescript',
@@ -84,17 +122,17 @@ function normalizeLanguageToken(language: string): string {
 }
 
 /**
- * 从文件名提取扩展名。
+ * 从文件名提取可用于识别语法的扩展名或特殊文件名。
  *
  * @param filename 文件名或相对路径。
- * @returns 小写扩展名，无扩展名时为空字符串。
+ * @returns 小写扩展名；无扩展名时返回完整文件名。
  */
-function getFilenameExtension(filename: string): string {
+function getFilenameLanguageToken(filename: string): string {
   const basename = (filename.trim().split(/[\\/]/u).pop() ?? '').toLowerCase()
   const templateSuffix = templateSuffixes.find((suffix) => basename.endsWith(suffix))
   const semanticName = templateSuffix ? basename.slice(0, -templateSuffix.length) : basename
   const extensionIndex = semanticName.lastIndexOf('.')
-  return extensionIndex > 0 ? semanticName.slice(extensionIndex + 1) : ''
+  return extensionIndex > 0 ? semanticName.slice(extensionIndex + 1) : semanticName
 }
 
 /**
@@ -107,11 +145,11 @@ function getFilenameExtension(filename: string): string {
 export function resolveCodeHighlightLanguage(language = '', filename = ''): CodeHighlightLanguage | null {
   const languageToken = normalizeLanguageToken(language)
   if (plaintextAliases.has(languageToken)) {
-    const extension = getFilenameExtension(filename)
+    const extension = getFilenameLanguageToken(filename)
     return languageAliases[extension] ?? null
   }
 
-  return languageAliases[languageToken] ?? languageAliases[getFilenameExtension(filename)] ?? null
+  return languageAliases[languageToken] ?? languageAliases[getFilenameLanguageToken(filename)] ?? null
 }
 
 /**

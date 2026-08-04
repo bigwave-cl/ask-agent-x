@@ -127,6 +127,22 @@ async function loadSkill<T extends object>(name: string): Promise<ManagedSkill<T
   return await fetchSkill(name)
 }`,
   },
+  python: {
+    label: 'Python',
+    description: '装饰器、类型标注、异步函数与字典推导式',
+    icon: 'askx-objects:file-code',
+    filename: 'scanner.py',
+    language: 'python',
+    source: `from dataclasses import dataclass
+
+@dataclass(slots=True)
+class Skill:
+    name: str
+    enabled: bool = True
+
+async def scan_skills(paths: list[str]) -> dict[str, Skill]:
+    return {path: Skill(name=path) for path in paths}`,
+  },
   json: {
     label: 'JSON',
     description: '对象、数组、布尔值及模板配置文件',
@@ -184,6 +200,206 @@ set -euo pipefail
 PACKAGE="@askx/web"
 pnpm --filter "$PACKAGE" build`,
   },
+  c: {
+    label: 'C',
+    description: '预处理指令、结构体、指针与函数',
+    icon: 'askx-objects:file-code',
+    filename: 'skill.c',
+    language: 'c',
+    source: `#include <stdio.h>
+
+typedef struct {
+  const char *name;
+  int enabled;
+} Skill;
+
+int main(void) {
+  Skill skill = { "askx", 1 };
+  return printf("%s: %d\\n", skill.name, skill.enabled);
+}`,
+  },
+  cpp: {
+    label: 'C++',
+    description: '命名空间、模板、容器与范围循环',
+    icon: 'askx-objects:file-code',
+    filename: 'skill.cpp',
+    language: 'cpp',
+    source: `#include <iostream>
+#include <vector>
+
+template <typename T>
+void print_all(const std::vector<T>& values) {
+  for (const auto& value : values) std::cout << value << '\\n';
+}`,
+  },
+  csharp: {
+    label: 'C#',
+    description: '记录类型、LINQ 与异步任务',
+    icon: 'askx-objects:file-code',
+    filename: 'SkillService.cs',
+    language: 'csharp',
+    source: `public record Skill(string Name, bool Enabled);
+
+public static async Task<IReadOnlyList<Skill>> LoadAsync()
+{
+    await Task.Delay(10);
+    return [new("AskX", true)];
+}`,
+  },
+  go: {
+    label: 'Go',
+    description: '结构体、接口、goroutine 与错误处理',
+    icon: 'askx-objects:file-code',
+    filename: 'scanner.go',
+    language: 'go',
+    source: `package skills
+
+import "context"
+
+type Skill struct {
+    Name    string
+    Enabled bool
+}
+
+func Scan(ctx context.Context, root string) ([]Skill, error) {
+    return []Skill{{Name: root, Enabled: true}}, nil
+}`,
+  },
+  java: {
+    label: 'Java',
+    description: 'Record、泛型集合与 Stream',
+    icon: 'askx-objects:file-code',
+    filename: 'Skill.java',
+    language: 'java',
+    source: `import java.util.List;
+
+public record Skill(String name, boolean enabled) {
+    public static List<String> activeNames(List<Skill> skills) {
+        return skills.stream()
+            .filter(Skill::enabled)
+            .map(Skill::name)
+            .toList();
+    }
+}`,
+  },
+  kotlin: {
+    label: 'Kotlin',
+    description: '数据类、空安全与集合转换',
+    icon: 'askx-objects:file-code',
+    filename: 'Skill.kt',
+    language: 'kotlin',
+    source: `data class Skill(val name: String, val enabled: Boolean = true)
+
+fun activeNames(skills: List<Skill>): List<String> =
+    skills.filter { it.enabled }
+        .map { it.name }
+        .sorted()`,
+  },
+  php: {
+    label: 'PHP',
+    description: '属性、数组映射与类型声明',
+    icon: 'askx-objects:file-code',
+    filename: 'Skill.php',
+    language: 'php',
+    source: `<?php
+
+final class Skill
+{
+    public function __construct(
+        public readonly string $name,
+        public readonly bool $enabled = true,
+    ) {}
+}`,
+  },
+  ruby: {
+    label: 'Ruby',
+    description: '类、符号、块与安全导航',
+    icon: 'askx-objects:file-code',
+    filename: 'skill.rb',
+    language: 'ruby',
+    source: `class Skill
+  attr_reader :name
+
+  def initialize(name:, enabled: true)
+    @name = name
+    @enabled = enabled
+  end
+
+  def enabled? = @enabled
+end`,
+  },
+  rust: {
+    label: 'Rust',
+    description: '结构体、枚举、模式匹配与 Result',
+    icon: 'askx-objects:file-code',
+    filename: 'skill.rs',
+    language: 'rust',
+    source: `#[derive(Debug)]
+struct Skill {
+    name: String,
+    enabled: bool,
+}
+
+fn load(name: &str) -> Result<Skill, String> {
+    Ok(Skill { name: name.into(), enabled: true })
+}`,
+  },
+  sql: {
+    label: 'SQL',
+    description: '查询、连接、条件与排序',
+    icon: 'askx-objects:file-code',
+    filename: 'skills.sql',
+    language: 'sql',
+    source: `SELECT s.name, COUNT(p.platform_id) AS platform_count
+FROM skills AS s
+LEFT JOIN skill_platforms AS p ON p.skill_id = s.id
+WHERE s.enabled = TRUE
+GROUP BY s.id, s.name
+ORDER BY platform_count DESC;`,
+  },
+  swift: {
+    label: 'Swift',
+    description: '结构体、可选值与 async/await',
+    icon: 'askx-objects:file-code',
+    filename: 'Skill.swift',
+    language: 'swift',
+    source: `struct Skill: Codable, Sendable {
+    let name: String
+    var enabled = true
+}
+
+func loadSkill(named name: String) async throws -> Skill {
+    return Skill(name: name)
+}`,
+  },
+  dockerfile: {
+    label: 'Dockerfile',
+    description: '镜像阶段、环境变量与运行命令',
+    icon: 'askx-objects:file-shell',
+    filename: 'Dockerfile',
+    language: 'dockerfile',
+    source: `FROM node:24-alpine AS builder
+WORKDIR /app
+COPY package.json pnpm-lock.yaml ./
+RUN corepack enable && pnpm install --frozen-lockfile
+COPY . .
+RUN pnpm build
+
+CMD ["node", ".output/server/index.mjs"]`,
+  },
+  ini: {
+    label: 'INI / ENV / TOML',
+    description: '节、键值、环境变量与 TOML 基础结构',
+    icon: 'askx-objects:file-config',
+    filename: '.env.local',
+    language: 'ini',
+    source: `# AskX local settings
+ASKX_HOST=127.0.0.1
+ASKX_PORT=4242
+
+[workspace]
+local_first = true`,
+  },
 } satisfies Record<string, CodeEditorSample>
 
 /** 示例类型标识。 */
@@ -223,7 +439,7 @@ function getSample(value: string): CodeEditorSample {
         <div class="pointer-events-none absolute -right-12 -top-16 size-56 rounded-full bg-ds-fill-brand-transparent-20 blur-3xl" />
         <div class="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <Badge variant="soft"><Icon name="askx-objects:file-code" />WORKER / LAZY GRAMMAR</Badge>
+            <div class="flex flex-wrap items-center gap-2"><Badge variant="soft"><Icon name="askx-objects:file-code" />WORKER / LAZY GRAMMAR</Badge><Badge variant="secondary">{{ Object.keys(samples).length }} 种语法</Badge></div>
             <h3 class="mt-5 text-3xl font-semibold tracking-[-0.04em]">选择语言后才加载对应语法。</h3>
             <p class="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">每种 grammar 都保留独立异步 chunk；HTML 会在同一个 Worker 中补载 CSS 与 JavaScript，加载完成前由编辑器提供清晰反馈。</p>
           </div>

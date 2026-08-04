@@ -13,7 +13,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), { selectedPath: '', depth: 0 })
-const emit = defineEmits<{ /** 选择一个可在线查看的文件。 */ 'select': [node: ManagedSkillTreeNode] }>()
+const emit = defineEmits<{ /** 选择一个普通文件。 */ 'select': [node: ManagedSkillTreeNode] }>()
 /** 目录节点是否展开。 */
 const open = ref(props.depth < 1)
 /** 当前节点对应的文件类型图标。 */
@@ -25,7 +25,7 @@ function activate(): void {
     open.value = !open.value
     return
   }
-  if (props.node.editable) emit('select', props.node)
+  if (props.node.kind === 'file') emit('select', props.node)
 }
 </script>
 
@@ -36,7 +36,7 @@ function activate(): void {
       class="group/tree flex h-8 w-full min-w-0 items-center gap-2 rounded-lg pr-2 text-left text-xs transition-colors"
       :class="[
         node.path === selectedPath ? 'bg-ds-fill-brand-transparent-10 text-ds-text-brand' : 'text-ds-text-secondary hover:bg-ds-fill-bw-transparent-3 hover:text-ds-text-primary',
-        !node.editable && node.kind !== 'directory' ? 'cursor-default opacity-55' : '',
+        node.kind === 'symlink' ? 'cursor-default opacity-55' : '',
       ]"
       :style="{ paddingLeft: `${8 + depth * 14}px` }"
       :aria-expanded="node.kind === 'directory' ? open : undefined"

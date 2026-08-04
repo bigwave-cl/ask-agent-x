@@ -45,17 +45,33 @@ interface HighlightWorkerScope {
 /** 每种语言对应的异步 grammar loader。 */
 const grammarLoaders: Record<CodeHighlightLanguage, () => Promise<{ default: LanguageFn }>> = {
   bash: () => import('highlight.js/lib/languages/bash'),
+  c: () => import('highlight.js/lib/languages/c'),
+  cpp: () => import('highlight.js/lib/languages/cpp'),
+  csharp: () => import('highlight.js/lib/languages/csharp'),
   css: () => import('highlight.js/lib/languages/css'),
+  dockerfile: () => import('highlight.js/lib/languages/dockerfile'),
+  go: () => import('highlight.js/lib/languages/go'),
+  ini: () => import('highlight.js/lib/languages/ini'),
+  java: () => import('highlight.js/lib/languages/java'),
   javascript: () => import('highlight.js/lib/languages/javascript'),
   json: () => import('highlight.js/lib/languages/json'),
+  kotlin: () => import('highlight.js/lib/languages/kotlin'),
   markdown: () => import('highlight.js/lib/languages/markdown'),
+  php: () => import('highlight.js/lib/languages/php'),
+  python: () => import('highlight.js/lib/languages/python'),
+  ruby: () => import('highlight.js/lib/languages/ruby'),
+  rust: () => import('highlight.js/lib/languages/rust'),
   scss: () => import('highlight.js/lib/languages/scss'),
+  sql: () => import('highlight.js/lib/languages/sql'),
+  swift: () => import('highlight.js/lib/languages/swift'),
   typescript: () => import('highlight.js/lib/languages/typescript'),
   xml: () => import('highlight.js/lib/languages/xml'),
   yaml: () => import('highlight.js/lib/languages/yaml'),
 }
 /** 需要在同一语法中嵌套解析的依赖语言。 */
 const grammarDependencies: Partial<Record<CodeHighlightLanguage, CodeHighlightLanguage[]>> = {
+  dockerfile: ['bash'],
+  php: ['xml'],
   xml: ['css', 'javascript'],
 }
 

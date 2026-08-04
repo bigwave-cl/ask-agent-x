@@ -116,7 +116,7 @@ function findInitialFile(nodes: ManagedSkillTreeNode[]): ManagedSkillTreeNode | 
     }
   }
   visit(nodes)
-  return flattened.find((entry) => entry.path === 'SKILL.md' && entry.editable) ?? flattened.find((entry) => entry.editable)
+  return flattened.find((entry) => entry.path === 'SKILL.md' && entry.previewable) ?? flattened.find((entry) => entry.previewable)
 }
 
 /** 将接口错误转换为用户可见提示。 */
@@ -149,7 +149,11 @@ async function selectSkill(skillId: string): Promise<void> {
 
 /** 读取目录树中选中的文本文件。 */
 async function selectFile(node: ManagedSkillTreeNode): Promise<void> {
-  if (!node.editable || !selectedSkillId.value) return
+  if (!selectedSkillId.value || node.kind !== 'file') return
+  if (!node.previewable) {
+    toast.warning(t('skills.binaryFilePreviewUnsupported'))
+    return
+  }
   if (dirty.value && node.path !== currentFile.value?.path) {
     toast.warning(t('skills.unsavedFileHint'))
     return
@@ -330,7 +334,7 @@ onMounted(() => {
               <section class="flex min-w-0 flex-col">
                 <template v-if="currentFile">
                   <div class="flex min-h-12 flex-wrap items-center justify-between gap-2 border-b px-4 py-2">
-                    <div class="flex min-w-0 items-center gap-2"><Icon :name="currentFileIcon" class="size-4 shrink-0 text-primary" /><span class="truncate font-mono text-[11px]">{{ currentFile.path }}</span><span v-if="dirty" class="size-2 shrink-0 rounded-full bg-ds-warning-default" :title="t('skills.unsaved')" /></div>
+                    <div class="flex min-w-0 items-center gap-2"><Icon :name="currentFileIcon" class="size-4 shrink-0 text-primary" /><span class="truncate font-mono text-[11px]">{{ currentFile.path }}</span><Badge v-if="!currentFile.editable" variant="secondary">{{ t('skills.readOnlyFile') }}</Badge><span v-if="dirty" class="size-2 shrink-0 rounded-full bg-ds-warning-default" :title="t('skills.unsaved')" /></div>
                     <div class="flex items-center gap-2">
                       <Tabs v-if="markdownFile" v-model="viewMode" default-value="edit">
                         <TabsList variant="segment" size="36" shape="regular" :aria-label="`${t('skills.editFile')} / ${t('skills.previewFile')}`">
@@ -339,7 +343,7 @@ onMounted(() => {
                         </TabsList>
                       </Tabs>
                       <Button v-if="dirty" variant="ghost" size="36" @click="resetDraft">{{ t('skills.discardChanges') }}</Button>
-                      <Button size="36" :disabled="!dirty || saving" @click="prepareSave"><Icon name="askx-actions:edit" />{{ saving ? t('skills.preparingFileSave') : t('skills.saveFile') }}</Button>
+                      <Button v-if="currentFile.editable" size="36" :disabled="!dirty || saving" @click="prepareSave"><Icon name="askx-actions:edit" />{{ saving ? t('skills.preparingFileSave') : t('skills.saveFile') }}</Button>
                     </div>
                   </div>
                   <div class="min-h-0 flex-1 bg-ds-fill-bw-transparent-3 p-3">
@@ -349,8 +353,9 @@ onMounted(() => {
                       class="h-[440px] w-full"
                       :filename="currentFile.path"
                       :language="currentFile.language"
-                      :label="t('skills.fileEditorLabel', { path: currentFile.path })"
+                      :label="t(currentFile.editable ? 'skills.fileEditorLabel' : 'skills.fileViewerLabel', { path: currentFile.path })"
                       :loading-label="t('skills.fileSyntaxLoading')"
+                      :readonly="!currentFile.editable"
                     />
                     <ScrollArea v-else class="h-[440px] rounded-xl border bg-background" viewport-class="p-6"><BusMdcRender :value="draft" :cache-key="`${currentFile.path}:${draft.length}`" /></ScrollArea>
                   </div>
