@@ -9,14 +9,24 @@ import {
   type AskXThemeColor,
   type DetectionIssue,
   type ManagedPlatformId,
+  type UserConsent,
 } from '@askx/core'
 import { SkillsManager, SkillsModule } from '@askx/module-skills'
-import type { SkillPlatformId, SkillsScanReport } from '@askx/module-skills/skill-types'
+import type {
+  PlatformLinkAction,
+  PlatformLinkPlan,
+  PlatformLinkReceipt,
+  SkillPlatformId,
+  SkillsBatchPlan,
+  SkillsBatchReceipt,
+  SkillsScanReport,
+} from '@askx/module-skills/skill-types'
 import { detectPlatforms, type PlatformDetection } from '@askx/platform-adapters'
 import { readUiSessionToken, startUi } from '@askx/web/server'
 import { Command } from 'commander'
 import { Box, render, Text, useApp, useInput } from 'ink'
 import { useState, type ReactNode } from 'react'
+import { createKeepDecisions, createSafeSyncDecisions, summarizeSkillsBatchPlan } from './skills-command-helpers.js'
 
 const accent = '#d7ff3f'
 const registry = new ModuleRegistry()
@@ -45,6 +55,13 @@ const messages = {
     manageBackups: 'Manage Skills backups', placeholder: 'foundation placeholder',
     choosePlatforms: 'Choose platforms to scan', scanOnlySelected: 'Space toggles · Enter confirms', platformRequired: 'Select at least one platform.', platformSelectionRequired: 'First scan requires --platform in non-interactive mode.',
     skillConflict: 'Skill {name} has conflicting content.', skillBroken: 'Skill {name} has a broken link.', skillInvalid: 'Skill {name} has invalid metadata.',
+    syncDescription: 'Synchronize safe Skills from selected roots into the AskX canonical source', linkDescription: 'Bind or resume selected Agent Skills directories to the canonical source', unlinkDescription: 'Suspend selected managed Skills-directory links without synchronizing content',
+    directoryDescription: 'Add a custom directory as a read-only synchronization source', linkDirectoryDescription: 'Bind a custom local directory to the canonical source', yesDescription: 'Confirm the displayed immutable plan without an interactive prompt',
+    syncPlan: 'Skills sync plan', linkPlan: 'Skills link plan', unlinkPlan: 'Skills unlink plan', syncResult: 'Skills sync result', linkResult: 'Skills link result', unlinkResult: 'Skills unlink result',
+    planHash: 'Plan hash', adopt: 'adopt', merge: 'merge', keep: 'keep', customDirectories: 'custom directories', operations: 'operations', applied: 'applied', skipped: 'skipped', failed: 'failed',
+    confirmApply: 'Apply this exact plan?', confirmKeys: 'Y confirms · N/Esc cancels', cancelled: 'Operation cancelled.', confirmationRequired: 'A write plan requires confirmation. Re-run with --yes in non-interactive or JSON mode.',
+    skillsNotInitialized: 'Skills management is not initialized. Run "askx skills sync" first.', platformWriteRequired: 'Select at least one platform for this link operation.', conflictKept: 'Conflicting Skills are kept unchanged and are not overwritten automatically.',
+    linkTarget: 'link target',
   },
   'zh-CN': {
     builtInModules: '内置模块', doctor: '环境诊断', skillsScan: 'Skills 扫描', skillsStatus: 'Skills 状态',
@@ -65,6 +82,13 @@ const messages = {
     manageBackups: '管理 Skills 备份', placeholder: '基础占位命令',
     choosePlatforms: '选择需要扫描的平台', scanOnlySelected: '空格切换 · 回车确认', platformRequired: '至少选择一个平台。', platformSelectionRequired: '非交互模式首次扫描必须传入 --platform。',
     skillConflict: 'Skill {name} 在不同平台的内容不一致。', skillBroken: 'Skill {name} 包含失效软链。', skillInvalid: 'Skill {name} 的元数据无效。',
+    syncDescription: '将选中来源中可安全接管的 Skills 同步到 AskX 统一源', linkDescription: '将选中的 Agent Skills 根目录绑定或恢复到统一源', unlinkDescription: '无损停用选中的受管 Skills 根目录软链，不同步内容',
+    directoryDescription: '添加一个只读同步来源的自定义目录', linkDirectoryDescription: '将一个自定义本地目录绑定到统一源', yesDescription: '无需交互确认，直接授权已展示的不可变计划',
+    syncPlan: 'Skills 同步计划', linkPlan: 'Skills 软链计划', unlinkPlan: 'Skills 取消软链计划', syncResult: 'Skills 同步结果', linkResult: 'Skills 软链结果', unlinkResult: 'Skills 取消软链结果',
+    planHash: '计划指纹', adopt: '接管', merge: '合并', keep: '保留', customDirectories: '自定义目录', operations: '操作', applied: '已应用', skipped: '已跳过', failed: '失败',
+    confirmApply: '确认执行这份完整计划？', confirmKeys: 'Y 确认 · N/Esc 取消', cancelled: '操作已取消。', confirmationRequired: '写操作必须明确授权；非交互或 JSON 模式请重新执行并传入 --yes。',
+    skillsNotInitialized: 'Skills 管理尚未初始化，请先运行 "askx skills sync"。', platformWriteRequired: '软链操作至少需要选择一个平台。', conflictKept: '内容冲突的 Skills 会保留现状，不会自动覆盖。',
+    linkTarget: '软链目标',
   },
 } as const
 
@@ -212,6 +236,157 @@ function choosePlatforms(locale: AskXLocale): Promise<SkillPlatformId[]> {
   return new Promise((resolve) => render(<PlatformPrompt locale={locale} onComplete={resolve} />))
 }
 
+/** 写操作通用选项。 */
+interface SkillsWriteOptions {
+  /** 是否输出纯 JSON。 */
+  json?: boolean
+  /** 是否跳过交互并授权当前计划。 */
+  yes?: boolean
+}
+
+/** 交互式写计划确认属性。 */
+interface ConfirmationPromptProps {
+  /** 当前界面语言。 */
+  locale: AskXLocale
+  /** 用户完成选择时回传确认状态。 */
+  onComplete: (confirmed: boolean) => void
+}
+
+/** Skills 写计划使用的 Ink 确认界面。 */
+function ConfirmationPrompt({ locale, onComplete }: ConfirmationPromptProps) {
+  const { exit } = useApp()
+  useInput((input, key) => {
+    const normalized = input.toLocaleLowerCase()
+    if (normalized === 'y') {
+      onComplete(true)
+      exit()
+    }
+    if (normalized === 'n' || normalized === 'q' || key.escape) {
+      onComplete(false)
+      exit()
+    }
+  })
+  return (
+    <Frame title={t(locale, 'confirmApply')}>
+      <Text>{t(locale, 'confirmApply')}</Text>
+      <Text dimColor>{t(locale, 'confirmKeys')}</Text>
+    </Frame>
+  )
+}
+
+/** 等待用户确认当前已经展示的写计划。 */
+function confirmWrite(locale: AskXLocale): Promise<boolean> {
+  return new Promise((resolve) => render(<ConfirmationPrompt locale={locale} onComplete={resolve} />))
+}
+
+/**
+ * 校验当前环境已经取得明确授权。
+ * @param options JSON 与免交互选项。
+ * @param planPayload 需要在机器模式返回的完整计划。
+ * @returns 当前写操作是否可以继续。
+ */
+async function authorizeWrite(options: SkillsWriteOptions, planPayload: unknown): Promise<boolean> {
+  if (options.yes) return true
+  if (options.json || !process.stdin.isTTY) {
+    console.log(JSON.stringify({
+      error: { code: 'CONFIRMATION_REQUIRED', message: t(activeLocale, 'confirmationRequired') },
+      plan: planPayload,
+    }, null, 2))
+    process.exitCode = 2
+    return false
+  }
+  return confirmWrite(activeLocale)
+}
+
+/** Skills 同步或接入计划的终端展示。 */
+function SkillsBatchPlanView({ plan, report, locale, title }: { plan: SkillsBatchPlan; report: SkillsScanReport; locale: AskXLocale; title: string }) {
+  const summary = summarizeSkillsBatchPlan(plan, report)
+  return (
+    <Frame title={title}>
+      <Text dimColor>{t(locale, 'planHash')}  {plan.hash}</Text>
+      <Box marginTop={1} gap={2}>
+        <Text>{t(locale, 'skills')} <Text color={accent}>{summary.total}</Text></Text>
+        <Text>{t(locale, 'adopt')} <Text color="green">{summary.adopt}</Text></Text>
+        <Text>{t(locale, 'merge')} <Text color="green">{summary.merge}</Text></Text>
+        <Text>{t(locale, 'keep')} <Text color={summary.keep ? 'yellow' : 'green'}>{summary.keep}</Text></Text>
+        <Text>{t(locale, 'platforms')} <Text color={accent}>{summary.platformLinks}</Text></Text>
+        <Text>{t(locale, 'customDirectories')} <Text color={accent}>{summary.customLinks}</Text></Text>
+      </Box>
+      {summary.conflicts ? <Text color="yellow">! {t(locale, 'conflictKept')} ({summary.conflicts})</Text> : null}
+      <Box flexDirection="column" marginTop={1}>
+        {plan.units.map((unit) => (
+          <Text key={unit.id} dimColor>
+            · {unit.skillName}  [{t(locale, unit.decision.kind === 'adopt' ? 'adopt' : unit.decision.kind === 'merge' ? 'merge' : 'keep')}]
+          </Text>
+        ))}
+        {plan.platformOperations.map((operation) => <Text key={operation.platform} color={accent}>→ {operation.platform}  {operation.path}</Text>)}
+        {plan.customLinkOperations.map((operation) => <Text key={operation.id} color={accent}>→ {operation.name}  {operation.path}</Text>)}
+      </Box>
+    </Frame>
+  )
+}
+
+/** Skills 同步或接入回执的终端展示。 */
+function SkillsBatchReceiptView({ receipt, locale, title }: { receipt: SkillsBatchReceipt; locale: AskXLocale; title: string }) {
+  const applied = receipt.results.filter((result) => result.status === 'applied').length
+  const skipped = receipt.results.filter((result) => result.status === 'skipped').length
+  const failed = receipt.results.filter((result) => result.status === 'failed' || result.status === 'rolled-back').length
+  return (
+    <Frame title={title}>
+      <Box gap={2}>
+        <Text>{t(locale, 'applied')} <Text color="green">{applied}</Text></Text>
+        <Text>{t(locale, 'skipped')} <Text color="yellow">{skipped}</Text></Text>
+        <Text>{t(locale, 'failed')} <Text color={failed ? 'red' : 'green'}>{failed}</Text></Text>
+        <Text>{t(locale, 'platforms')} <Text color={accent}>{receipt.platformResults.length}</Text></Text>
+      </Box>
+      {receipt.platformResults.map((result) => <Text key={result.platform} color={result.status === 'failed' ? 'red' : 'green'}>{result.status === 'failed' ? '×' : '✓'} {result.platform}  {result.status}</Text>)}
+    </Frame>
+  )
+}
+
+/** 单个平台软链计划的终端展示。 */
+function PlatformLinkPlanView({ plan, locale, title }: { plan: PlatformLinkPlan; locale: AskXLocale; title: string }) {
+  return (
+    <Frame title={title}>
+      <Text dimColor>{t(locale, 'planHash')}  {plan.hash}</Text>
+      <Text>{t(locale, 'platforms')}  <Text color={accent}>{plan.platform}</Text></Text>
+      <Text>{t(locale, 'source')}  {plan.path}</Text>
+      <Text>{t(locale, 'linkTarget')}  {plan.target}</Text>
+      <Text>{t(locale, 'operations')}  <Text color={plan.operations.length ? 'yellow' : 'green'}>{plan.operations.length}</Text></Text>
+    </Frame>
+  )
+}
+
+/** CLI 中单个平台软链操作的执行结果。 */
+interface CliPlatformLinkResult {
+  /** 目标平台。 */
+  platform: SkillPlatformId
+  /** 当前平台执行状态。 */
+  status: 'applied' | 'skipped' | 'failed'
+  /** 成功或幂等跳过时的模块回执。 */
+  receipt?: PlatformLinkReceipt
+  /** 当前平台失败时的错误信息。 */
+  error?: string
+}
+
+/** 多个平台与自定义目录软链结果的终端展示。 */
+function PlatformLinkResultsView({ results, batchReceipt, locale, title }: { results: CliPlatformLinkResult[]; batchReceipt?: SkillsBatchReceipt | undefined; locale: AskXLocale; title: string }) {
+  return (
+    <Frame title={title}>
+      {results.map((result) => (
+        <Text key={result.platform} color={result.status === 'applied' ? 'green' : result.status === 'failed' ? 'red' : 'yellow'}>
+          {result.status === 'applied' ? '✓' : result.status === 'failed' ? '×' : '·'} {result.platform}  {t(locale, result.status)}{result.error ? `  ${result.error}` : ''}
+        </Text>
+      ))}
+      {batchReceipt?.customLinkResults.map((result) => (
+        <Text key={result.id} color={result.status === 'applied' ? 'green' : result.status === 'failed' ? 'red' : 'yellow'}>
+          {result.status === 'applied' ? '✓' : result.status === 'failed' ? '×' : '·'} {result.name}  {result.path}  {t(locale, result.status === 'rolled-back' ? 'failed' : result.status)}
+        </Text>
+      ))}
+    </Frame>
+  )
+}
+
 function StatusView({ status, issues, fingerprint, locale }: { status: 'ok' | 'warning' | 'blocked'; issues: DetectionIssue[]; fingerprint: string; locale: AskXLocale }) {
   return (
     <Frame title={t(locale, 'skillsStatus')}>
@@ -280,12 +455,74 @@ function collectPlatform(value: string, previous: string[]): string[] {
   return [...previous, ...value.split(',').filter(Boolean)]
 }
 
+/** 收集重复传入的目录参数。 */
+function collectDirectory(value: string, previous: string[]): string[] {
+  return [...previous, value]
+}
+
 /** 校验 CLI 平台参数。 */
 function parseSkillPlatforms(values: string[]): SkillPlatformId[] {
   const allowed = new Set<SkillPlatformId>(['codex', 'claude', 'cursor'])
   const unique = [...new Set(values)]
   if (!unique.length || unique.some((value) => !allowed.has(value as SkillPlatformId))) throw new Error(t(activeLocale, 'platformsError'))
   return unique as SkillPlatformId[]
+}
+
+/**
+ * 为一个不可变计划创建当前时刻的用户授权。
+ * @param plan 已向用户展示或由 --yes 明确授权的计划。
+ * @returns 与计划 hash 绑定的授权。
+ */
+function consentFor(plan: { hash: string }): UserConsent {
+  return { planHash: plan.hash, confirmedAt: new Date().toISOString() }
+}
+
+/**
+ * 解析扫描或同步命令的平台范围。
+ * @param values 命令行重复传入的平台参数。
+ * @param initialized Skills 管理是否已经初始化。
+ * @param json 是否处于机器输出模式。
+ * @returns 可继续扫描的平台；缺少首次非交互选择时返回 null。
+ */
+async function resolveSourcePlatforms(values: string[], initialized: boolean, json = false): Promise<SkillPlatformId[] | null> {
+  if (values.length) return parseSkillPlatforms(values)
+  if (initialized) return (await settingsStore.read()).skills.platforms
+  if (process.stdin.isTTY && !json) return choosePlatforms(activeLocale)
+  const payload = { error: { code: 'PLATFORM_SELECTION_REQUIRED', message: t(activeLocale, 'platformSelectionRequired') } }
+  if (json) console.log(JSON.stringify(payload, null, 2))
+  else render(<NoticeView title={t(activeLocale, 'skillsScan')} message={payload.error.message} />)
+  process.exitCode = 2
+  return null
+}
+
+/** 单个平台软链计划执行状态。 */
+interface PlatformLinkExecution {
+  /** 用户是否取消了当前命令。 */
+  cancelled: boolean
+  /** 未取消时的平台结果。 */
+  result?: CliPlatformLinkResult
+}
+
+/**
+ * 生成、展示并应用单个平台的软链状态计划。
+ * @param platform 目标平台。
+ * @param action 恢复或停用软链。
+ * @param options 写命令输出与授权选项。
+ * @returns 当前平台执行结果或取消状态。
+ */
+async function executePlatformLinkAction(platform: SkillPlatformId, action: PlatformLinkAction, options: SkillsWriteOptions): Promise<PlatformLinkExecution> {
+  try {
+    const plan = await skillsManager.planPlatformLink(platform, action)
+    if (!options.json) render(<PlatformLinkPlanView plan={plan} locale={activeLocale} title={t(activeLocale, action === 'resume' ? 'linkPlan' : 'unlinkPlan')} />)
+    if (!await authorizeWrite(options, plan)) {
+      if (!options.json && process.stdin.isTTY) render(<NoticeView title={t(activeLocale, 'skills')} message={t(activeLocale, 'cancelled')} />)
+      return { cancelled: true }
+    }
+    const receipt = await skillsManager.applyPlatformLink(plan, consentFor(plan))
+    return { cancelled: false, result: { platform, status: receipt.status, receipt } }
+  } catch (error) {
+    return { cancelled: false, result: { platform, status: 'failed', error: (error as Error).message } }
+  }
 }
 
 /** 从扫描报告构建 CLI 检测问题。 */
@@ -305,21 +542,8 @@ skills
   .option('-p, --platform <platform>', t(activeLocale, 'platformsArgument'), collectPlatform, [])
   .action(async ({ json, platform }: { json?: boolean; platform: string[] }) => {
     const bootstrap = await skillsManager.bootstrap()
-    let platforms: SkillPlatformId[]
-    if (platform.length) {
-      platforms = parseSkillPlatforms(platform)
-    } else if (bootstrap.initialized) {
-      platforms = (await settingsStore.read()).skills.platforms
-    } else if (process.stdin.isTTY && !json) {
-      platforms = await choosePlatforms(activeLocale)
-    } else {
-      if (json) {
-        console.log(JSON.stringify({ error: { code: 'PLATFORM_SELECTION_REQUIRED', message: t(activeLocale, 'platformSelectionRequired') } }, null, 2))
-        process.exitCode = 2
-        return
-      }
-      throw new Error(t(activeLocale, 'platformSelectionRequired'))
-    }
+    const platforms = await resolveSourcePlatforms(platform, bootstrap.initialized, json)
+    if (!platforms) return
     const current = await settingsStore.read()
     if (current.skills.platforms.join(',') !== platforms.join(',')) {
       await settingsStore.update({ skills: { platforms } }, { source: 'cli', expectedRevision: current.revision })
@@ -328,6 +552,150 @@ skills
     const issues = scanIssues(report)
     if (json) console.log(JSON.stringify(report, null, 2))
     else render(<SkillsScanView report={report} issues={issues} status={issues.length ? 'warning' : 'ok'} locale={activeLocale} />)
+  })
+
+/** Skills 同步命令选项。 */
+interface SkillsSyncOptions extends SkillsWriteOptions {
+  /** 要扫描并同步的平台参数。 */
+  platform: string[]
+  /** 额外的只读 Skill 来源目录。 */
+  directory: string[]
+}
+
+skills
+  .command('sync')
+  .description(t(activeLocale, 'syncDescription'))
+  .option('--json', t(activeLocale, 'jsonDescription'))
+  .option('-y, --yes', t(activeLocale, 'yesDescription'))
+  .option('-p, --platform <platform>', t(activeLocale, 'platformsArgument'), collectPlatform, [])
+  .option('-d, --directory <path>', t(activeLocale, 'directoryDescription'), collectDirectory, [])
+  .action(async (options: SkillsSyncOptions) => {
+    const bootstrap = await skillsManager.bootstrap()
+    const platforms = await resolveSourcePlatforms(options.platform, bootstrap.initialized, options.json)
+    if (!platforms) return
+    let settings = await settingsStore.read()
+    if (settings.skills.platforms.join(',') !== platforms.join(',')) {
+      settings = await settingsStore.update({ skills: { platforms } }, { source: 'cli', expectedRevision: settings.revision })
+    }
+    const report = await skillsManager.scan(platforms, options.directory)
+    const plan = await skillsManager.planOnboarding({
+      platforms,
+      customRoots: options.directory,
+      detectionFingerprint: report.fingerprint,
+      settingsRevision: settings.revision,
+      decisions: createSafeSyncDecisions(report),
+      mode: 'sync',
+      linkPlatforms: [],
+    })
+    if (!options.json) render(<SkillsBatchPlanView plan={plan} report={report} locale={activeLocale} title={t(activeLocale, 'syncPlan')} />)
+    if (!await authorizeWrite(options, plan)) {
+      if (!options.json && process.stdin.isTTY) render(<NoticeView title={t(activeLocale, 'skills')} message={t(activeLocale, 'cancelled')} />)
+      return
+    }
+    const latestSettings = await settingsStore.read()
+    const receipt = await skillsManager.applyOnboarding(plan, latestSettings.revision, consentFor(plan))
+    if (options.json) console.log(JSON.stringify(receipt, null, 2))
+    else render(<SkillsBatchReceiptView receipt={receipt} locale={activeLocale} title={t(activeLocale, 'syncResult')} />)
+  })
+
+/** Skills 软链命令选项。 */
+interface SkillsLinkOptions extends SkillsWriteOptions {
+  /** 要绑定或恢复的平台参数。 */
+  platform: string[]
+  /** 要额外绑定到统一源的本地目录。 */
+  directory: string[]
+}
+
+skills
+  .command('link')
+  .description(t(activeLocale, 'linkDescription'))
+  .option('--json', t(activeLocale, 'jsonDescription'))
+  .option('-y, --yes', t(activeLocale, 'yesDescription'))
+  .option('-p, --platform <platform>', t(activeLocale, 'platformsArgument'), collectPlatform, [])
+  .option('-d, --directory <path>', t(activeLocale, 'linkDirectoryDescription'), collectDirectory, [])
+  .action(async (options: SkillsLinkOptions) => {
+    let bootstrap = await skillsManager.bootstrap()
+    if (!bootstrap.initialized) throw new Error(t(activeLocale, 'skillsNotInitialized'))
+    let selectedPlatforms: SkillPlatformId[] = []
+    if (options.platform.length) selectedPlatforms = parseSkillPlatforms(options.platform)
+    else if (!options.directory.length && process.stdin.isTTY && !options.json) selectedPlatforms = await choosePlatforms(activeLocale)
+    else if (!options.directory.length) throw new Error(t(activeLocale, 'platformWriteRequired'))
+
+    const results: CliPlatformLinkResult[] = []
+    const bindings = new Map(bootstrap.platformBindings.map((binding) => [binding.platform, binding]))
+    const suspendedPlatforms = selectedPlatforms.filter((platform) => bindings.get(platform)?.suspendedAt)
+    const activePlatforms = selectedPlatforms.filter((platform) => bindings.has(platform) && !bindings.get(platform)?.suspendedAt)
+    const newPlatforms = selectedPlatforms.filter((platform) => !bindings.has(platform))
+
+    for (const platform of suspendedPlatforms) {
+      const execution = await executePlatformLinkAction(platform, 'resume', options)
+      if (execution.cancelled) return
+      if (execution.result) results.push(execution.result)
+    }
+    results.push(...activePlatforms.map((platform) => ({ platform, status: 'skipped' as const })))
+
+    let batchReceipt: SkillsBatchReceipt | undefined
+    if (newPlatforms.length || options.directory.length) {
+      bootstrap = await skillsManager.bootstrap()
+      const settings = await settingsStore.read()
+      const scanPlatforms = [...new Set([...settings.skills.platforms, ...newPlatforms])]
+      const report = await skillsManager.scan(scanPlatforms)
+      const plan = await skillsManager.planOnboarding({
+        platforms: scanPlatforms,
+        detectionFingerprint: report.fingerprint,
+        settingsRevision: settings.revision,
+        decisions: createKeepDecisions(report),
+        mode: 'connect',
+        linkPlatforms: newPlatforms,
+        linkCustomRoots: options.directory,
+      })
+      if (!options.json) render(<SkillsBatchPlanView plan={plan} report={report} locale={activeLocale} title={t(activeLocale, 'linkPlan')} />)
+      if (!await authorizeWrite(options, plan)) {
+        if (!options.json && process.stdin.isTTY) render(<NoticeView title={t(activeLocale, 'skills')} message={t(activeLocale, 'cancelled')} />)
+        return
+      }
+      const latestSettings = await settingsStore.read()
+      batchReceipt = await skillsManager.applyOnboarding(plan, latestSettings.revision, consentFor(plan))
+      results.push(...batchReceipt.platformResults.map((result) => ({
+        platform: result.platform,
+        status: result.status === 'rolled-back' ? 'failed' as const : result.status,
+        ...(result.warnings.length ? { error: result.warnings.join('; ') } : {}),
+      })))
+    }
+
+    const payload = { results, ...(batchReceipt ? { batchReceipt } : {}) }
+    if (options.json) console.log(JSON.stringify(payload, null, 2))
+    else render(<PlatformLinkResultsView results={results} batchReceipt={batchReceipt} locale={activeLocale} title={t(activeLocale, 'linkResult')} />)
+  })
+
+/** Skills 取消软链命令选项。 */
+interface SkillsUnlinkOptions extends SkillsWriteOptions {
+  /** 要停用软链的平台参数。 */
+  platform: string[]
+}
+
+skills
+  .command('unlink')
+  .description(t(activeLocale, 'unlinkDescription'))
+  .option('--json', t(activeLocale, 'jsonDescription'))
+  .option('-y, --yes', t(activeLocale, 'yesDescription'))
+  .option('-p, --platform <platform>', t(activeLocale, 'platformsArgument'), collectPlatform, [])
+  .action(async (options: SkillsUnlinkOptions) => {
+    const bootstrap = await skillsManager.bootstrap()
+    if (!bootstrap.initialized) throw new Error(t(activeLocale, 'skillsNotInitialized'))
+    let platforms: SkillPlatformId[]
+    if (options.platform.length) platforms = parseSkillPlatforms(options.platform)
+    else if (process.stdin.isTTY && !options.json) platforms = await choosePlatforms(activeLocale)
+    else throw new Error(t(activeLocale, 'platformWriteRequired'))
+
+    const results: CliPlatformLinkResult[] = []
+    for (const platform of platforms) {
+      const execution = await executePlatformLinkAction(platform, 'suspend', options)
+      if (execution.cancelled) return
+      if (execution.result) results.push(execution.result)
+    }
+    if (options.json) console.log(JSON.stringify({ results }, null, 2))
+    else render(<PlatformLinkResultsView results={results} locale={activeLocale} title={t(activeLocale, 'unlinkResult')} />)
   })
 
 skills.command('status').description(t(activeLocale, 'statusDescription')).action(async () => {
@@ -344,7 +712,7 @@ function unavailable(command: Command): void {
   })
 }
 
-for (const name of ['sync', 'link', 'unlink', 'update']) {
+for (const name of ['update']) {
   unavailable(skills.command(name).description(`${name} Skills (${t(activeLocale, 'placeholder')})`))
 }
 const backups = skills.command('backups').description(t(activeLocale, 'manageBackups'))
