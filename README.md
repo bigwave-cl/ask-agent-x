@@ -30,6 +30,11 @@ pnpm askx skills sync --platform claude
 pnpm askx skills sync --platform claude --manage-all
 pnpm askx skills link --platform claude
 pnpm askx skills unlink --platform claude
+pnpm askx skills history list
+pnpm askx skills rollback <receipt-id>
+pnpm askx skills backups list
+pnpm askx skills backups restore <backup-version>
+pnpm askx skills backups remove <backup-version>
 pnpm askx skills stats
 pnpm askx skills usage record my-skill
 pnpm askx skills manager repair
@@ -67,7 +72,7 @@ pnpm dev:cli
 pnpm dev:web
 ```
 
-`askx ui` 只监听 `127.0.0.1`，启动时会生成一次性会话 token。打开不带 token 的页面会进入欢迎登录页，可通过 `askx ui token` 获取当前 token；验证成功后使用 HttpOnly Cookie 保存本次会话。共享设置已支持 CLI/Web 双向写入。
+`askx ui` 只监听 `127.0.0.1`，发布版未指定 `--port` 时会由系统选择一个当前可用的五位端口；本地 `pnpm dev` 仍固定使用 `4242`，方便日常联调。启动时会生成一次性会话 token。打开不带 token 的页面会进入欢迎登录页，可通过 `askx ui token` 获取当前 token；验证成功后使用 HttpOnly Cookie 保存本次会话。共享设置已支持 CLI/Web 双向写入。
 
 首次进入 `/skills-x` 会先选择 Codex、Claude Code、Cursor 管理范围，再执行只读目录扫描。平台只是 AskX 根据当前操作系统预设的 Skills 目录，自选文件夹与平台目录复用同一套枚举、读取、内容指纹和去重规则。用户确认后，AskX 先生成 `~/.askx/skills` 统一源，再逐个平台备份原 Skills 目录并接入统一源；单个平台失败只恢复并标记该平台。已接入平台可以随时无损取消或恢复软链：取消时隐藏 AskX 创建的根目录软链并原样放回接入前的平台目录，恢复时将该目录原样收回原备份位并放回软链；两种操作都不会扫描、同步或改写任何 Skill，任一步失败都会逆序恢复已经完成的路径移动。任何相关路径被占用时都会安全停止，不覆盖现有内容。macOS/Linux 使用目录软链，原生 Windows 使用目录 junction。
 

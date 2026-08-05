@@ -131,7 +131,7 @@ askx doctor --json
 | 参数 | 适用命令 | 说明 |
 | --- | --- | --- |
 | `-p, --platform <platform>` | `scan`、`sync`、`link`、`unlink` | 指定 `codex`、`claude` 或 `cursor`；可以重复传入，也可以使用逗号分隔 |
-| `-d, --directory <path>` | `sync` | 添加只读扫描与同步来源；最多保存 3 个自定义来源 |
+| `-d, --directory <path>` | `scan`、`sync` | 添加只读扫描来源；`sync` 成功后最多保存 3 个自定义来源 |
 | `-d, --directory <path>` | `link` | 将自定义目录作为使用端绑定到统一源；最多配置 3 个自定义绑定目录 |
 | `--json` | `scan`、`sync`、`link`、`unlink` | 输出机器可读 JSON |
 | `-y, --yes` | `sync`、`link`、`unlink` | 授权当前生成的不可变计划，跳过交互确认 |
@@ -153,6 +153,7 @@ askx skills scan --platform codex,claude
 ```bash
 askx skills scan --platform claude
 askx skills scan --platform codex --platform cursor --json
+askx skills scan --platform codex --directory /absolute/path/to/skills
 ```
 
 行为说明：
@@ -255,7 +256,33 @@ askx skills status
 
 该命令目前没有 `--json` 参数，也不是平台绑定清单。需要查看完整绑定状态时使用 Web 的 Skills X 页面。
 
-### 6.7 `askx skills stats`
+### 6.7 `askx skills history list` 与 `askx skills rollback`
+
+列出已完成事务，并按不可变计划回滚最新且状态未变化的批次：
+
+```bash
+askx skills history list
+askx skills history list --json
+askx skills rollback <receipt-id>
+askx skills rollback <receipt-id> --yes --json
+```
+
+回滚会先校验 receipt、manifest revision、原事务计划指纹和当前文件系统状态。授权与回滚计划 hash 不一致，或事务后又发生写入时都会拒绝执行。
+
+### 6.8 `askx skills backups`
+
+管理清空统一源时产生的长期备份：
+
+```bash
+askx skills backups list
+askx skills backups list --json
+askx skills backups restore <backup-version>
+askx skills backups remove <backup-version>
+```
+
+恢复和删除均先生成计划并要求确认；非交互模式必须使用 `--yes`。删除表示永久移出可恢复列表。
+
+### 6.9 `askx skills stats`
 
 读取默认 `askx-skill-manager` 中的本地 Registry，展示受管 Skill 的版本、显式 usage 和同步目标状态。
 
@@ -266,7 +293,7 @@ askx skills stats --json
 
 该命令只读，不扫描 Agent 行为，也不会上传数据。系统 Skill 缺失或损坏时，统计保持不可用，需先执行修复。
 
-### 6.8 `askx skills usage record`
+### 6.10 `askx skills usage record`
 
 用户明确记录某个已纳入版本管理 Skill 的一次使用：
 
@@ -277,7 +304,7 @@ askx skills usage record skill_26_805_example --yes --json
 
 写入只增加 Registry 中的 `usage_count` 和 `last_used_at`，不会修改 Skill 内容、版本、业务 Hash 或 manifest。命令会先展示不可变计划，再要求确认。
 
-### 6.9 `askx skills manager repair`
+### 6.11 `askx skills manager repair`
 
 修复缺失、损坏或低于内置版本的默认 `askx-skill-manager`：
 
@@ -288,7 +315,7 @@ askx skills manager repair --yes --json
 
 修复会优先保留当前有效 Registry；当前 Registry 无效时，会从 AskX 自有备份中选择最新有效快照。没有任何有效快照时会明确提示原 usage 与同步统计无法恢复。修复只替换系统指令、脚本和自身元数据，不执行其中的 Python 脚本。
 
-### 6.10 默认 Skill Manager 与 local-only
+### 6.12 默认 Skill Manager 与 local-only
 
 首次保存 Skills 配置时，AskX 会把内置 `askx-skill-manager` 作为计划中的明确操作安装到：
 
@@ -297,19 +324,6 @@ askx skills manager repair --yes --json
 ```
 
 系统 Skill 不能通过普通删除或一键清空移除。`local_only: true` 的 Skill 保存在 `~/.askx/local-skills`，不参与平台根目录软链或导出；当前版本通过 Web 的“本地 Skills”页生成计划并迁移到共享统一源。
-
-### 6.11 尚未开放的 Skills 命令
-
-以下命令当前只是占位入口，执行后返回未开放提示和退出码 `2`：
-
-```bash
-askx skills update
-askx skills backups list
-askx skills backups restore
-askx skills backups remove
-```
-
-Web 已有的备份管理能力不代表这些 CLI 子命令已经实现。
 
 ## 7. 共享设置
 
@@ -377,7 +391,7 @@ askx ui
 askx ui --port 4300
 ```
 
-端口必须是 `1` 至 `65535` 的整数。启动时会生成本地会话 Token，并在终端显示访问地址；按 `Ctrl+C` 停止。
+未指定端口时，发布版命令会自动选择一个当前可用的五位本地端口，降低与其他开发服务冲突的概率。显式端口仍必须是 `1` 至 `65535` 的整数。启动时会生成本地会话 Token，并在终端显示实际访问地址；按 `Ctrl+C` 停止。
 
 ### `askx ui token`
 

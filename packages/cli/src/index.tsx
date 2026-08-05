@@ -9,9 +9,15 @@ import {
   type AskXThemeColor,
   type DetectionIssue,
   type ManagedPlatformId,
+  type RollbackResult,
   type UserConsent,
 } from '@askx/core'
 import { SkillsManager, SkillsModule } from '@askx/module-skills'
+import type {
+  CanonicalSkillsBackup,
+  CanonicalSourceMutationPlan,
+  CanonicalSourceMutationReceipt,
+} from '@askx/module-skills/canonical-source-manager'
 import type {
   PlatformLinkAction,
   PlatformLinkPlan,
@@ -68,8 +74,8 @@ const messages = {
     platformsArgument: 'codex, claude and/or cursor', platformsDescription: 'Set enabled Agent platforms', platformsError: 'Platforms must contain codex, claude and/or cursor',
     languageArgument: 'zh-CN or en', languageDescription: 'Set the shared CLI/Web language', languageError: 'Language must be "zh-CN" or "en"',
     themeArgument: 'cyan or rose', themeDescription: 'Set the shared CLI/Web theme color', themeError: 'Theme color must be "cyan" or "rose"',
-    uiDescription: 'Start the local Nuxt management interface', portDescription: 'Local port', invalidPort: 'Invalid port', tokenDescription: 'Print the active local UI token', noToken: 'No active UI session. Start "pnpm dev" or "askx ui" first.',
-    manageBackups: 'Manage Skills backups', placeholder: 'foundation placeholder',
+    uiDescription: 'Start the local Nuxt management interface', portDescription: 'Local port; defaults to an available five-digit port', invalidPort: 'Invalid port', tokenDescription: 'Print the active local UI token', noToken: 'No active UI session. Start "pnpm dev" or "askx ui" first.',
+    manageBackups: 'Manage canonical Skills source backups', historyDescription: 'List completed Skills transactions', rollbackDescription: 'Roll back the latest unchanged Skills transaction', backupListDescription: 'List canonical source backups', backupRestoreDescription: 'Restore the canonical source from a backup', backupRemoveDescription: 'Permanently remove a canonical source backup', receiptArgument: 'transaction receipt ID', backupVersionArgument: 'backup version', historyTitle: 'Skills transaction history', rollbackPlan: 'Skills rollback plan', rollbackResult: 'Skills rollback result', backupRestorePlan: 'Backup restore plan', backupRestoreResult: 'Backup restored', backupRemovePlan: 'Backup removal plan', backupRemoveResult: 'Backup removed', noTransactions: 'No completed Skills transactions.', noBackups: 'No canonical source backups.', restored: 'restored', rollbackRejected: 'rollback rejected', valid: 'valid', invalid: 'invalid',
     choosePlatforms: 'Choose platforms to scan', scanOnlySelected: 'Space toggles · Enter confirms', platformRequired: 'Select at least one platform.', platformSelectionRequired: 'First scan requires --platform in non-interactive mode.',
     skillConflict: 'Skill {name} has conflicting content.', skillBroken: 'Skill {name} has a broken link.', skillInvalid: 'Skill {name} has invalid metadata.',
     syncDescription: 'Synchronize safe Skills from selected roots into the AskX canonical source', linkDescription: 'Bind or resume selected Agent Skills directories to the canonical source', unlinkDescription: 'Suspend selected managed Skills-directory links without synchronizing content',
@@ -95,8 +101,8 @@ const messages = {
     platformsArgument: 'codex、claude 和/或 cursor', platformsDescription: '设置启用的 Agent 平台', platformsError: '平台必须包含 codex、claude 和/或 cursor',
     languageArgument: 'zh-CN 或 en', languageDescription: '设置 CLI/Web 共享语言', languageError: '语言必须是 "zh-CN" 或 "en"',
     themeArgument: 'cyan 或 rose', themeDescription: '设置 CLI/Web 共享主题色', themeError: '主题色必须是 "cyan" 或 "rose"',
-    uiDescription: '启动本地 Nuxt 管理界面', portDescription: '本地端口', invalidPort: '无效端口', tokenDescription: '输出当前本地 UI token', noToken: '没有活动的 UI 会话，请先运行 "pnpm dev" 或 "askx ui"。',
-    manageBackups: '管理 Skills 备份', placeholder: '基础占位命令',
+    uiDescription: '启动本地 Nuxt 管理界面', portDescription: '本地端口，默认自动选择可用的五位端口', invalidPort: '无效端口', tokenDescription: '输出当前本地 UI token', noToken: '没有活动的 UI 会话，请先运行 "pnpm dev" 或 "askx ui"。',
+    manageBackups: '管理统一 Skills 来源备份', historyDescription: '列出已完成的 Skills 事务', rollbackDescription: '回滚最新且状态未变化的 Skills 事务', backupListDescription: '列出统一源备份', backupRestoreDescription: '从指定备份恢复统一源', backupRemoveDescription: '永久删除指定统一源备份', receiptArgument: '事务回执 ID', backupVersionArgument: '备份版本', historyTitle: 'Skills 事务历史', rollbackPlan: 'Skills 回滚计划', rollbackResult: 'Skills 回滚结果', backupRestorePlan: '备份恢复计划', backupRestoreResult: '备份恢复完成', backupRemovePlan: '备份删除计划', backupRemoveResult: '备份删除完成', noTransactions: '没有已完成的 Skills 事务。', noBackups: '没有统一源备份。', restored: '已恢复', rollbackRejected: '拒绝回滚', valid: '有效', invalid: '无效',
     choosePlatforms: '选择需要扫描的平台', scanOnlySelected: '空格切换 · 回车确认', platformRequired: '至少选择一个平台。', platformSelectionRequired: '非交互模式首次扫描必须传入 --platform。',
     skillConflict: 'Skill {name} 在不同平台的内容不一致。', skillBroken: 'Skill {name} 包含失效软链。', skillInvalid: 'Skill {name} 的元数据无效。',
     syncDescription: '将选中来源中可安全接管的 Skills 同步到 AskX 统一源', linkDescription: '将选中的 Agent Skills 根目录绑定或恢复到统一源', unlinkDescription: '无损停用选中的受管 Skills 根目录软链，不同步内容',
@@ -414,6 +420,44 @@ function StatusView({ status, issues, fingerprint, locale }: { status: 'ok' | 'w
   )
 }
 
+/** Skills 事务历史终端视图。 */
+function SkillsHistoryView({ receipts, locale }: { receipts: SkillsBatchReceipt[]; locale: AskXLocale }) {
+  return (
+    <Frame title={t(locale, 'historyTitle')}>
+      {!receipts.length ? <Text dimColor>{t(locale, 'noTransactions')}</Text> : receipts.map((receipt, index) => (
+        <Text key={receipt.id} {...(index === 0 ? { color: accent } : {})}>
+          {index === 0 ? '●' : '·'} {receipt.appliedAt}  {receipt.id}  {t(locale, 'applied')} {receipt.results.filter(result => result.status === 'applied').length}
+        </Text>
+      ))}
+    </Frame>
+  )
+}
+
+/** 统一源备份列表终端视图。 */
+function CanonicalBackupsView({ backups, locale }: { backups: CanonicalSkillsBackup[]; locale: AskXLocale }) {
+  return (
+    <Frame title={t(locale, 'manageBackups')}>
+      {!backups.length ? <Text dimColor>{t(locale, 'noBackups')}</Text> : backups.map(backup => (
+        <Text key={backup.version} color={backup.valid ? 'green' : 'red'}>
+          {backup.valid ? '✓' : '×'} {backup.version}  {t(locale, backup.valid ? 'valid' : 'invalid')}  {backup.skillCount ?? 0} {t(locale, 'skills')}{backup.issue ? `  ${backup.issue}` : ''}
+        </Text>
+      ))}
+    </Frame>
+  )
+}
+
+/** 展示统一源备份写计划。 */
+function CanonicalPlanView({ plan, locale, title }: { plan: CanonicalSourceMutationPlan; locale: AskXLocale; title: string }) {
+  return (
+    <Frame title={title}>
+      <Text>{t(locale, 'operations')}  <Text color="yellow">{plan.action}</Text></Text>
+      <Text>{t(locale, 'backup')}  <Text color={accent}>{plan.backupVersion ?? '-'}</Text></Text>
+      <Text>{t(locale, 'skills')}  {plan.currentSkillCount}</Text>
+      <Text dimColor>{t(locale, 'planHash')}  {plan.hash}</Text>
+    </Frame>
+  )
+}
+
 function NoticeView({ title, message }: { title: string; message: string }) {
   return <Frame title={title}><Text color="yellow">◆ {message}</Text></Frame>
 }
@@ -655,7 +699,8 @@ skills
   .description(t(activeLocale, 'scanDescription'))
   .option('--json', t(activeLocale, 'jsonDescription'))
   .option('-p, --platform <platform>', t(activeLocale, 'platformsArgument'), collectPlatform, [])
-  .action(async ({ json, platform }: { json?: boolean; platform: string[] }) => {
+  .option('-d, --directory <path>', t(activeLocale, 'directoryDescription'), collectDirectory, [])
+  .action(async ({ json, platform, directory }: { json?: boolean; platform: string[]; directory: string[] }) => {
     const bootstrap = await skillsManager.bootstrap()
     const platforms = await resolveSourcePlatforms(platform, bootstrap.initialized, json)
     if (!platforms) return
@@ -663,7 +708,7 @@ skills
     if (current.skills.platforms.join(',') !== platforms.join(',')) {
       await settingsStore.update({ skills: { platforms } }, { source: 'cli', expectedRevision: current.revision })
     }
-    const report = await skillsManager.scan(platforms)
+    const report = await skillsManager.scan(platforms, directory)
     const issues = scanIssues(report)
     if (json) console.log(JSON.stringify(report, null, 2))
     else render(<SkillsScanView report={report} issues={issues} status={issues.length ? 'warning' : 'ok'} locale={activeLocale} />)
@@ -823,12 +868,37 @@ skills
     else render(<PlatformLinkResultsView results={results} locale={activeLocale} title={t(activeLocale, 'unlinkResult')} />)
   })
 
-skills.command('status').description(t(activeLocale, 'statusDescription')).action(async () => {
+skills.command('status').description(t(activeLocale, 'statusDescription')).option('--json', t(activeLocale, 'jsonDescription')).action(async ({ json }: { json?: boolean }) => {
   const platforms = (await settingsStore.read()).skills.platforms
   const report = await skillsManager.scan(platforms)
   const issues = scanIssues(report)
-  render(<StatusView status={issues.length ? 'warning' : 'ok'} issues={issues} fingerprint={report.fingerprint} locale={activeLocale} />)
+  const bootstrap = await skillsManager.bootstrap()
+  const payload = { status: issues.length ? 'warning' : 'ok', issues, report, bootstrap }
+  if (json) console.log(JSON.stringify(payload, null, 2))
+  else render(<StatusView status={issues.length ? 'warning' : 'ok'} issues={issues} fingerprint={report.fingerprint} locale={activeLocale} />)
 })
+
+const history = skills.command('history').description(t(activeLocale, 'historyDescription'))
+history.command('list').option('--json', t(activeLocale, 'jsonDescription')).action(async ({ json }: { json?: boolean }) => {
+  const receipts = await skillsManager.history()
+  if (json) console.log(JSON.stringify(receipts, null, 2))
+  else render(<SkillsHistoryView receipts={receipts} locale={activeLocale} />)
+})
+
+skills
+  .command('rollback')
+  .argument('<receipt-id>', t(activeLocale, 'receiptArgument'))
+  .description(t(activeLocale, 'rollbackDescription'))
+  .option('--json', t(activeLocale, 'jsonDescription'))
+  .option('-y, --yes', t(activeLocale, 'yesDescription'))
+  .action(async (receiptId: string, options: SkillsWriteOptions) => {
+    const plan = await skillsManager.planRollbackReceipt(receiptId)
+    if (!options.json) render(<NoticeView title={t(activeLocale, 'rollbackPlan')} message={`${plan.receiptId}  ${t(activeLocale, 'planHash')} ${plan.hash}`} />)
+    if (!await authorizeWrite(options, plan)) return
+    const result: RollbackResult = await skillsManager.applyRollbackReceipt(plan, consentFor(plan))
+    if (options.json) console.log(JSON.stringify(result, null, 2))
+    else render(<NoticeView title={t(activeLocale, 'rollbackResult')} message={result.rolledBack ? `${t(activeLocale, 'restored')}: ${result.restoredPaths.join(', ') || '-'}` : `${t(activeLocale, 'rollbackRejected')}: ${result.warnings.join('; ')}`} />)
+  })
 
 skills
   .command('stats')
@@ -871,18 +941,34 @@ manager
     else render(<SystemSkillRepairReceiptView receipt={receipt} locale={activeLocale} />)
   })
 
-function unavailable(command: Command): void {
-  command.action(() => {
-    render(<NoticeView title={command.name()} message={t(activeLocale, 'writeLocked')} />)
-    process.exitCode = 2
-  })
+const backups = skills.command('backups').description(t(activeLocale, 'manageBackups'))
+backups.command('list').description(t(activeLocale, 'backupListDescription')).option('--json', t(activeLocale, 'jsonDescription')).action(async ({ json }: { json?: boolean }) => {
+  const values = await skillsManager.canonicalBackups()
+  if (json) console.log(JSON.stringify(values, null, 2))
+  else render(<CanonicalBackupsView backups={values} locale={activeLocale} />)
+})
+
+/** 注册统一源备份恢复或删除命令。 */
+function registerCanonicalBackupMutation(commandName: 'restore' | 'remove', action: 'restore' | 'delete-backup'): void {
+  const restoring = commandName === 'restore'
+  backups
+    .command(commandName)
+    .argument('<backup-version>', t(activeLocale, 'backupVersionArgument'))
+    .description(t(activeLocale, restoring ? 'backupRestoreDescription' : 'backupRemoveDescription'))
+    .option('--json', t(activeLocale, 'jsonDescription'))
+    .option('-y, --yes', t(activeLocale, 'yesDescription'))
+    .action(async (backupVersion: string, options: SkillsWriteOptions) => {
+      const plan = await skillsManager.planCanonicalSource(action, backupVersion)
+      if (!options.json) render(<CanonicalPlanView plan={plan} locale={activeLocale} title={t(activeLocale, restoring ? 'backupRestorePlan' : 'backupRemovePlan')} />)
+      if (!await authorizeWrite(options, plan)) return
+      const receipt: CanonicalSourceMutationReceipt = await skillsManager.applyCanonicalSource(plan, consentFor(plan))
+      if (options.json) console.log(JSON.stringify(receipt, null, 2))
+      else render(<NoticeView title={t(activeLocale, restoring ? 'backupRestoreResult' : 'backupRemoveResult')} message={receipt.restoredBackupVersion ?? receipt.deletedBackupVersion ?? receipt.createdBackup?.version ?? receipt.status} />)
+    })
 }
 
-for (const name of ['update']) {
-  unavailable(skills.command(name).description(`${name} Skills (${t(activeLocale, 'placeholder')})`))
-}
-const backups = skills.command('backups').description(t(activeLocale, 'manageBackups'))
-for (const name of ['list', 'restore', 'remove']) unavailable(backups.command(name))
+registerCanonicalBackupMutation('restore', 'restore')
+registerCanonicalBackupMutation('remove', 'delete-backup')
 
 const settings = program.command('settings').description(t(activeLocale, 'settingsDescription'))
 settings
@@ -946,13 +1032,13 @@ settingsSet
 const ui = program
   .command('ui')
   .description(t(activeLocale, 'uiDescription'))
-  .option('-p, --port <port>', t(activeLocale, 'portDescription'), '4242')
+  .option('-p, --port <port>', t(activeLocale, 'portDescription'))
 
 ui
-  .action(async ({ port }: { port: string }) => {
-    const parsedPort = Number.parseInt(port, 10)
-    if (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535) throw new Error(`${t(activeLocale, 'invalidPort')}: ${port}`)
-    const server = await startUi({ port: parsedPort })
+  .action(async ({ port }: { port?: string }) => {
+    const parsedPort = port === undefined ? undefined : Number.parseInt(port, 10)
+    if (port !== undefined && (!Number.isInteger(parsedPort) || parsedPort! < 1 || parsedPort! > 65535)) throw new Error(`${t(activeLocale, 'invalidPort')}: ${port}`)
+    const server = await startUi(parsedPort === undefined ? {} : { port: parsedPort })
     const ink = render(<UiView url={server.url} locale={activeLocale} />)
     const close = async () => {
       ink.unmount()
