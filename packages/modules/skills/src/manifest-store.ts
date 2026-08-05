@@ -2,7 +2,15 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { managedSkillRecordSchema, skillPlatformIdSchema, skillsManifestSchema, type SkillsManifest } from './skill-types.js'
+import {
+  managedCustomLinkBindingSchema,
+  managedPlatformBindingSchema,
+  managedSkillRecordSchema,
+  skillCustomScanRootSchema,
+  skillPlatformIdSchema,
+  skillsManifestSchema,
+  type SkillsManifest,
+} from './skill-types.js'
 
 const LOCK_MAX_AGE_MS = 30_000
 const LOCK_RETRY_MS = 40
@@ -25,6 +33,23 @@ const legacySkillsManifestSchema = z.object({
       target: z.string().min(1),
     })),
   })),
+})
+
+/** v2 根目录软链 Manifest，仅用于只读升级。 */
+const versionTwoSkillsManifestSchema = z.object({
+  version: z.literal(2),
+  revision: z.number().int().nonnegative(),
+  initializedAt: z.string().datetime(),
+  lastScan: z.object({
+    scannedAt: z.string().datetime(),
+    fingerprint: z.string().min(1),
+    platforms: z.array(skillPlatformIdSchema).min(1),
+  }),
+  skills: z.array(managedSkillRecordSchema),
+  customRoots: z.array(skillCustomScanRootSchema).default([]),
+  platformBindings: z.array(managedPlatformBindingSchema),
+  customLinkBindings: z.array(managedCustomLinkBindingSchema).default([]),
+  migrationRequired: z.boolean().optional(),
 })
 
 /** manifest revision 不匹配错误。 */
@@ -61,13 +86,22 @@ export class SkillsManifestStore {
       const value: unknown = JSON.parse(await readFile(this.path, 'utf8'))
       const current = skillsManifestSchema.safeParse(value)
       if (current.success) return current.data
+      const versionTwo = versionTwoSkillsManifestSchema.safeParse(value)
+      if (versionTwo.success) {
+        return {
+          ...versionTwo.data,
+          version: 3,
+          localSkills: [],
+        }
+      }
       const legacy = legacySkillsManifestSchema.parse(value)
       return {
-        version: 2,
+        version: 3,
         revision: legacy.revision,
         initializedAt: legacy.initializedAt,
         lastScan: legacy.lastScan,
         skills: legacy.skills.map(({ bindings: _bindings, ...skill }) => skill),
+        localSkills: [],
         customRoots: [],
         platformBindings: [],
         customLinkBindings: [],
@@ -91,7 +125,12 @@ export class SkillsManifestStore {
     try {
       const current = await this.read()
       if ((current?.revision ?? 0) !== expectedRevision) throw new SkillsManifestConflictError(current)
-      const parsed = skillsManifestSchema.parse({ ...next, revision: expectedRevision + 1 })
+      const parsed = skillsManifestSchema.parse({
+        ...next,
+        version: 3,
+        localSkills: next.localSkills ?? [],
+        revision: expectedRevision + 1,
+      })
       const temporaryPath = `${this.path}.${randomUUID()}.tmp`
       await writeFile(temporaryPath, `${JSON.stringify(parsed, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
       await rename(temporaryPath, this.path)

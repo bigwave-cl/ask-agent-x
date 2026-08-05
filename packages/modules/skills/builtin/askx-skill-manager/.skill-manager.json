@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "skill_id": "skill_26_805_a5c18d20f4",
+  "version": "26.805.1",
+  "local_only": false,
+  "created_at": "2026-08-05T00:00:00.000+08:00",
+  "updated_at": "2026-08-05T00:00:00.000+08:00",
+  "content_sha256": "70faf3d97dde5db1229ce334205230c5c13e0176e363a410c0820f3039bf4ffd",
+  "managed_by": "askx-skill-manager"
+}

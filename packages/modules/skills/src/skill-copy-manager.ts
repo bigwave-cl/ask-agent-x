@@ -4,6 +4,8 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { stableHash, type UserConsent } from '@askx/core'
 import type { SkillsManifestStore } from './manifest-store.js'
 import { detectSkillPlatforms, hashSkillDirectory } from './scanner.js'
+import { compareManagerVersions, fingerprintManagedSkill, inspectSkillManagerMetadata } from './skill-manager-metadata.js'
+import { SkillManagerRegistryStore } from './skill-manager-registry.js'
 import {
   MAX_SKILL_COPY_TARGETS,
   MAX_SKILL_COPY_UNITS,
@@ -52,6 +54,8 @@ type UnsignedSkillCopyBatchPlan = Omit<SkillCopyBatchPlan, 'hash'>
 interface ResolvedManagedSkill {
   /** 当前 manifest 版本。 */
   manifestRevision: number
+  /** 当前 registry 版本。 */
+  registryRevision: number
   /** 受管 Skill 记录。 */
   record: ManagedSkillRecord
 }
@@ -117,11 +121,12 @@ async function resolveManagedSkills(context: SkillCopyManagerContext, skillIds: 
   const manifest = await context.manifestStore.read()
   if (!manifest?.initializedAt) throw new Error('Skills 管理尚未初始化。')
   const result = new Map<string, ResolvedManagedSkill>()
+  const registryRevision = (await new SkillManagerRegistryStore(context.manifestStore.dataDir).read())?.revision ?? 0
   for (const skillId of [...new Set(skillIds)]) {
     const record = manifest.skills.find((entry) => entry.id === skillId)
     if (!record) throw new Error('找不到要同步的受管 Skill。')
     await validateManagedSkill(context, record)
-    result.set(skillId, { manifestRevision: manifest.revision, record })
+    result.set(skillId, { manifestRevision: manifest.revision, registryRevision, record })
   }
   return result
 }
@@ -175,6 +180,44 @@ async function saveReceipt(context: SkillCopyManagerContext, receipt: SkillCopyR
   await rename(temporaryPath, receiptPath)
 }
 
+/** 把已验证的复制目标写入 registry。 */
+async function recordCopyTarget(
+  context: SkillCopyManagerContext,
+  plan: SkillCopyPlan,
+  record: ManagedSkillRecord,
+  status: 'copied' | 'conflict',
+): Promise<void> {
+  if (!record.manager) return
+  const store = new SkillManagerRegistryStore(context.manifestStore.dataDir)
+  const registry = await store.read()
+  if (!registry || registry.revision !== plan.registryRevision) throw new Error('Skill registry 已经变化，请重新生成同步计划。')
+  const previous = registry.skills[record.manager.skillId]
+  if (!previous) throw new Error(`Registry 中不存在受管 Skill：${record.name}`)
+  const key = plan.target.kind === 'platform' ? `platform:${plan.target.platform}` : `folder:${plan.targetRoot}`
+  await store.write({
+    ...registry,
+    skills: {
+      ...registry.skills,
+      [record.manager.skillId]: {
+        ...previous,
+        targets: {
+          ...previous.targets,
+          [key]: {
+            kind: plan.target.kind,
+            path: plan.destinationPath,
+            status,
+            ...(status === 'copied' ? {
+              version: record.manager.version,
+              content_sha256: record.manager.contentSha256,
+              synced_at: new Date().toISOString(),
+            } : {}),
+          },
+        },
+      },
+    },
+  }, registry.revision)
+}
+
 /** 使用已经校验的来源与目标根目录生成一个独立复制计划。 */
 async function createSkillCopyPlanFromResolved(
   context: SkillCopyManagerContext,
@@ -183,7 +226,7 @@ async function createSkillCopyPlanFromResolved(
   conflictStrategy: SkillCopyConflictStrategy,
   targetRoot: string,
 ): Promise<SkillCopyPlan> {
-  const { manifestRevision, record } = resolvedSkill
+  const { manifestRevision, registryRevision, record } = resolvedSkill
   const destinationPath = join(targetRoot, record.name)
   await assertTargetScope(context, target, targetRoot, destinationPath, record.canonicalPath)
   const detection = await createDetectionState(targetRoot, destinationPath)
@@ -195,6 +238,17 @@ async function createSkillCopyPlanFromResolved(
     ? 'missing'
     : detection.destination.contentHash === record.contentHash ? 'identical' : 'conflict'
   const planId = randomUUID()
+  const targetManager = detection.destination.kind === 'directory'
+    ? await inspectSkillManagerMetadata(destinationPath, (await fingerprintManagedSkill(destinationPath)).businessContentHash)
+    : undefined
+  const sourceVersion = record.manager?.version
+  const targetVersion = targetManager?.metadata?.version
+  const comparison = sourceVersion && targetVersion ? compareManagerVersions(sourceVersion, targetVersion) : undefined
+  const versionRelation = !targetManager?.metadata
+    ? 'unmanaged' as const
+    : comparison === undefined ? 'unknown' as const : comparison > 0 ? 'newer' as const : comparison < 0 ? 'older' as const : 'same' as const
+  const identityConflict = Boolean(record.manager && targetManager?.metadata && record.manager.skillId !== targetManager.metadata.skill_id)
+  const recommendedConflictStrategy = versionRelation === 'newer' && !identityConflict ? 'replace' as const : 'keep' as const
   const backupPath = targetState === 'conflict' && conflictStrategy === 'replace'
     ? join(context.manifestStore.dataDir, 'backups', 'skill-copies', planId, record.name)
     : undefined
@@ -205,14 +259,21 @@ async function createSkillCopyPlanFromResolved(
     skillName: record.name,
     sourcePath: record.canonicalPath,
     sourceContentHash: record.contentHash,
+    ...(record.businessContentHash ? { sourceBusinessContentHash: record.businessContentHash } : {}),
+    ...(sourceVersion ? { sourceVersion } : {}),
     target,
     targetRoot,
     destinationPath,
     targetState,
     ...(detection.destination.contentHash ? { previousTargetHash: detection.destination.contentHash } : {}),
+    ...(targetVersion ? { targetVersion } : {}),
+    versionRelation,
+    identityConflict,
+    recommendedConflictStrategy,
     conflictStrategy,
     ...(backupPath ? { backupPath } : {}),
     manifestRevision,
+    registryRevision,
     detectionFingerprint: detection.fingerprint,
   }
   return skillCopyPlanSchema.parse({ ...unsigned, hash: stableHash(unsigned) })
@@ -288,7 +349,12 @@ async function rollbackCopy(
 }
 
 /** 应用经过确认的单 Skill 复制计划。 */
-export async function applySkillCopyPlan(context: SkillCopyManagerContext, inputPlan: SkillCopyPlan, consent: UserConsent): Promise<SkillCopyReceipt> {
+export async function applySkillCopyPlan(
+  context: SkillCopyManagerContext,
+  inputPlan: SkillCopyPlan,
+  consent: UserConsent,
+  options: { recordRegistry?: boolean; saveReceipt?: boolean } = {},
+): Promise<SkillCopyReceipt> {
   const plan = skillCopyPlanSchema.parse(inputPlan)
   const { hash: _hash, ...unsigned } = plan
   if (stableHash(unsigned) !== plan.hash || consent.planHash !== plan.hash) throw new Error('Skill 同步计划或用户授权已经失效。')
@@ -296,6 +362,10 @@ export async function applySkillCopyPlan(context: SkillCopyManagerContext, input
   const { manifestRevision, record } = await resolveManagedSkill(context, plan.skillId)
   if (manifestRevision !== plan.manifestRevision || record.name !== plan.skillName || record.canonicalPath !== plan.sourcePath || record.contentHash !== plan.sourceContentHash) {
     throw new Error('统一源 Skill 已经变化，请重新生成同步计划。')
+  }
+  if (record.manager) {
+    const registryRevision = (await new SkillManagerRegistryStore(context.manifestStore.dataDir).read())?.revision ?? 0
+    if (registryRevision !== plan.registryRevision) throw new Error('Skill registry 已经变化，请重新生成同步计划。')
   }
   const targetRoot = await resolveTargetRoot(context, plan.target)
   if (targetRoot !== plan.targetRoot) throw new Error('目标平台路径已经变化，请重新生成同步计划。')
@@ -317,7 +387,8 @@ export async function applySkillCopyPlan(context: SkillCopyManagerContext, input
       contentHash: plan.targetState === 'identical' ? plan.sourceContentHash : plan.previousTargetHash!,
       warnings: [plan.targetState === 'identical' ? '目标已经是最新版本，无需重复同步。' : '目标存在不同内容，已按计划保留现状。'],
     }
-    await saveReceipt(context, receipt)
+    if (options.recordRegistry !== false) await recordCopyTarget(context, plan, record, plan.targetState === 'identical' ? 'copied' : 'conflict')
+    if (options.saveReceipt !== false) await saveReceipt(context, receipt)
     return receipt
   }
 
@@ -348,6 +419,7 @@ export async function applySkillCopyPlan(context: SkillCopyManagerContext, input
     await rename(stagingPath, plan.destinationPath)
     installed = true
     if (await hashSkillDirectory(plan.destinationPath) !== plan.sourceContentHash) throw new Error('Skill 同步完成后的内容校验失败。')
+    if (options.recordRegistry !== false) await recordCopyTarget(context, plan, record, 'copied')
     if (previousMoved) {
       await rm(previousPath, { recursive: true, force: true }).catch(() => {
         warnings.push(`目标原目录已完整备份，但临时目录清理失败：${previousPath}`)
@@ -366,7 +438,7 @@ export async function applySkillCopyPlan(context: SkillCopyManagerContext, input
       ...(backup ? { backup } : {}),
       warnings,
     }
-    await saveReceipt(context, receipt)
+    if (options.saveReceipt !== false) await saveReceipt(context, receipt)
     return receipt
   } catch (error) {
     await rollbackCopy(plan.destinationPath, previousPath, stagingPath, installed, previousMoved, backup, plan.previousTargetHash)
@@ -386,9 +458,16 @@ export async function applySkillCopyBatchPlan(context: SkillCopyManagerContext, 
   if (stableHash(unsigned) !== plan.hash || consent.planHash !== plan.hash) throw new Error('批量同步计划或用户授权已经失效。')
 
   const results: SkillCopyBatchUnitResult[] = []
+  const receipts: Array<{ plan: SkillCopyPlan; receipt: SkillCopyReceipt }> = []
   for (const unit of plan.units) {
     try {
-      const receipt = await applySkillCopyPlan(context, unit, { planHash: unit.hash, confirmedAt: consent.confirmedAt })
+      const receipt = await applySkillCopyPlan(
+        context,
+        unit,
+        { planHash: unit.hash, confirmedAt: consent.confirmedAt },
+        { recordRegistry: false, saveReceipt: false },
+      )
+      receipts.push({ plan: unit, receipt })
       results.push({
         skillId: unit.skillId,
         skillName: unit.skillName,
@@ -408,6 +487,66 @@ export async function applySkillCopyBatchPlan(context: SkillCopyManagerContext, 
         warnings: [error instanceof Error ? error.message : String(error)],
       })
     }
+  }
+  try {
+    const managedSkills = await resolveManagedSkills(context, plan.units.map((unit) => unit.skillId))
+    const registryStore = new SkillManagerRegistryStore(context.manifestStore.dataDir)
+    const registry = await registryStore.read()
+    const expectedRevision = plan.units[0]?.registryRevision ?? 0
+    if ((registry?.revision ?? 0) !== expectedRevision) throw new Error('Skill registry 已经变化，请重新生成同步计划。')
+    const containsManagedSkill = [...managedSkills.values()].some(item => Boolean(item.record.manager))
+    if (containsManagedSkill && !registry) throw new Error('AskX Skill Manager registry 不可用，无法登记导出结果。')
+    if (registry) {
+      const skills = { ...registry.skills }
+      for (const unit of plan.units) {
+        const record = managedSkills.get(unit.skillId)?.record
+        if (!record?.manager) continue
+        const previous = skills[record.manager.skillId]
+        if (!previous) throw new Error(`Registry 中不存在受管 Skill：${record.name}`)
+        const result = results.find((item) => item.skillId === unit.skillId && stableHash(item.target) === stableHash(unit.target))
+        const status = result?.status === 'failed'
+          ? 'failed' as const
+          : unit.targetState === 'conflict' && unit.conflictStrategy === 'keep' ? 'conflict' as const : 'copied' as const
+        const key = unit.target.kind === 'platform' ? `platform:${unit.target.platform}` : `folder:${unit.targetRoot}`
+        const verified = status === 'copied'
+        skills[record.manager.skillId] = {
+          ...previous,
+          targets: {
+            ...previous.targets,
+            [key]: {
+              kind: unit.target.kind,
+              path: unit.destinationPath,
+              status,
+              ...(verified ? {
+                version: record.manager.version,
+                content_sha256: record.manager.contentSha256,
+                synced_at: new Date().toISOString(),
+              } : {}),
+            },
+          },
+        }
+      }
+      await registryStore.write({ ...registry, skills }, registry.revision)
+    }
+    await Promise.all(receipts.map(({ receipt }) => saveReceipt(context, receipt)))
+  } catch (error) {
+    const rollbackErrors: unknown[] = []
+    for (const { plan: unit, receipt } of [...receipts].reverse()) {
+      if (receipt.status !== 'applied') continue
+      try {
+        await rm(receipt.destinationPath, { recursive: true, force: true })
+        if (receipt.backup) {
+          await cp(receipt.backup.backupPath, receipt.destinationPath, { recursive: true, dereference: false, preserveTimestamps: true })
+          if (unit.previousTargetHash && await hashSkillDirectory(receipt.destinationPath) !== unit.previousTargetHash) {
+            throw new Error(`目标 ${receipt.destinationPath} 回滚后校验失败。`)
+          }
+        }
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError)
+      }
+    }
+    if (rollbackErrors.length) throw new AggregateError([error, ...rollbackErrors], '批量复制统计写入失败且目标回滚不完整。')
+    throw error
   }
   return {
     id: randomUUID(),

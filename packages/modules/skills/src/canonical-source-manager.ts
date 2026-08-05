@@ -350,7 +350,9 @@ export async function createCanonicalSourceMutationPlan(context: CanonicalSource
   }
   if (action === 'delete-backup' && !selectedBackupVersion) throw new Error('请选择要永久删除的统一源备份。')
   const detection = await createDetectionState(context, manifest, action, selectedBackupVersion)
-  const backupRequired = action === 'clear' && detection.source.entryCount > 0
+  const hasSystemSkill = manifest.skills.some((skill) => skill.kind === 'system')
+  const userEntryCount = Math.max(0, detection.source.entryCount - (hasSystemSkill ? 1 : 0))
+  const backupRequired = action === 'clear' && userEntryCount > 0
   if (backupRequired) selectedBackupVersion = await createNextBackupVersion(context, now)
   const unsigned: UnsignedCanonicalSourceMutationPlan = {
     id: randomUUID(),
@@ -413,7 +415,10 @@ async function rollbackCanonicalRoot(canonicalRoot: string, originalPath: string
 /** 应用经过确认的统一源清空计划。 */
 async function applyClearPlan(context: CanonicalSourceManagerContext, plan: CanonicalSourceMutationPlan, manifest: SkillsManifest, source: CanonicalSourceSnapshot): Promise<CanonicalSourceMutationReceipt> {
   const appliedAt = new Date().toISOString()
-  if (!source.entryCount && !manifest.skills.length) {
+  const systemSkill = manifest.skills.find((skill) => skill.kind === 'system')
+  if (!systemSkill) throw new Error('默认 AskX Skill Manager 缺失，请先修复后再清空。')
+  const userSkillCount = manifest.skills.filter((skill) => skill.kind !== 'system').length
+  if (source.entryCount === 1 && userSkillCount === 0) {
     return { id: randomUUID(), planHash: plan.hash, action: plan.action, status: 'skipped', appliedAt, manifestRevision: manifest.revision }
   }
   let createdBackup: CanonicalSkillsBackup | undefined
@@ -427,15 +432,21 @@ async function applyClearPlan(context: CanonicalSourceManagerContext, plan: Cano
   let savedManifest: SkillsManifest | undefined
   try {
     await mkdir(replacementPath, { recursive: true, mode: 0o700 })
+    await cp(systemSkill.canonicalPath, join(replacementPath, systemSkill.name), {
+      recursive: true,
+      dereference: false,
+      preserveTimestamps: true,
+      errorOnExist: true,
+    })
     if (source.kind === 'directory') {
       await rename(canonicalRoot, originalPath)
       originalMoved = true
     }
     await rename(replacementPath, canonicalRoot)
     replacementApplied = true
-    if (manifest.skills.length) savedManifest = await context.manifestStore.write({ ...manifest, skills: [] }, manifest.revision)
+    savedManifest = await context.manifestStore.write({ ...manifest, skills: [systemSkill] }, manifest.revision)
     const verified = await inspectDirectory(canonicalRoot)
-    if (verified.kind !== 'directory' || verified.entryCount !== 0) throw new Error('统一源清空后验证失败。')
+    if (verified.kind !== 'directory' || verified.entryCount !== 1) throw new Error('统一源清空后验证失败。')
     await rm(transactionRoot, { recursive: true, force: true }).catch(() => undefined)
     return {
       id: randomUUID(),

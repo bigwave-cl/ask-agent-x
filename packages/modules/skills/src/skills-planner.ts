@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 import { stableHash } from '@askx/core'
-import { MAX_CUSTOM_SKILL_DIRECTORIES, skillDecisionSchema, skillsBatchPlanSchema, type SkillDecision, type SkillPlanOperation, type SkillPlanUnit, type SkillPlatformId, type SkillPlatformStatus, type SkillsBatchMode, type SkillsBatchPlan, type SkillsScanReport } from './skill-types.js'
+import { MAX_CUSTOM_SKILL_DIRECTORIES, skillDecisionSchema, skillsBatchPlanSchema, type SkillDecision, type SkillManagementChoice, type SkillPlanOperation, type SkillPlanUnit, type SkillPlatformId, type SkillPlatformStatus, type SkillsBatchMode, type SkillsBatchPlan, type SkillsScanReport } from './skill-types.js'
 
 /** 计划输入。 */
 export interface CreateSkillsPlanInput {
@@ -11,6 +11,8 @@ export interface CreateSkillsPlanInput {
   settingsRevision: number
   /** 当前 manifest 版本。 */
   manifestRevision: number
+  /** 当前 registry 版本。 */
+  registryRevision: number
   /** 批量计划模式。 */
   mode: SkillsBatchMode
   /** 用户明确选择接入软链的平台；为空时只同步统一源。 */
@@ -21,6 +23,8 @@ export interface CreateSkillsPlanInput {
   linkCustomRoots?: string[]
   /** 用户决策。 */
   decisions: SkillDecision[]
+  /** 用户明确选择的版本管理动作。 */
+  managementChoices?: SkillManagementChoice[]
   /** AskX 数据目录。 */
   dataDir: string
 }
@@ -54,6 +58,14 @@ function createUnit(input: CreateSkillsPlanInput, decision: SkillDecision): Skil
   }
   const operations: SkillPlanOperation[] = []
   const warnings: string[] = []
+  const management = input.managementChoices?.find((choice) => choice.groupId === group.id)?.action ?? 'preserve'
+  const source = decision.kind === 'keep' || decision.kind === 'archive'
+    ? undefined
+    : location(decision.sourceLocationId)
+  if (management === 'initialize' && source?.managerState !== 'unmanaged') throw new Error(`Skill ${group.name} 不能重复初始化版本管理。`)
+  if (management === 'migrate-bobo' && source?.managerState !== 'bobo-managed') throw new Error(`Skill ${group.name} 不存在可迁移的 bobo manager 身份。`)
+  if (management === 'refresh' && source?.managerState !== 'metadata-stale') throw new Error(`Skill ${group.name} 没有需要刷新的版本元数据。`)
+  if (management !== 'preserve' && !source) throw new Error(`Skill ${group.name} 没有可改造的统一来源。`)
 
   if (decision.kind === 'keep') operations.push({ kind: 'keep' })
   if (decision.kind === 'archive') {
@@ -93,7 +105,7 @@ function createUnit(input: CreateSkillsPlanInput, decision: SkillDecision): Skil
     if (input.report.locations.some((entry) => entry.name === decision.newName)) throw new Error(`Skill 名称已存在：${decision.newName}`)
     operations.push({ kind: 'write-renamed', name: decision.newName })
   }
-  return { id: randomUUID(), skillName: group.name, decision, operations, warnings }
+  return { id: randomUUID(), skillName: group.name, decision, management, operations, warnings }
 }
 
 /**
@@ -136,6 +148,13 @@ function pathsOverlap(left: string, right: string): boolean {
 export function createSkillsBatchPlan(input: CreateSkillsPlanInput): SkillsBatchPlan {
   const decisions = input.decisions.map((decision) => skillDecisionSchema.parse(decision))
   validateDecisionSet(input.report, decisions)
+  const managementChoices = input.managementChoices ?? []
+  if (new Set(managementChoices.map((choice) => choice.groupId)).size !== managementChoices.length) {
+    throw new Error('同一个 Skill 不能重复提交版本管理选择。')
+  }
+  if (managementChoices.some((choice) => !input.report.groups.some((group) => group.id === choice.groupId))) {
+    throw new Error('版本管理选择引用了不存在的 Skill。')
+  }
   const canonicalRoot = join(input.dataDir, 'skills')
   const linkPlatforms = input.mode === 'connect' ? [...new Set(input.linkPlatforms ?? input.report.platforms)] : []
   const selectedStatuses = linkPlatforms.map((platform) => {
@@ -176,10 +195,12 @@ export function createSkillsBatchPlan(input: CreateSkillsPlanInput): SkillsBatch
     detectionFingerprint: input.report.fingerprint,
     settingsRevision: input.settingsRevision,
     manifestRevision: input.manifestRevision,
+    registryRevision: input.registryRevision,
+    systemSkillAction: input.manifestRevision === 0 ? 'install' as const : 'none' as const,
     mode: input.mode,
     platforms: input.report.platforms,
     customRoots: input.report.customRoots.map((root) => root.path),
-    units: decisions.map((decision) => createUnit(input, decision)),
+    units: decisions.map((decision) => createUnit({ ...input, managementChoices }, decision)),
     platformOperations,
     customLinkOperations,
   }
@@ -210,7 +231,18 @@ export function assertSkillsPlanScope(plan: SkillsBatchPlan, report: SkillsScanR
   plan.units.forEach((unit, index) => {
     const group = report.groups.find((entry) => entry.id === groupIds[index])
     if (!group || unit.skillName !== group.name) throw new Error('Skills 计划单元与扫描分组不匹配。')
-    createUnit({ report, settingsRevision: plan.settingsRevision, manifestRevision: plan.manifestRevision, mode: plan.mode, decisions, dataDir: '', linkPlatformStatuses: platformStatuses }, unit.decision)
+    const recreated = createUnit({
+      report,
+      settingsRevision: plan.settingsRevision,
+      manifestRevision: plan.manifestRevision,
+      registryRevision: plan.registryRevision,
+      mode: plan.mode,
+      decisions,
+      dataDir: '',
+      linkPlatformStatuses: platformStatuses,
+      managementChoices: [{ groupId: group.id, action: unit.management }],
+    }, unit.decision)
+    if (recreated.management !== unit.management) throw new Error('Skills 版本管理选择已经变化。')
   })
   const canonicalRoot = join(dataDir, 'skills')
   const seenPlatforms = new Set<SkillPlatformId>()

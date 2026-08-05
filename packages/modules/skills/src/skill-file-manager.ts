@@ -4,6 +4,14 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } 
 import { stableHash, type UserConsent } from '@askx/core'
 import type { SkillsManifestStore } from './manifest-store.js'
 import { readSkillMetadata } from './skill-metadata.js'
+import {
+  fingerprintManagedSkill,
+  inspectSkillManagerMetadata,
+  SKILL_MANAGER_METADATA_FILE,
+  updateSkillManagerMetadata,
+  writeSkillManagerMetadata,
+} from './skill-manager-metadata.js'
+import { SkillManagerRegistryStore, type AskxSkillRegistry } from './skill-manager-registry.js'
 import { hashSkillDirectory } from './scanner.js'
 import {
   skillFileUpdatePlanSchema,
@@ -245,6 +253,9 @@ export async function applySkillFileUpdatePlan(context: SkillFileManagerContext,
   const currentMode = (await stat(targetPath)).mode & 0o777
   let originalMoved = false
   let replacementMoved = false
+  let originalMetadata: Buffer | undefined
+  let savedRegistry: AskxSkillRegistry | undefined
+  let registryBefore: AskxSkillRegistry | null = null
   try {
     await mkdir(transactionRoot, { recursive: true, mode: 0o700 })
     await writeFile(temporaryPath, plan.nextContent, { encoding: 'utf8', mode: currentMode })
@@ -254,11 +265,65 @@ export async function applySkillFileUpdatePlan(context: SkillFileManagerContext,
     replacementMoved = true
     const updatedFile = await readManagedSkillFile(context, plan.skillId, plan.path)
     if (updatedFile.contentHash !== plan.nextContentHash) throw new Error('Skill 文件写入后验证失败。')
-    const skillContentHash = await hashSkillDirectory(record.canonicalPath)
+    const managerInspection = await inspectSkillManagerMetadata(record.canonicalPath)
+    let manager = record.manager
+    let fingerprint = await fingerprintManagedSkill(record.canonicalPath)
+    if (managerInspection.metadata) {
+      const metadataPath = join(record.canonicalPath, SKILL_MANAGER_METADATA_FILE)
+      originalMetadata = await readFile(metadataPath)
+      const updatedMetadata = updateSkillManagerMetadata(managerInspection.metadata, fingerprint.businessContentHash)
+      await writeSkillManagerMetadata(record.canonicalPath, updatedMetadata)
+      fingerprint = await fingerprintManagedSkill(record.canonicalPath)
+      manager = {
+        skillId: updatedMetadata.skill_id,
+        version: updatedMetadata.version,
+        localOnly: updatedMetadata.local_only,
+        managedBy: updatedMetadata.managed_by,
+        contentSha256: updatedMetadata.content_sha256,
+      }
+      const registryStore = new SkillManagerRegistryStore(context.manifestStore.dataDir)
+      registryBefore = await registryStore.read()
+      if (!registryBefore) throw new Error('AskX Skill Manager registry 不可用，不能保存受管 Skill。')
+      const previous = registryBefore.skills[updatedMetadata.skill_id]
+      savedRegistry = await registryStore.write({
+        ...registryBefore,
+        skills: {
+          ...registryBefore.skills,
+          [updatedMetadata.skill_id]: {
+            current_name: record.name,
+            aliases: previous?.aliases ?? [],
+            version: updatedMetadata.version,
+            content_sha256: updatedMetadata.content_sha256,
+            usage_count: previous?.usage_count ?? 0,
+            ...(previous?.last_used_at ? { last_used_at: previous.last_used_at } : {}),
+            targets: {
+              ...(previous?.targets ?? {}),
+              canonical: {
+                kind: 'canonical',
+                path: record.canonicalPath,
+                status: 'copied',
+                version: updatedMetadata.version,
+                content_sha256: updatedMetadata.content_sha256,
+                synced_at: new Date().toISOString(),
+              },
+            },
+          },
+        },
+      }, registryBefore.revision)
+    }
+    const skillContentHash = fingerprint.contentHash
     const appliedAt = new Date().toISOString()
     const saved = await context.manifestStore.write({
       ...manifest,
-      skills: manifest.skills.map((entry) => entry.id === record.id ? { ...entry, contentHash: skillContentHash, updatedAt: appliedAt } : entry),
+      skills: manifest.skills.map((entry) => entry.id === record.id
+        ? {
+            ...entry,
+            contentHash: skillContentHash,
+            businessContentHash: fingerprint.businessContentHash,
+            ...(manager ? { manager } : {}),
+            updatedAt: appliedAt,
+          }
+        : entry),
     }, manifest.revision)
     await rm(transactionRoot, { recursive: true, force: true }).catch(() => undefined)
     return {
@@ -276,7 +341,11 @@ export async function applySkillFileUpdatePlan(context: SkillFileManagerContext,
     try {
       if (replacementMoved) await rm(targetPath, { force: true })
       if (originalMoved) await rename(backupPath, targetPath)
+      if (originalMetadata) await writeFile(join(record.canonicalPath, SKILL_MANAGER_METADATA_FILE), originalMetadata, { mode: 0o600 })
       if (originalMoved && hashContent(await readFile(targetPath)) !== plan.previousContentHash) throw new Error('原文件回滚后验证失败。')
+      if (savedRegistry && registryBefore) {
+        await new SkillManagerRegistryStore(context.manifestStore.dataDir).write(registryBefore, savedRegistry.revision)
+      }
     } catch (rollbackError) {
       rollbackErrors.push(rollbackError)
     }

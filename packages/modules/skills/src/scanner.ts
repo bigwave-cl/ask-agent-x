@@ -1,9 +1,9 @@
-import { createHash } from 'node:crypto'
-import { lstat, readdir, readFile, readlink } from 'node:fs/promises'
-import { basename, isAbsolute, join, relative, resolve } from 'node:path'
+import { lstat, readdir, readlink } from 'node:fs/promises'
+import { basename, isAbsolute, join, resolve } from 'node:path'
 import { stableHash } from '@askx/core'
 import { detectPlatforms, platformDescriptors } from '@askx/platform-adapters'
 import { readSkillMetadata } from './skill-metadata.js'
+import { fingerprintManagedSkill, inspectSkillManagerMetadata, type SkillManagerMetadata } from './skill-manager-metadata.js'
 import type {
   SkillGroup,
   SkillGroupStatus,
@@ -36,21 +36,31 @@ interface SkillScanDirectory {
  * @returns SHA-256 内容指纹。
  */
 export async function hashSkillDirectory(root: string): Promise<string> {
-  const hash = createHash('sha256')
-  /** 按稳定顺序递归读取目录。 */
-  async function visit(directory: string): Promise<void> {
-    const entries = await readdir(directory, { withFileTypes: true })
-    entries.sort((left, right) => left.name.localeCompare(right.name))
-    for (const entry of entries) {
-      const path = join(directory, entry.name)
-      const name = relative(root, path)
-      if (entry.isDirectory()) await visit(path)
-      else if (entry.isFile()) hash.update(name).update('\0').update(await readFile(path)).update('\0')
-      else if (entry.isSymbolicLink()) hash.update(name).update('\0link:').update(await readlink(path)).update('\0')
-    }
+  return (await fingerprintManagedSkill(root)).contentHash
+}
+
+/** 将完整 manager 元数据收口为扫描摘要。 */
+function summarizeManagerMetadata(metadata: SkillManagerMetadata) {
+  return {
+    skillId: metadata.skill_id,
+    version: metadata.version,
+    localOnly: metadata.local_only,
+    managedBy: metadata.managed_by,
+    contentSha256: metadata.content_sha256,
   }
-  await visit(root)
-  return hash.digest('hex')
+}
+
+/** 读取一个可访问 Skill 的双指纹与 manager 状态。 */
+async function inspectLocationContent(path: string) {
+  const fingerprint = await fingerprintManagedSkill(path)
+  const manager = await inspectSkillManagerMetadata(path, fingerprint.businessContentHash)
+  return {
+    contentHash: fingerprint.contentHash,
+    businessContentHash: fingerprint.businessContentHash,
+    managerState: manager.state,
+    ...(manager.metadata ? { managerMetadata: summarizeManagerMetadata(manager.metadata) } : {}),
+    ...(manager.error ? { managerError: manager.error } : {}),
+  }
 }
 
 /**
@@ -166,6 +176,7 @@ async function scanSkillDirectory(root: SkillScanDirectory, scannedPaths: Set<st
     if (stat.isSymbolicLink()) {
       const target = await readlink(path)
       try {
+        const inspected = await inspectLocationContent(path)
         locations.push({
           id,
           platform: root.platform,
@@ -174,7 +185,7 @@ async function scanSkillDirectory(root: SkillScanDirectory, scannedPaths: Set<st
           path,
           kind: 'symlink',
           target,
-          contentHash: await hashSkillDirectory(path),
+          ...inspected,
           metadata: await readSkillMetadata(path),
           broken: false,
         })
@@ -187,12 +198,15 @@ async function scanSkillDirectory(root: SkillScanDirectory, scannedPaths: Set<st
           path,
           kind: 'symlink',
           target,
+          managerState: 'metadata-invalid',
+          managerError: '软链目标不存在或不可读。',
           metadata: { valid: false, error: '软链目标不存在或不可读。' },
           broken: true,
         })
       }
       continue
     }
+    const inspected = await inspectLocationContent(path)
     locations.push({
       id,
       platform: root.platform,
@@ -200,7 +214,7 @@ async function scanSkillDirectory(root: SkillScanDirectory, scannedPaths: Set<st
       name: entry.name,
       path,
       kind: 'directory',
-      contentHash: await hashSkillDirectory(path),
+      ...inspected,
       metadata: await readSkillMetadata(path),
       broken: false,
     })

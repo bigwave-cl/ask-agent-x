@@ -1,5 +1,12 @@
 import { join } from 'node:path'
 import {
+  applySystemSkillRepairPlan,
+  createSystemSkillRepairPlan,
+  inspectSystemSkillManager,
+  type SystemSkillRepairPlan,
+  type SystemSkillRepairReceipt,
+} from './builtin-skill-manager.js'
+import {
   createActionPlan,
   stableHash,
   type ActionPlan,
@@ -24,10 +31,17 @@ import { applySkillCustomRootRemovalPlan, createSkillCustomRootRemovalPlan } fro
 import { applySkillsBatchPlan, listSkillsReceipts, rollbackSkillsReceipt } from './skills-executor.js'
 import { applySkillFileUpdatePlan, createSkillFileUpdatePlan, inspectManagedSkillDetail, readManagedSkillFile } from './skill-file-manager.js'
 import { applySkillCopyBatchPlan, createSkillCopyBatchPlan } from './skill-copy-manager.js'
+import {
+  applyLocalSkillMigrationPlan,
+  createLocalSkillMigrationPlan,
+  type LocalSkillMigrationPlan,
+  type LocalSkillMigrationReceipt,
+} from './local-skill-manager.js'
 import { SkillsManifestStore } from './manifest-store.js'
 import { applyPlatformLinkPlan, createPlatformLinkPlan } from './platform-link-manager.js'
 import { detectSkillPlatforms, scanSkills, supportedSkillPlatforms } from './scanner.js'
 import { createSkillsBatchPlan } from './skills-planner.js'
+import { SkillManagerRegistryStore, type SkillStatsReport, type SkillUsagePlan, type SkillUsageReceipt } from './skill-manager-registry.js'
 import { inspectManagedPlatformBinding, inspectManagedSkill } from './skills-verifier.js'
 import type {
   CustomLinkAction,
@@ -44,6 +58,7 @@ import type {
   SkillCustomRootRemovalPlan,
   SkillCustomRootRemovalReceipt,
   SkillDecision,
+  SkillManagementChoice,
   SkillCopyBatchPlan,
   SkillCopyBatchReceipt,
   SkillCopySelection,
@@ -120,6 +135,8 @@ export interface SkillsPlanRequest {
   settingsRevision: number
   /** 用户的全部决策。 */
   decisions: SkillDecision[]
+  /** 用户明确选择的版本管理动作；未传时全部保持原状。 */
+  managementChoices?: SkillManagementChoice[]
   /** connect 接入平台根目录，sync 只更新统一源。 */
   mode?: SkillsBatchMode
   /** 用户明确选择建立根目录软链的平台。 */
@@ -132,6 +149,8 @@ export interface SkillsPlanRequest {
 export class SkillsManager {
   /** manifest 存储。 */
   readonly manifestStore: SkillsManifestStore
+  /** Skill Manager registry 存储。 */
+  readonly registryStore: SkillManagerRegistryStore
 
   /**
    * 创建 Skills 管理服务。
@@ -139,6 +158,7 @@ export class SkillsManager {
    */
   constructor(readonly context: ModuleContext) {
     this.manifestStore = new SkillsManifestStore(context.dataDir)
+    this.registryStore = new SkillManagerRegistryStore(context.dataDir)
   }
 
   /** 读取首次页面所需的只读状态。 */
@@ -150,6 +170,7 @@ export class SkillsManager {
     const bindings = hydratePlatformBindings(manifest?.platformBindings ?? [], originalRootBackups)
     const attempts = collectLatestPlatformAttempts(receipts)
     const platformHealth: ManagedPlatformHealth[] = []
+    const systemSkillHealth = (await inspectSystemSkillManager(this.context.dataDir)).health
     for (const platform of supportedSkillPlatforms) {
       const binding = bindings.find((entry) => entry.platform === platform)
       const attempt = attempts.get(platform)
@@ -180,8 +201,11 @@ export class SkillsManager {
       initialized: Boolean(manifest?.initializedAt && !manifest.migrationRequired),
       manifestRevision: manifest?.revision ?? 0,
       canonicalSkillsDir: join(this.context.dataDir, 'skills'),
+      localSkillsDir: join(this.context.dataDir, 'local-skills'),
+      systemSkillHealth,
       platforms: await detectSkillPlatforms(this.context.homeDir),
       managedSkills,
+      localSkills: manifest?.localSkills ?? [],
       managedHealth: await Promise.all(managedSkills.map(inspectManagedSkill)),
       customRoots: manifest?.customRoots ?? [],
       platformBindings: bindings,
@@ -207,17 +231,55 @@ export class SkillsManager {
     const report = await this.scan(request.platforms, request.customRoots ?? [])
     if (report.fingerprint !== request.detectionFingerprint) throw new Error('本地 Skill 已经变化，请重新扫描。')
     const manifest = await this.manifestStore.read()
+    const registry = await this.registryStore.read()
     return createSkillsBatchPlan({
       report,
       settingsRevision: request.settingsRevision,
       manifestRevision: manifest?.revision ?? 0,
+      registryRevision: registry?.revision ?? 0,
       mode: request.mode ?? 'connect',
       ...(request.linkPlatforms ? { linkPlatforms: request.linkPlatforms } : {}),
       linkPlatformStatuses: await detectSkillPlatforms(this.context.homeDir),
       ...(request.linkCustomRoots ? { linkCustomRoots: request.linkCustomRoots } : {}),
       decisions: request.decisions,
+      ...(request.managementChoices ? { managementChoices: request.managementChoices } : {}),
       dataDir: this.context.dataDir,
     })
+  }
+
+  /** 读取本机 Skill 版本、usage 与同步状态统计。 */
+  stats(): Promise<SkillStatsReport> {
+    return this.registryStore.stats()
+  }
+
+  /** 为一次显式 usage 记录生成确认计划。 */
+  planUsage(nameOrId: string): Promise<SkillUsagePlan> {
+    return this.registryStore.planUsage(nameOrId)
+  }
+
+  /** 应用一次经过用户确认的 usage 记录。 */
+  applyUsage(plan: SkillUsagePlan, consent: UserConsent): Promise<SkillUsageReceipt> {
+    return this.registryStore.applyUsage(plan, consent)
+  }
+
+  /** 为缺失、损坏或过期的默认 Skill Manager 生成修复计划。 */
+  planSystemSkillRepair(): Promise<SystemSkillRepairPlan> {
+    return createSystemSkillRepairPlan(this.manifestStore)
+  }
+
+  /** 应用一次经过用户确认的默认 Skill Manager 修复。 */
+  applySystemSkillRepair(plan: SystemSkillRepairPlan, consent: UserConsent): Promise<SystemSkillRepairReceipt> {
+    return applySystemSkillRepairPlan(this.manifestStore, plan, consent)
+  }
+
+  /** 为本地专属 Skill 迁移到共享统一源生成计划。 */
+  planLocalSkillMigration(skillId: string): Promise<LocalSkillMigrationPlan> {
+    return createLocalSkillMigrationPlan(this.manifestStore, skillId)
+  }
+
+  /** 应用一次经过确认的本地专属 Skill 迁移。 */
+  applyLocalSkillMigration(plan: LocalSkillMigrationPlan, consent: UserConsent): Promise<LocalSkillMigrationReceipt> {
+    return applyLocalSkillMigrationPlan(this.manifestStore, plan, consent)
   }
 
   /**

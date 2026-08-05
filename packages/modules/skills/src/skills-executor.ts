@@ -3,12 +3,24 @@ import { cp, lstat, mkdir, readFile, readdir, rename, rm, symlink, writeFile } f
 import { dirname, join } from 'node:path'
 import type { RollbackResult } from '@askx/core'
 import { managedDirectoryLinkType } from '@askx/platform-adapters'
+import { installBuiltinSkillManager } from './builtin-skill-manager.js'
 import type { SkillsManifestStore } from './manifest-store.js'
 import { detectSkillPlatforms, hashSkillDirectory, scanSkills } from './scanner.js'
+import {
+  ASKX_SKILL_MANAGER_NAME,
+  createSkillManagerMetadata,
+  ensureAskxManagedDeclaration,
+  fingerprintManagedSkill,
+  inspectSkillManagerMetadata,
+  updateSkillManagerMetadata,
+  writeSkillManagerMetadata,
+} from './skill-manager-metadata.js'
+import { askxSkillRegistrySchema, SkillManagerRegistryStore } from './skill-manager-registry.js'
 import { assertSkillsBatchPlan, assertSkillsPlanScope } from './skills-planner.js'
 import type {
   ManagedPlatformBinding,
   ManagedCustomLinkBinding,
+  ManagedLocalSkillRecord,
   ManagedSkillRecord,
   CustomLinkBindingResult,
   PlatformBindingResult,
@@ -51,8 +63,16 @@ interface AppliedBatch {
   canonicalBackup?: SkillBackupMove
   /** 本次是否从空状态创建统一目录。 */
   createdCanonical: boolean
+  /** 本次是否从空状态创建本地专属目录。 */
+  createdLocal: boolean
+  /** 本地专属目录是否已经切换为 staging。 */
+  localApplied: boolean
+  /** 原本地专属目录备份。 */
+  localBackup?: SkillBackupMove
   /** 应用后的统一目录记录。 */
   records: ManagedSkillRecord[]
+  /** 应用后的本地专属记录。 */
+  localRecords: ManagedLocalSkillRecord[]
   /** 平台根目录执行结果。 */
   platformResults: PlatformBindingResult[]
   /** 自定义目录执行结果。 */
@@ -132,6 +152,76 @@ async function copySkillIntoStaging(source: SkillLocation, target: string, allow
   await rename(temporaryPath, target)
 }
 
+/** 在 staging 中执行用户明确授权的版本管理改造。 */
+async function applyManagementChoice(target: string, unit: SkillPlanUnit): Promise<void> {
+  if (unit.management === 'preserve') return
+  if (unit.management === 'initialize') {
+    await ensureAskxManagedDeclaration(target, false)
+    const fingerprint = await fingerprintManagedSkill(target)
+    await writeSkillManagerMetadata(target, createSkillManagerMetadata(fingerprint.businessContentHash, false))
+    return
+  }
+  const before = await inspectSkillManagerMetadata(target)
+  if (!before.metadata) throw new Error(`Skill ${unit.skillName} 缺少可更新的 manager 元数据。`)
+  await ensureAskxManagedDeclaration(target, before.metadata.local_only)
+  const fingerprint = await fingerprintManagedSkill(target)
+  await writeSkillManagerMetadata(target, updateSkillManagerMetadata(before.metadata, fingerprint.businessContentHash, {
+    migrateOwner: unit.management === 'migrate-bobo',
+    bumpVersion: unit.management === 'refresh',
+  }))
+}
+
+/** 将 manager 元数据转换为 manifest 摘要。 */
+function summarizeManager(metadata: NonNullable<Awaited<ReturnType<typeof inspectSkillManagerMetadata>>['metadata']>) {
+  return {
+    skillId: metadata.skill_id,
+    version: metadata.version,
+    localOnly: metadata.local_only,
+    managedBy: metadata.managed_by,
+    contentSha256: metadata.content_sha256,
+  }
+}
+
+/** 在 staging 内原子更新 registry 索引。 */
+async function updateStagingRegistry(stagingRoot: string, records: ManagedSkillRecord[], expectedRevision: number): Promise<void> {
+  const registryPath = join(stagingRoot, ASKX_SKILL_MANAGER_NAME, 'registry', 'skills.json')
+  const registry = askxSkillRegistrySchema.parse(JSON.parse(await readFile(registryPath, 'utf8')))
+  if (registry.revision !== expectedRevision) throw new Error('Skill registry 已经变化，请重新扫描。')
+  const skills = { ...registry.skills }
+  for (const record of records) {
+    if (!record.manager || record.kind === 'system' || record.manager.contentSha256 !== record.businessContentHash) continue
+    const previous = skills[record.manager.skillId]
+    const aliases = previous && previous.current_name !== record.name
+      ? [...new Set([...previous.aliases, previous.current_name])]
+      : previous?.aliases ?? []
+    skills[record.manager.skillId] = {
+      current_name: record.name,
+      aliases,
+      version: record.manager.version,
+      content_sha256: record.manager.contentSha256,
+      usage_count: previous?.usage_count ?? 0,
+      ...(previous?.last_used_at ? { last_used_at: previous.last_used_at } : {}),
+      targets: {
+        ...(previous?.targets ?? {}),
+        canonical: {
+          kind: 'canonical',
+          path: record.canonicalPath,
+          status: 'copied',
+          version: record.manager.version,
+          content_sha256: record.manager.contentSha256,
+          synced_at: new Date().toISOString(),
+        },
+      },
+    }
+  }
+  await writeInternalJson(registryPath, {
+    ...registry,
+    revision: registry.revision + 1,
+    updated_at: new Date().toISOString(),
+    skills,
+  })
+}
+
 /**
  * 在不修改平台目录的前提下构建最终统一目录。
  * @param plan 用户确认的完整计划。
@@ -145,11 +235,20 @@ async function buildCanonicalStaging(
   report: SkillsScanReport,
   dataDir: string,
   manifestBefore: SkillsManifest | null,
-): Promise<{ stagingRoot: string; results: SkillTransactionResult[]; records: ManagedSkillRecord[] }> {
+): Promise<{
+  stagingRoot: string
+  localStagingRoot: string
+  results: SkillTransactionResult[]
+  records: ManagedSkillRecord[]
+  localRecords: ManagedLocalSkillRecord[]
+}> {
   const canonicalRoot = join(dataDir, 'skills')
   const transactionRoot = join(dataDir, 'transactions', plan.id)
   const stagingRoot = join(transactionRoot, 'canonical.staging')
+  const localRoot = join(dataDir, 'local-skills')
+  const localStagingRoot = join(transactionRoot, 'local.staging')
   await rm(stagingRoot, { recursive: true, force: true })
+  await rm(localStagingRoot, { recursive: true, force: true })
   await mkdir(transactionRoot, { recursive: true, mode: 0o700 })
   if (await pathExists(canonicalRoot)) {
     const stat = await lstat(canonicalRoot)
@@ -157,6 +256,13 @@ async function buildCanonicalStaging(
     await cp(canonicalRoot, stagingRoot, { recursive: true, dereference: true, preserveTimestamps: true })
   } else {
     await mkdir(stagingRoot, { recursive: true, mode: 0o700 })
+  }
+  if (await pathExists(localRoot)) {
+    const stat = await lstat(localRoot)
+    if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error(`AskX 本地专属目录不是可接管的真实目录：${localRoot}`)
+    await cp(localRoot, localStagingRoot, { recursive: true, dereference: true, preserveTimestamps: true })
+  } else {
+    await mkdir(localStagingRoot, { recursive: true, mode: 0o700 })
   }
 
   const results: SkillTransactionResult[] = []
@@ -177,8 +283,11 @@ async function buildCanonicalStaging(
       const source = getSource(report, unit.decision)
       if (!source) throw new Error(`Skill ${unit.skillName} 缺少统一来源。`)
       const canonicalName = getCanonicalName(unit, source)
-      result.canonicalPath = join(canonicalRoot, canonicalName)
-      await copySkillIntoStaging(source, join(stagingRoot, canonicalName), unit.decision.kind === 'replace')
+      const localOnly = source.managerMetadata?.localOnly === true
+      result.canonicalPath = join(localOnly ? localRoot : canonicalRoot, canonicalName)
+      const target = join(localOnly ? localStagingRoot : stagingRoot, canonicalName)
+      await copySkillIntoStaging(source, target, unit.decision.kind === 'replace')
+      await applyManagementChoice(target, unit)
     } catch (error) {
       result.status = 'failed'
       result.warnings.push((error as Error).message)
@@ -188,24 +297,51 @@ async function buildCanonicalStaging(
 
   if (results.some((result) => result.status === 'failed')) {
     await rm(stagingRoot, { recursive: true, force: true })
+    await rm(localStagingRoot, { recursive: true, force: true })
     throw new Error(results.flatMap((result) => result.warnings).join('\n'))
   }
 
-  const previousRecords = new Map((manifestBefore?.skills ?? []).map((record) => [record.name, record]))
-  const records: ManagedSkillRecord[] = []
-  const entries = await readdir(stagingRoot, { withFileTypes: true })
-  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-    if (entry.name.startsWith('.') || !entry.isDirectory()) continue
-    const path = join(stagingRoot, entry.name)
-    records.push({
-      id: previousRecords.get(entry.name)?.id ?? randomUUID(),
-      name: entry.name,
-      canonicalPath: join(canonicalRoot, entry.name),
-      contentHash: await hashSkillDirectory(path),
-      updatedAt: new Date().toISOString(),
-    })
+  const systemPath = join(stagingRoot, ASKX_SKILL_MANAGER_NAME)
+  if (!await pathExists(systemPath)) {
+    if (plan.systemSkillAction !== 'install') throw new Error('默认 AskX Skill Manager 缺失，请先确认修复。')
+    await installBuiltinSkillManager(stagingRoot)
   }
-  return { stagingRoot, results, records }
+
+  const previousRecords = new Map((manifestBefore?.skills ?? []).map((record) => [record.name, record]))
+  const previousLocalRecords = new Map((manifestBefore?.localSkills ?? []).map((record) => [record.name, record]))
+  const records: ManagedSkillRecord[] = []
+  const localRecords: ManagedLocalSkillRecord[] = []
+  /** 将 staging 根目录转换为 manifest 记录。 */
+  async function collectRecords(root: string, finalRoot: string, local: boolean): Promise<void> {
+    const entries = await readdir(root, { withFileTypes: true })
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    if (entry.name.startsWith('.') || !entry.isDirectory()) continue
+    const path = join(root, entry.name)
+    const fingerprint = await fingerprintManagedSkill(path)
+    const manager = await inspectSkillManagerMetadata(path, fingerprint.businessContentHash)
+    const previousBySkillId = manager.metadata
+      ? [...(local ? previousLocalRecords : previousRecords).values()].find((record) => record.manager?.skillId === manager.metadata?.skill_id)
+      : undefined
+    const previous = (local ? previousLocalRecords : previousRecords).get(entry.name)
+    const baseRecord = {
+      id: previousBySkillId?.id ?? previous?.id ?? randomUUID(),
+      name: entry.name,
+      kind: entry.name === ASKX_SKILL_MANAGER_NAME ? 'system' : 'user',
+      canonicalPath: join(finalRoot, entry.name),
+      contentHash: fingerprint.contentHash,
+      businessContentHash: fingerprint.businessContentHash,
+      ...(manager.metadata ? { manager: summarizeManager(manager.metadata) } : {}),
+      updatedAt: new Date().toISOString(),
+    } satisfies ManagedSkillRecord
+    if (local) localRecords.push({ ...baseRecord, kind: 'user', localPath: baseRecord.canonicalPath })
+    else records.push(baseRecord)
+    }
+  }
+  await collectRecords(stagingRoot, canonicalRoot, false)
+  await collectRecords(localStagingRoot, localRoot, true)
+  records.sort((left, right) => Number(left.kind === 'system') - Number(right.kind === 'system') || left.name.localeCompare(right.name))
+  await updateStagingRegistry(stagingRoot, [...records, ...localRecords], plan.registryRevision)
+  return { stagingRoot, localStagingRoot, results, records, localRecords }
 }
 
 /**
@@ -219,15 +355,21 @@ async function buildCanonicalStaging(
 async function switchPlatformRoots(
   plan: SkillsBatchPlan,
   stagingRoot: string,
+  localStagingRoot: string,
   records: ManagedSkillRecord[],
+  localRecords: ManagedLocalSkillRecord[],
   dataDir: string,
 ): Promise<AppliedBatch> {
   const canonicalRoot = join(dataDir, 'skills')
+  const localRoot = join(dataDir, 'local-skills')
   const applied: AppliedBatch = {
     createdLinks: [],
     platformBackups: [],
     createdCanonical: !await pathExists(canonicalRoot),
+    createdLocal: !await pathExists(localRoot),
+    localApplied: false,
     records,
+    localRecords,
     platformResults: [],
     customLinkResults: [],
   }
@@ -236,6 +378,11 @@ async function switchPlatformRoots(
       applied.canonicalBackup = await moveToBackup(canonicalRoot, join(dataDir, 'backups', 'skills', plan.id, 'askx-root.bak'))
     }
     await rename(stagingRoot, canonicalRoot)
+    if (await pathExists(localRoot)) {
+      applied.localBackup = await moveToBackup(localRoot, join(dataDir, 'backups', 'skills', plan.id, 'askx-local-root.bak'))
+    }
+    await rename(localStagingRoot, localRoot)
+    applied.localApplied = true
 
     for (const operation of plan.platformOperations) {
       const { result, createdLink, backup } = await applyPlatformRoot(operation, dataDir, plan.id)
@@ -250,6 +397,7 @@ async function switchPlatformRoots(
       if (backup) applied.platformBackups.push(backup)
     }
     for (const record of records) await verifyCanonicalSkill(record.canonicalPath, record.contentHash)
+    for (const record of localRecords) await verifyCanonicalSkill(record.localPath, record.contentHash)
     return applied
   } catch (error) {
     await rollbackAppliedBatch(applied, canonicalRoot)
@@ -439,6 +587,11 @@ async function rollbackAppliedBatch(applied: AppliedBatch, canonicalRoot: string
   if (applied.canonicalBackup && await pathExists(applied.canonicalBackup.backupPath)) {
     await rename(applied.canonicalBackup.backupPath, applied.canonicalBackup.originalPath)
   }
+  const localRoot = join(dirname(canonicalRoot), 'local-skills')
+  if (applied.localApplied && await pathExists(localRoot)) await rm(localRoot, { recursive: true })
+  if (applied.localBackup && await pathExists(applied.localBackup.backupPath)) {
+    await rename(applied.localBackup.backupPath, applied.localBackup.originalPath)
+  }
 }
 
 /**
@@ -454,11 +607,21 @@ async function assertRollbackSafe(applied: AppliedBatch, canonicalRoot: string):
   if (applied.canonicalBackup && !await pathExists(applied.canonicalBackup.backupPath)) {
     throw new Error(`恢复被阻止，统一目录备份已经丢失：${applied.canonicalBackup.backupPath}`)
   }
+  if (applied.localBackup && !await pathExists(applied.localBackup.backupPath)) {
+    throw new Error(`恢复被阻止，本地专属目录备份已经丢失：${applied.localBackup.backupPath}`)
+  }
   for (const record of applied.records) {
     try {
       await verifyCanonicalSkill(record.canonicalPath, record.contentHash)
     } catch {
       throw new Error(`统一源内容已经变化：${record.canonicalPath}`)
+    }
+  }
+  for (const record of applied.localApplied ? applied.localRecords : []) {
+    try {
+      await verifyCanonicalSkill(record.localPath, record.contentHash)
+    } catch {
+      throw new Error(`本地专属 Skill 内容已经变化：${record.localPath}`)
     }
   }
 }
@@ -531,6 +694,8 @@ export async function applySkillsBatchPlan(input: ApplySkillsPlanInput): Promise
   if (input.settingsRevision !== input.plan.settingsRevision) throw new Error('共享设置已经变化，请重新扫描。')
   const manifestBefore = await input.manifestStore.read()
   if ((manifestBefore?.revision ?? 0) !== input.plan.manifestRevision) throw new Error('Skills manifest 已经变化，请重新扫描。')
+  const registry = await new SkillManagerRegistryStore(input.dataDir).read()
+  if ((registry?.revision ?? 0) !== input.plan.registryRevision) throw new Error('Skill registry 已经变化，请重新扫描。')
   const suspendedPlatforms = (manifestBefore?.platformBindings ?? [])
     .filter((binding) => binding.suspendedAt && input.plan.platformOperations.some((operation) => operation.platform === binding.platform))
     .map((binding) => binding.platform)
@@ -541,8 +706,8 @@ export async function applySkillsBatchPlan(input: ApplySkillsPlanInput): Promise
 
   const journalPath = join(input.dataDir, 'transactions', `${input.plan.id}.json`)
   await writeInternalJson(journalPath, { status: 'applying', plan: input.plan, startedAt: new Date().toISOString() })
-  const { stagingRoot, results, records } = await buildCanonicalStaging(input.plan, report, input.dataDir, manifestBefore)
-  const appliedBatch = await switchPlatformRoots(input.plan, stagingRoot, records, input.dataDir)
+  const { stagingRoot, localStagingRoot, results, records, localRecords } = await buildCanonicalStaging(input.plan, report, input.dataDir, manifestBefore)
+  const appliedBatch = await switchPlatformRoots(input.plan, stagingRoot, localStagingRoot, records, localRecords, input.dataDir)
   const now = new Date().toISOString()
   let manifestRevision = input.plan.manifestRevision
   try {
@@ -554,11 +719,12 @@ export async function applySkillsBatchPlan(input: ApplySkillsPlanInput): Promise
           .filter((root) => !linkedCustomPaths.has(root.path))
           .slice(0, MAX_CUSTOM_SKILL_DIRECTORIES)
     const saved = await input.manifestStore.write({
-      version: 2,
+      version: 3,
       revision: input.plan.manifestRevision,
       initializedAt: manifestBefore?.initializedAt ?? now,
       lastScan: { scannedAt: report.scannedAt, fingerprint: report.fingerprint, platforms: report.platforms },
       skills: records,
+      localSkills: localRecords,
       customRoots: persistedCustomRoots,
       platformBindings: createPlatformBindings(appliedBatch.platformResults, manifestBefore?.platformBindings ?? []),
       customLinkBindings: createCustomLinkBindings(appliedBatch.customLinkResults, manifestBefore?.customLinkBindings ?? []),

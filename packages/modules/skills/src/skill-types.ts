@@ -1,5 +1,11 @@
 import { z } from 'zod'
 
+/** Skill Manager 托管身份。 */
+export const skillManagerOwnerSchema = z.enum(['askx-skill-manager', 'bobo-skill-manager'])
+
+/** Skill Manager 托管身份。 */
+export type SkillManagerOwner = z.infer<typeof skillManagerOwnerSchema>
+
 /** AskX 允许保存的自定义 Skill 文件夹数量上限。 */
 export const MAX_CUSTOM_SKILL_DIRECTORIES = 3
 
@@ -84,6 +90,14 @@ export interface SkillLocation {
   target?: string
   /** 业务内容指纹。 */
   contentHash?: string
+  /** 排除管理元数据后的业务内容指纹。 */
+  businessContentHash?: string
+  /** Skill Manager 管理状态。 */
+  managerState: SkillManagerState
+  /** 可用的 Skill Manager 元数据摘要。 */
+  managerMetadata?: SkillManagerMetadataSummary
+  /** 管理元数据无法读取时的原因。 */
+  managerError?: string
   /** SKILL.md 元数据。 */
   metadata: SkillMetadata
   /** 软链是否失效。 */
@@ -194,13 +208,61 @@ export interface ManagedSkillRecord {
   id: string
   /** Skill 目录名称。 */
   name: string
+  /** 系统 Skill 不允许通过普通删除或一键清空移除。 */
+  kind?: 'system' | 'user' | undefined
   /** 统一源绝对路径。 */
   canonicalPath: string
   /** 当前统一源内容指纹。 */
   contentHash: string
+  /** 排除管理元数据后的业务内容指纹。 */
+  businessContentHash?: string | undefined
+  /** 当前版本管理摘要；未纳入时不存在。 */
+  manager?: SkillManagerMetadataSummary | undefined
   /** 最近更新时间。 */
   updatedAt: string
 }
+
+/** Skill Manager 的扫描和 manifest 摘要。 */
+export interface SkillManagerMetadataSummary {
+  /** Skill 稳定身份。 */
+  skillId: string
+  /** 当前版本。 */
+  version: string
+  /** 是否只允许保留在本机。 */
+  localOnly: boolean
+  /** 当前元数据所有者。 */
+  managedBy: z.infer<typeof skillManagerOwnerSchema>
+  /** 元数据声明的业务内容指纹。 */
+  contentSha256: string
+}
+
+/** Skill Manager 扫描状态。 */
+export type SkillManagerState = 'askx-managed' | 'bobo-managed' | 'unmanaged' | 'metadata-stale' | 'metadata-invalid'
+
+/** 本地专属 Skill 记录。 */
+export interface ManagedLocalSkillRecord extends ManagedSkillRecord {
+  /** 本地专属记录固定为普通用户 Skill。 */
+  kind: 'user'
+  /** 本地专属绝对路径。 */
+  localPath: string
+}
+
+/** 用户对扫描结果选择的版本管理动作。 */
+export interface SkillManagementChoice {
+  /** 对应扫描分组。 */
+  groupId: string
+  /** 保持原状、初始化、迁移旧身份或刷新过期元数据。 */
+  action: 'preserve' | 'initialize' | 'migrate-bobo' | 'refresh'
+}
+
+/** Skill Manager 改造选择运行时 schema。 */
+export const skillManagementChoiceSchema = z.object({
+  groupId: z.string().min(1),
+  action: z.enum(['preserve', 'initialize', 'migrate-bobo', 'refresh']),
+})
+
+/** 默认系统 Skill 健康状态。 */
+export type SystemSkillHealth = 'ready' | 'missing' | 'corrupt' | 'outdated'
 
 /** 受管 Skill 目录树中的节点。 */
 export interface ManagedSkillTreeNode {
@@ -344,6 +406,10 @@ export interface SkillCopyPlan {
   sourcePath: string
   /** 来源 Skill 内容指纹。 */
   sourceContentHash: string
+  /** 来源业务内容指纹。 */
+  sourceBusinessContentHash?: string | undefined
+  /** 来源 manager 版本。 */
+  sourceVersion?: string | undefined
   /** 用户选择的复制目标。 */
   target: SkillCopyTarget
   /** 解析后的目标根目录。 */
@@ -354,12 +420,22 @@ export interface SkillCopyPlan {
   targetState: SkillCopyTargetState
   /** 目标冲突时原内容的指纹。 */
   previousTargetHash?: string | undefined
+  /** 目标 manager 版本。 */
+  targetVersion?: string | undefined
+  /** 来源相对于目标的版本关系。 */
+  versionRelation: 'newer' | 'older' | 'same' | 'unknown' | 'unmanaged'
+  /** 同名目录是否属于不同 Skill 身份。 */
+  identityConflict: boolean
+  /** AskX 建议但不会自动应用的冲突处理方式。 */
+  recommendedConflictStrategy: SkillCopyConflictStrategy
   /** 目标冲突时的处理方式。 */
   conflictStrategy: SkillCopyConflictStrategy
   /** 覆盖前保存原目标内容的 AskX 备份路径。 */
   backupPath?: string | undefined
   /** 计划基于的 manifest revision。 */
   manifestRevision: number
+  /** 计划基于的 registry revision。 */
+  registryRevision: number
   /** 计划基于的目标文件系统状态指纹。 */
   detectionFingerprint: string
   /** 用户授权所对应的稳定指纹。 */
@@ -661,7 +737,7 @@ export interface SkillsLastScan {
 /** Skills 持久化管理清单。 */
 export interface SkillsManifest {
   /** 数据格式版本。 */
-  version: 2
+  version: 2 | 3
   /** 并发写入版本。 */
   revision: number
   /** 首次初始化完成时间。 */
@@ -670,6 +746,8 @@ export interface SkillsManifest {
   lastScan: SkillsLastScan
   /** AskX 已接管的 Skill。 */
   skills: ManagedSkillRecord[]
+  /** 不参与平台软链或导出的本地专属 Skill。 */
+  localSkills?: ManagedLocalSkillRecord[] | undefined
   /** 后续添加 Skill 时默认复用的自定义扫描来源。 */
   customRoots?: SkillCustomScanRoot[] | undefined
   /** AskX 创建的平台 Skills 根目录绑定。 */
@@ -782,6 +860,8 @@ export interface SkillPlanUnit {
   skillName: string
   /** 用户决策。 */
   decision: SkillDecision
+  /** 用户明确选择的版本管理动作。 */
+  management: SkillManagementChoice['action']
   /** 预计执行的可解释操作。 */
   operations: SkillPlanOperation[]
   /** 计划阶段警告。 */
@@ -808,6 +888,10 @@ export interface SkillsBatchPlan {
   customRoots: string[]
   /** 每个 Skill 的事务单元。 */
   units: SkillPlanUnit[]
+  /** 当前 registry revision；系统 Skill 尚未安装时为零。 */
+  registryRevision: number
+  /** 首次初始化时明确安装默认系统 Skill。 */
+  systemSkillAction: 'install' | 'none'
   /** 每个平台最终创建的根目录绑定操作。 */
   platformOperations: SkillBindPlatformOperation[]
   /** 每个自定义使用目录最终创建的根目录绑定操作。 */
@@ -900,10 +984,16 @@ export interface SkillsBootstrap {
   manifestRevision: number
   /** AskX 统一 Skill 源目录。 */
   canonicalSkillsDir: string
+  /** AskX 本地专属 Skill 目录。 */
+  localSkillsDir: string
+  /** 默认系统 Skill 当前健康状态。 */
+  systemSkillHealth: SystemSkillHealth
   /** 平台预检测结果。 */
   platforms: SkillPlatformStatus[]
   /** 已接管的 Skill。 */
   managedSkills: ManagedSkillRecord[]
+  /** 本地专属 Skill。 */
+  localSkills: ManagedLocalSkillRecord[]
   /** 已接管 Skill 的实时只读健康状态。 */
   managedHealth: ManagedSkillHealth[]
   /** 已保存的自定义扫描来源。 */
@@ -971,9 +1061,24 @@ export const platformLinkPlanSchema = z.object({
 export const managedSkillRecordSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1),
+  kind: z.enum(['system', 'user']).default('user'),
   canonicalPath: z.string().min(1),
   contentHash: z.string().min(1),
+  businessContentHash: z.string().min(1).optional(),
+  manager: z.object({
+    skillId: z.string().min(1),
+    version: z.string(),
+    localOnly: z.boolean(),
+    managedBy: skillManagerOwnerSchema,
+    contentSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  }).optional(),
   updatedAt: z.string().datetime(),
+})
+
+/** Zod 使用的本地专属 Skill schema。 */
+export const managedLocalSkillRecordSchema = managedSkillRecordSchema.extend({
+  kind: z.literal('user'),
+  localPath: z.string().min(1),
 })
 
 /** Zod 使用的自定义目录软链绑定 schema。 */
@@ -1064,14 +1169,21 @@ export const skillCopyPlanSchema = z.object({
   skillName: z.string().min(1),
   sourcePath: z.string().min(1),
   sourceContentHash: z.string().min(1),
+  sourceBusinessContentHash: z.string().min(1).optional(),
+  sourceVersion: z.string().optional(),
   target: skillCopyTargetSchema,
   targetRoot: z.string().min(1),
   destinationPath: z.string().min(1),
   targetState: z.enum(['missing', 'identical', 'conflict']),
   previousTargetHash: z.string().min(1).optional(),
+  targetVersion: z.string().optional(),
+  versionRelation: z.enum(['newer', 'older', 'same', 'unknown', 'unmanaged']),
+  identityConflict: z.boolean(),
+  recommendedConflictStrategy: skillCopyConflictStrategySchema,
   conflictStrategy: skillCopyConflictStrategySchema,
   backupPath: z.string().min(1).optional(),
   manifestRevision: z.number().int().nonnegative(),
+  registryRevision: z.number().int().nonnegative().default(0),
   detectionFingerprint: z.string().min(1),
   hash: z.string().min(1),
 }).superRefine((plan, context) => {
@@ -1093,7 +1205,7 @@ export const skillCopyBatchPlanSchema = z.object({
 
 /** Zod 使用的 manifest schema。 */
 export const skillsManifestSchema = z.object({
-  version: z.literal(2),
+  version: z.literal(3),
   revision: z.number().int().nonnegative(),
   initializedAt: z.string().datetime(),
   lastScan: z.object({
@@ -1102,6 +1214,7 @@ export const skillsManifestSchema = z.object({
     platforms: z.array(skillPlatformIdSchema).min(1),
   }),
   skills: z.array(managedSkillRecordSchema),
+  localSkills: z.array(managedLocalSkillRecordSchema).default([]),
   customRoots: z.array(skillCustomScanRootSchema).max(MAX_CUSTOM_SKILL_DIRECTORIES).default([]),
   platformBindings: z.array(managedPlatformBindingSchema),
   customLinkBindings: z.array(managedCustomLinkBindingSchema).max(MAX_CUSTOM_SKILL_DIRECTORIES).default([]),
@@ -1144,9 +1257,12 @@ export const skillsBatchPlanSchema = z.object({
     id: z.string().uuid(),
     skillName: z.string().min(1),
     decision: skillDecisionSchema,
+    management: z.enum(['preserve', 'initialize', 'migrate-bobo', 'refresh']).default('preserve'),
     operations: z.array(skillPlanOperationSchema),
     warnings: z.array(z.string()),
   })),
+  registryRevision: z.number().int().nonnegative().default(0),
+  systemSkillAction: z.enum(['install', 'none']).default('none'),
   platformOperations: z.array(z.object({
     kind: z.literal('bind-platform'),
     platform: skillPlatformIdSchema,

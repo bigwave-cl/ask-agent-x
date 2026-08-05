@@ -8,6 +8,7 @@ import {
   createCanonicalSourceMutationPlan,
   listCanonicalSkillsBackups,
 } from './canonical-source-manager.js'
+import { installBuiltinSkillManager } from './builtin-skill-manager.js'
 import { SkillsManifestStore } from './manifest-store.js'
 import { hashSkillDirectory } from './scanner.js'
 
@@ -21,7 +22,7 @@ async function createFixture(withSkill = true) {
   const canonicalRoot = join(dataDir, 'skills')
   await mkdir(canonicalRoot, { recursive: true })
   const manifestStore = new SkillsManifestStore(dataDir)
-  const skills = []
+  const skills = [await installBuiltinSkillManager(canonicalRoot)]
   if (withSkill) {
     const skillPath = join(canonicalRoot, 'demo-skill')
     await mkdir(skillPath)
@@ -35,11 +36,12 @@ async function createFixture(withSkill = true) {
     })
   }
   await manifestStore.write({
-    version: 2,
+    version: 3,
     revision: 0,
     initializedAt: new Date('2026-08-01T08:00:00.000Z').toISOString(),
     lastScan: { scannedAt: new Date('2026-08-01T08:00:00.000Z').toISOString(), fingerprint: 'fixture', platforms: ['claude'] },
     skills,
+    localSkills: [],
     platformBindings: [{
       platform: 'claude',
       path: join(dataDir, 'claude-skills'),
@@ -68,8 +70,8 @@ describe('统一 Skill 来源备份管理', () => {
     expect(firstPlan.backupVersion).toBe('2026-08-03-01')
     const firstReceipt = await applyCanonicalSourceMutationPlan({ manifestStore: fixture.manifestStore }, firstPlan, consent(firstPlan))
     expect(firstReceipt.createdBackup?.version).toBe('2026-08-03-01')
-    expect(await readdir(fixture.canonicalRoot)).toEqual([])
-    expect((await fixture.manifestStore.read())?.skills).toEqual([])
+    expect(await readdir(fixture.canonicalRoot)).toEqual(['askx-skill-manager'])
+    expect((await fixture.manifestStore.read())?.skills.map((skill) => skill.name)).toEqual(['askx-skill-manager'])
 
     await mkdir(join(fixture.canonicalRoot, 'later-skill'))
     await writeFile(join(fixture.canonicalRoot, 'later-skill', 'SKILL.md'), '# 后续内容\n')
@@ -101,7 +103,7 @@ describe('统一 Skill 来源备份管理', () => {
     expect(receipt.restoredBackupVersion).toBe('2026-08-03-01')
     expect(await readFile(join(fixture.canonicalRoot, 'demo-skill', 'SKILL.md'), 'utf8')).toContain('初始内容')
     const manifest = await fixture.manifestStore.read()
-    expect(manifest?.skills.map((skill) => skill.name)).toEqual(['demo-skill'])
+    expect(manifest?.skills.map((skill) => skill.name)).toEqual(['askx-skill-manager', 'demo-skill'])
     expect(manifest?.platformBindings.map((binding) => binding.platform)).toEqual(['claude'])
   })
 
