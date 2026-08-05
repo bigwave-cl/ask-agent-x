@@ -70,6 +70,9 @@ const descriptionOverflow = ref(false)
 /** 完整描述响应式弹层是否打开。 */
 const descriptionOpen = ref(false)
 
+/** 当前详情请求序号，用于阻止清空后到达的旧请求恢复已失效内容。 */
+let detailRequestRevision = 0
+
 /** 受管 Skill 的健康状态索引。 */
 const healthById = computed(() => new Map(props.health.map((health) => [health.skillId, health])))
 /** 与搜索词匹配的受管 Skill。 */
@@ -128,6 +131,20 @@ function notifyError(error: unknown): void {
   toast.error(t(candidate.statusCode === 409 || candidate.response?.status === 409 ? 'skills.fileChanged' : 'skills.fileRequestFailed'))
 }
 
+/** 清空当前 Skill、文件树和编辑器的全部临时状态。 */
+function clearSelection(): void {
+  detailRequestRevision += 1
+  selectedSkillId.value = ''
+  detail.value = null
+  currentFile.value = null
+  draft.value = ''
+  viewMode.value = 'edit'
+  updatePlan.value = null
+  confirmOpen.value = false
+  descriptionOpen.value = false
+  descriptionOverflow.value = false
+}
+
 /** 读取指定受管 Skill 的元数据和目录树。 */
 async function selectSkill(skillId: string): Promise<void> {
   if (dirty.value) {
@@ -138,10 +155,13 @@ async function selectSkill(skillId: string): Promise<void> {
   detail.value = null
   currentFile.value = null
   draft.value = ''
+  const requestRevision = ++detailRequestRevision
   loading.value = true
   try {
-    detail.value = await $fetch<ManagedSkillDetail>('/api/skills/detail', { query: { skillId } })
-    const initialFile = findInitialFile(detail.value.tree)
+    const nextDetail = await $fetch<ManagedSkillDetail>('/api/skills/detail', { query: { skillId } })
+    if (requestRevision !== detailRequestRevision || selectedSkillId.value !== skillId) return
+    detail.value = nextDetail
+    const initialFile = findInitialFile(nextDetail.tree)
     if (initialFile) await selectFile(initialFile)
   } catch (error) {
     notifyError(error)
@@ -161,10 +181,14 @@ async function selectFile(node: ManagedSkillTreeNode): Promise<void> {
     toast.warning(t('skills.unsavedFileHint'))
     return
   }
+  const skillId = selectedSkillId.value
+  const requestRevision = detailRequestRevision
   loading.value = true
   try {
-    currentFile.value = await $fetch<ManagedSkillFile>('/api/skills/file', { query: { skillId: selectedSkillId.value, path: node.path } })
-    draft.value = currentFile.value.content
+    const nextFile = await $fetch<ManagedSkillFile>('/api/skills/file', { query: { skillId, path: node.path } })
+    if (requestRevision !== detailRequestRevision || selectedSkillId.value !== skillId) return
+    currentFile.value = nextFile
+    draft.value = nextFile.content
     viewMode.value = 'edit'
   } catch (error) {
     notifyError(error)
@@ -231,7 +255,10 @@ async function copyPath(path: string): Promise<void> {
 }
 
 watch(() => props.managedSkills, (skills) => {
-  if (!skills.some((skill) => skill.id === selectedSkillId.value)) selectedSkillId.value = skills[0]?.id ?? ''
+  if (skills.some((skill) => skill.id === selectedSkillId.value)) return
+  clearSelection()
+  const firstSkillId = skills[0]?.id
+  if (firstSkillId) void selectSkill(firstSkillId)
 }, { deep: true })
 watch(() => detail.value?.description, async () => {
   descriptionOpen.value = false
