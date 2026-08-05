@@ -2,9 +2,10 @@
 import type { AskXConfig, RollbackResult } from '@askx/core'
 import { MAX_CUSTOM_SKILL_DIRECTORIES } from '@askx/module-skills/skill-types'
 import type {
+  CustomLinkAction,
+  CustomLinkPlan,
+  CustomLinkReceipt,
   SkillDecision,
-  SkillCustomRootRemovalPlan,
-  SkillCustomRootRemovalReceipt,
   SkillGroup,
   PlatformLinkAction,
   PlatformLinkPlan,
@@ -60,10 +61,10 @@ const setupOpen = ref(false)
 const platformLinkPlan = ref<PlatformLinkPlan | null>(null)
 /** 平台软链确认弹层是否打开。 */
 const platformLinkActionOpen = ref(false)
-/** 当前等待用户确认移除的自定义扫描来源计划。 */
-const customRootRemovalPlan = ref<SkillCustomRootRemovalPlan | null>(null)
-/** 自定义扫描来源移除确认弹层是否打开。 */
-const customRootRemovalOpen = ref(false)
+/** 当前等待用户确认的自定义目录软链计划。 */
+const customLinkPlan = ref<CustomLinkPlan | null>(null)
+/** 自定义目录软链确认弹层是否打开。 */
+const customLinkActionOpen = ref(false)
 
 /** 当前向导步骤位置。 */
 const activeStep = computed(() => {
@@ -344,19 +345,11 @@ function openSetup(): void {
   selectedLinkPlatforms.value = []
   selectedLinkDirectories.value = []
   linkSelectionInitialized.value = false
-  report.value = null
   decisions.value = []
   plan.value = null
   receipt.value = null
   state.value = 'platforms'
   setupOpen.value = true
-}
-
-/** 从管理页打开添加 Skill 向导并立即选择自定义文件夹。 */
-async function openCustomRootPicker(): Promise<void> {
-  openSetup()
-  await nextTick()
-  await selectDirectories()
 }
 
 /**
@@ -455,52 +448,6 @@ async function selectLinkDirectories(): Promise<void> {
 }
 
 /**
- * 为移除已保存的自定义扫描来源生成确认计划。
- * @param rootId 要移除的扫描来源标识。
- */
-async function prepareCustomRootRemoval(rootId: string): Promise<void> {
-  busy.value = true
-  clearRequestError()
-  try {
-    customRootRemovalPlan.value = await $fetch<SkillCustomRootRemovalPlan>('/api/skills/custom-root/plan', {
-      method: 'POST',
-      body: { rootId },
-    })
-    customRootRemovalOpen.value = true
-  } catch (error) {
-    notifyRequestError(error, 'customRootRemoveFailed')
-  } finally {
-    busy.value = false
-  }
-}
-
-/** 应用已确认的自定义扫描来源移除计划。 */
-async function applyCustomRootRemoval(): Promise<void> {
-  if (!customRootRemovalPlan.value) return
-  busy.value = true
-  clearRequestError()
-  const currentPlan = customRootRemovalPlan.value
-  try {
-    await $fetch<SkillCustomRootRemovalReceipt>('/api/skills/custom-root/apply', {
-      method: 'POST',
-      body: {
-        plan: currentPlan,
-        consent: { planHash: currentPlan.hash, confirmedAt: new Date().toISOString() },
-      },
-    })
-    bootstrap.value = await $fetch<SkillsBootstrap>('/api/skills/bootstrap')
-    selectedDirectories.value = [...bootstrap.value.customRoots]
-    customRootRemovalOpen.value = false
-    customRootRemovalPlan.value = null
-    toast.success(t('skills.customRootRemoved'))
-  } catch (error) {
-    notifyRequestError(error, 'customRootRemoveFailed')
-  } finally {
-    busy.value = false
-  }
-}
-
-/**
  * 生成一个平台软链停用或恢复计划并展示确认弹层。
  * @param platform 目标平台。
  * @param action 停用或恢复操作。
@@ -546,6 +493,57 @@ async function applyPlatformLinkAction(): Promise<void> {
   }
 }
 
+/**
+ * 生成一个自定义目录软链计划并展示确认弹层。
+ * @param bindingId Manifest 中的自定义绑定标识。
+ * @param action 取消、恢复或删除操作。
+ */
+async function prepareCustomLinkAction(bindingId: string, action: CustomLinkAction): Promise<void> {
+  busy.value = true
+  clearRequestError()
+  try {
+    customLinkPlan.value = await $fetch<CustomLinkPlan>('/api/skills/custom-link/plan', {
+      method: 'POST',
+      body: { bindingId, action },
+    })
+    customLinkActionOpen.value = true
+  } catch (error) {
+    notifyRequestError(error, 'customLinkActionFailed')
+  } finally {
+    busy.value = false
+  }
+}
+
+/** 应用当前已展示并确认的自定义目录软链计划。 */
+async function applyCustomLinkAction(): Promise<void> {
+  if (!customLinkPlan.value) return
+  busy.value = true
+  clearRequestError()
+  const currentPlan = customLinkPlan.value
+  try {
+    const result = await $fetch<CustomLinkReceipt>('/api/skills/custom-link/apply', {
+      method: 'POST',
+      body: {
+        plan: currentPlan,
+        consent: { planHash: currentPlan.hash, confirmedAt: new Date().toISOString() },
+      },
+    })
+    bootstrap.value = await $fetch<SkillsBootstrap>('/api/skills/bootstrap')
+    customLinkActionOpen.value = false
+    customLinkPlan.value = null
+    const messageKey = result.action === 'resume'
+      ? 'skills.customLinkResumed'
+      : result.action === 'delete'
+        ? 'skills.customLinkDeleted'
+        : 'skills.customLinkSuspended'
+    toast.success(t(messageKey))
+  } catch (error) {
+    notifyRequestError(error, 'customLinkActionFailed')
+  } finally {
+    busy.value = false
+  }
+}
+
 /** 关闭引导后回到稳定的列表页状态。 */
 function handleSetupClose(): void {
   setupOpen.value = false
@@ -579,12 +577,11 @@ onMounted(loadBootstrap)
         @platform-action="openPlatformImport"
         @platform-sync="openPlatformSync"
         @platform-link-action="preparePlatformLinkAction"
-        @add-custom-root="openCustomRootPicker"
-        @remove-custom-root="prepareCustomRootRemoval"
+        @custom-link-action="prepareCustomLinkAction"
       />
 
       <template v-if="bootstrap.initialized && report">
-        <BusSkillsSkillList :managed-skills="bootstrap.managedSkills" :health="bootstrap.managedHealth" :platform-health="bootstrap.platformHealth ?? []" :report="report" :busy="busy" @add="openSetup" @updated="refreshManagedResources" />
+        <BusSkillsSkillList :managed-skills="bootstrap.managedSkills" :health="bootstrap.managedHealth" :platforms="bootstrap.platforms" :platform-health="bootstrap.platformHealth ?? []" :report="report" :busy="busy" @add="openSetup" @updated="refreshManagedResources" />
         <BusSkillsTransactionHistory :receipts="history" :busy="busy" @rollback="rollbackTransaction" />
       </template>
       <BusSkillsEmptyState v-else :initialized="bootstrap.initialized" @action="openSetup" />
@@ -653,17 +650,17 @@ onMounted(loadBootstrap)
           </template>
 
           <template v-else-if="state === 'scan'">
-            <Button variant="ghost" size="40" @click="backToPlatformSelection"><Icon name="askx-navigation:arrow-left" />{{ t('skills.back') }}</Button>
-            <Button size="40" :disabled="busy" @click="continueAfterScan"><Icon name="askx-navigation:arrow-right" />{{ busy ? t('skills.preparing') : t(flowMode === 'sync' ? 'skills.preparePlan' : 'skills.continueToLinks') }}</Button>
+            <Button variant="ghost" size="48" @click="backToPlatformSelection"><Icon name="askx-navigation:arrow-left" />{{ t('skills.back') }}</Button>
+            <Button size="48" :disabled="busy" @click="continueAfterScan"><Icon name="askx-navigation:arrow-right" />{{ busy ? t('skills.preparing') : t(flowMode === 'sync' ? 'skills.preparePlan' : 'skills.continueToLinks') }}</Button>
           </template>
 
           <template v-else-if="state === 'links'">
-            <Button variant="ghost" size="40" @click="state = 'scan'"><Icon name="askx-navigation:arrow-left" />{{ t('skills.back') }}</Button>
-            <Button size="40" :disabled="busy" @click="preparePlan"><Icon name="askx-navigation:arrow-right" />{{ busy ? t('skills.preparing') : t('skills.preparePlan') }}</Button>
+            <Button variant="ghost" size="48" @click="state = 'scan'"><Icon name="askx-navigation:arrow-left" />{{ t('skills.back') }}</Button>
+            <Button size="48" :disabled="busy" @click="preparePlan"><Icon name="askx-navigation:arrow-right" />{{ busy ? t('skills.preparing') : t('skills.preparePlan') }}</Button>
           </template>
 
           <template v-else-if="state === 'confirm'">
-            <Button variant="ghost" size="40" :disabled="busy" @click="state = flowMode === 'connect' ? 'links' : 'scan'"><Icon name="askx-navigation:arrow-left" />{{ t('skills.back') }}</Button>
+            <Button variant="ghost" size="48" :disabled="busy" @click="state = flowMode === 'connect' ? 'links' : 'scan'"><Icon name="askx-navigation:arrow-left" />{{ t('skills.back') }}</Button>
             <Button size="48" :disabled="busy" @click="applyPlan"><Icon name="askx-status:loading" :class="{ 'animate-spin': busy }" />{{ busy ? t(flowMode === 'sync' ? 'skills.syncApplying' : 'skills.applying') : t(flowMode === 'sync' ? 'skills.saveSyncResult' : 'skills.apply') }}</Button>
           </template>
 
@@ -681,27 +678,13 @@ onMounted(loadBootstrap)
         @confirm="applyPlatformLinkAction"
       />
 
-      <CsResponsiveOverlayDialogDrawer
-        v-model:open="customRootRemovalOpen"
-        :title="t('skills.removeCustomRootTitle')"
-        :description="t('skills.removeCustomRootDescription', { name: customRootRemovalPlan?.root.name ?? '' })"
-        :dismissible="!busy"
-        :close-disabled="busy"
-        :close-label="t('skills.cancelCustomRootRemoval')"
-        :dialog="{ content: { class: 'sm:max-w-lg' } }"
-        :drawer="{ root: { handleOnly: true }, content: { class: '[&>div:first-child]:hidden' } }"
-      >
-        <template #trigger><button type="button" tabindex="-1" aria-hidden="true" class="sr-only">{{ t('skills.removeCustomRootTitle') }}</button></template>
-        <div v-if="customRootRemovalPlan" class="rounded-2xl border bg-muted/20 p-4">
-          <strong class="block text-sm">{{ customRootRemovalPlan.root.name }}</strong>
-          <code class="mt-1 block break-all font-mono text-[10px] text-muted-foreground">{{ customRootRemovalPlan.root.path }}</code>
-          <p class="mt-3 text-xs leading-5 text-muted-foreground">{{ t('skills.removeCustomRootSafety') }}</p>
-        </div>
-        <template #footer>
-          <Button variant="outline" :disabled="busy" @click="customRootRemovalOpen = false">{{ t('skills.cancelCustomRootRemoval') }}</Button>
-          <Button variant="destructive" :disabled="busy" @click="applyCustomRootRemoval"><Icon name="askx-actions:delete" />{{ t('skills.confirmCustomRootRemoval') }}</Button>
-        </template>
-      </CsResponsiveOverlayDialogDrawer>
+      <BusSkillsCustomLinkAction
+        v-model:open="customLinkActionOpen"
+        :plan="customLinkPlan"
+        :busy="busy"
+        @confirm="applyCustomLinkAction"
+      />
+
     </template>
   </div>
 </template>

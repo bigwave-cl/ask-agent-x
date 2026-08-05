@@ -8,6 +8,7 @@ import type {
   ManagedSkillTreeNode,
   SkillFileUpdatePlan,
   SkillFileUpdateReceipt,
+  SkillPlatformStatus,
   SkillsScanReport,
 } from '@askx/module-skills/skill-types'
 import { useResizeObserver } from '@vueuse/core'
@@ -26,6 +27,8 @@ interface Props {
   health: ManagedSkillHealth[]
   /** 平台根目录绑定健康状态。 */
   platformHealth: ManagedPlatformHealth[]
+  /** 当前平台预检测结果。 */
+  platforms: SkillPlatformStatus[]
   /** 是否有其他 Skills 写操作正在进行。 */
   busy?: boolean
 }
@@ -249,8 +252,9 @@ onMounted(() => {
         <h2 class="mt-3 text-2xl font-semibold tracking-[-0.03em]">{{ t('skills.listTitle') }}</h2>
         <p class="mt-2 text-sm text-muted-foreground">{{ t('skills.resourceDescription') }}</p>
       </div>
-      <div class="flex flex-wrap items-center justify-end gap-2">
-        <Button variant="outline" size="40" :disabled="busy" @click="emit('add')"><Icon name="askx-actions:upload" />{{ t('skills.addSkill') }}</Button>
+      <div class="grid w-full grid-cols-2 gap-2 sm:w-[22rem]">
+        <BusSkillsSkillCopyManager :managed-skills="managedSkills" :platforms="platforms" :platform-health="platformHealth" :disabled="busy || dirty" />
+        <Button variant="outline" size="40" class="w-full" :disabled="busy" @click="emit('add')"><Icon name="askx-actions:upload" />{{ t('skills.addSkill') }}</Button>
         <BusSkillsCanonicalSourceManager :disabled="busy" @updated="emit('updated')" />
       </div>
     </header>
@@ -319,7 +323,9 @@ onMounted(() => {
               </div>
               <div class="relative mt-4 flex w-full max-w-full flex-wrap items-center justify-between gap-2">
                 <button type="button" class="flex h-9 min-w-0 max-w-full items-center gap-2 rounded-lg bg-ds-fill-bw-transparent-3 px-3 font-mono text-[10px] text-muted-foreground transition hover:bg-ds-fill-bw-transparent-5 hover:text-foreground" @click="copyPath(detail.canonicalPath)"><Icon name="askx-actions:copy" class="size-3.5 shrink-0" /><span class="truncate">{{ detail.canonicalPath }}</span></button>
-                <CsLocalPathOpener :path="detail.canonicalPath" />
+                <div class="flex flex-wrap items-center gap-2">
+                  <CsLocalPathOpener :path="detail.canonicalPath" />
+                </div>
               </div>
             </header>
 

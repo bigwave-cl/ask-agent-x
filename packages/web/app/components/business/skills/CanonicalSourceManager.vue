@@ -147,15 +147,15 @@ function cancelConfirmation(): void {
 </script>
 
 <template>
-  <div class="flex flex-wrap items-center justify-end gap-2">
-    <Button size="40" variant="outline" :disabled="disabled || preparing" @click="openManager">
+  <div class="contents">
+    <Button size="40" variant="outline" class="w-full" :disabled="disabled || preparing" @click="openManager">
       <Icon name="askx-objects:folder-open" />
       {{ t('skills.manageCanonicalBackups') }}
     </Button>
     <TooltipProvider :delay-duration="150">
       <Tooltip>
         <TooltipTrigger as-child>
-          <Button size="40" variant="destructive" :disabled="disabled || preparing" @click="prepareAction('clear')">
+          <Button size="40" variant="destructive" class="w-full" :disabled="disabled || preparing" @click="prepareAction('clear')">
             <Icon name="askx-actions:delete" />
             {{ t('skills.clearCanonicalSource') }}
           </Button>
