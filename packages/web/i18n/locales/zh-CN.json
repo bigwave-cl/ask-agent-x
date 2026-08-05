@@ -186,7 +186,17 @@
     "feedbackSaved": "WEB 保存完成 · revision #{revision}",
     "feedbackReadFailed": "读取设置失败",
     "feedbackSaveFailed": "保存设置失败，请重试",
-    "feedbackConflict": "设置已被其他入口更新，正在重新载入…"
+    "feedbackConflict": "设置已被其他入口更新，正在重新载入…",
+    "feedbackReset": "全部共享设置已恢复默认值（版本 #{revision}）。",
+    "resetSettingsTitle": "恢复全部默认设置",
+    "resetSettingsDescription": "重置语言、主题、平台选择和备份开关。",
+    "resetSettingsAction": "一键重置设置",
+    "resetSettingsConfirmTitle": "确认恢复全部默认设置",
+    "resetSettingsConfirmDescription": "当前共享设置会被默认值替换，此操作会产生新的配置版本。",
+    "resetSettingsPreserved": "Skills 内容、统一源、备份、受管链接和事务记录都会保留，不会被删除。",
+    "resetSettingsCancel": "取消",
+    "confirmResetSettings": "确认重置",
+    "resettingSettings": "正在重置…"
   },
   "skills": {
     "eyebrow": "SKILL CONTROL ORBIT",

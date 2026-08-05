@@ -270,7 +270,12 @@ export class SkillsManager {
   /** 读取本机 Skill 版本、usage 与同步状态统计。 */
   async stats(): Promise<SkillStatsReport> {
     const management = await inspectSkillManagementOverview(this.manifestStore, this.registryStore)
-    return this.registryStore.stats(management)
+    const manifest = await this.manifestStore.read()
+    const availableSkillIds = new Set([
+      ...(manifest?.skills ?? []).filter((record) => record.kind !== 'system').flatMap((record) => record.manager?.skillId ?? []),
+      ...(manifest?.localSkills ?? []).flatMap((record) => record.manager?.skillId ?? []),
+    ])
+    return this.registryStore.stats(management, availableSkillIds)
   }
 
   /** 为统计页中的单 Skill 纳入或移除版本管理生成确认计划。 */

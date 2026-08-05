@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { configSchema, defaultConfig, settingsPatchSchema, type AskXConfig, type SettingsPatch } from './config.js'
+import { stableHash } from './hash.js'
+import { assertConsent, createActionPlan } from './plans.js'
+import type { ActionPlan, UserConsent } from './types.js'
 
 const LOCK_MAX_AGE_MS = 30_000
 const LOCK_RETRY_MS = 40
@@ -18,6 +21,15 @@ export interface SettingsUpdateOptions {
   source: 'cli' | 'web'
   expectedRevision?: number
 }
+
+/** 重置共享设置计划的输入。 */
+export interface SettingsResetInput {
+  /** 创建计划时读取到的配置版本。 */
+  expectedRevision: number
+}
+
+/** 恢复全部共享设置默认值的不可变计划。 */
+export type SettingsResetPlan = ActionPlan<SettingsResetInput>
 
 export class SettingsStore {
   readonly path: string
@@ -65,6 +77,51 @@ export class SettingsStore {
     } finally {
       await release()
     }
+  }
+
+  /**
+   * 创建恢复全部共享设置默认值的计划。
+   * @returns 包含当前配置指纹与目标文件的不可变计划。
+   */
+  async createResetPlan(): Promise<SettingsResetPlan> {
+    const current = await this.read()
+    return createActionPlan({
+      moduleId: 'settings',
+      action: 'reset',
+      detectionFingerprint: stableHash(current),
+      operations: [{ kind: 'replace', target: this.path }],
+      input: { expectedRevision: current.revision },
+    })
+  }
+
+  /**
+   * 在校验计划、授权和配置版本后恢复默认设置。
+   * @param plan 已展示给用户的重置计划。
+   * @param consent 对计划哈希的明确授权。
+   * @param source 发起重置的客户端。
+   * @returns 写入并复核后的共享设置。
+   */
+  async applyResetPlan(plan: SettingsResetPlan, consent: UserConsent, source: 'cli' | 'web'): Promise<AskXConfig> {
+    assertConsent(plan, consent)
+    if (plan.moduleId !== 'settings' || plan.action !== 'reset' || plan.operations.length !== 1 || plan.operations[0]?.target !== this.path) {
+      throw new Error('Invalid settings reset plan')
+    }
+    const current = await this.read()
+    if (current.revision !== plan.input.expectedRevision || stableHash(current) !== plan.detectionFingerprint) {
+      throw new SettingsConflictError(current)
+    }
+    const defaults = defaultConfig()
+    const updated = await this.update({
+      locale: defaults.locale,
+      themeColor: defaults.themeColor,
+      skills: defaults.skills,
+    }, { source, expectedRevision: current.revision })
+    if (updated.locale !== defaults.locale || updated.themeColor !== defaults.themeColor
+      || updated.skills.backupBeforeLink !== defaults.skills.backupBeforeLink
+      || updated.skills.platforms.join(',') !== defaults.skills.platforms.join(',')) {
+      throw new Error('Settings reset verification failed')
+    }
+    return updated
   }
 
   async #acquireLock(): Promise<() => Promise<void>> {

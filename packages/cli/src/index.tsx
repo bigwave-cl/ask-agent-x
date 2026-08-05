@@ -30,12 +30,13 @@ import type {
   SkillPlatformId,
   SkillsBatchPlan,
   SkillsBatchReceipt,
+  SkillsBootstrap,
   SkillsScanReport,
 } from '@askx/module-skills/skill-types'
 import type { SystemSkillRepairPlan, SystemSkillRepairReceipt } from '@askx/module-skills/builtin-skill-manager'
 import type { SkillStatsReport, SkillUsagePlan, SkillUsageReceipt } from '@askx/module-skills/skill-manager-registry'
 import { detectPlatforms, type PlatformDetection } from '@askx/platform-adapters'
-import { readUiSession, readUiSessionToken, startUi, stopUi } from '@askx/web/server'
+import { readUiSession, startUi, stopUi } from '@askx/web/server'
 import { Command } from 'commander'
 import { Box, render as inkRender, Text, useApp, useInput } from 'ink'
 import { useState, type ReactNode } from 'react'
@@ -72,15 +73,15 @@ const messages = {
     writeLocked: 'Write operations are intentionally locked in the foundation release.',
     appDescription: 'Extend every agent. Keep control.', modulesDescription: 'Inspect built-in AskAgent X modules',
     doctorDescription: 'Detect Agent installations and whole Skills-directory proxy eligibility', jsonDescription: 'Print machine-readable JSON',
-    skillsDescription: 'Manage one canonical Skills source across Agent directories', scanDescription: 'Read-only scan of selected Skill roots', statusDescription: 'Show current read-only Skills status',
-    settingsDescription: 'Read or update shared CLI/Web settings', settingsShowDescription: 'Show the current shared settings', settingsSetDescription: 'Update shared settings',
+    skillsDescription: 'View the current Skill list and quickly connect Agent platforms', scanDescription: 'Scan selected platform folders and list Skills that need review', statusDescription: 'Check current Skill folders for conflicts and broken links',
+    settingsDescription: 'Read or update shared CLI/Web settings', settingsShowDescription: 'Show the current shared settings', settingsSetDescription: 'Update shared settings', settingsResetDescription: 'Restore all shared settings to defaults without deleting Skills or backups', settingsResetPlan: 'Settings reset plan', settingsResetResult: 'All shared settings restored to defaults',
     backupArgument: 'on or off', backupDescription: 'Enable or disable whole-directory backup before root cutover', backupError: 'Backup must be "on" or "off"',
     platformsArgument: 'codex, claude and/or cursor', platformsDescription: 'Set enabled Agent platforms', platformsError: 'Platforms must contain codex, claude and/or cursor',
     languageArgument: 'zh-CN or en', languageDescription: 'Set the shared CLI/Web language', languageError: 'Language must be "zh-CN" or "en"',
     themeArgument: 'cyan or rose', themeDescription: 'Set the shared CLI/Web theme color', themeError: 'Theme color must be "cyan" or "rose"',
-    uiDescription: 'Start or manage the local Nuxt management interface', portDescription: 'Local port; defaults to an available five-digit port', invalidPort: 'Invalid port', tokenDescription: 'Print the active local UI token', noToken: 'No active UI session. Start "pnpm dev" or "askx ui start" first.', uiStartDescription: 'Start the local UI as a background service', uiStopDescription: 'Stop the background UI service', uiStatusDescription: 'Show background UI service status', uiRestartDescription: 'Restart the background UI service', uiAlreadyRunning: 'The local UI is already running', uiStarted: 'The local UI started in the background', uiStopped: 'The local UI service stopped', uiNotRunning: 'The local UI is not running', uiRunning: 'The local UI is running', uninstallDescription: 'Stop the local UI and uninstall AskAgent X globally', uninstallSourceOnly: 'Run this command from a globally installed AskAgent X package', uninstallFailed: 'npm uninstall failed',
-    manageBackups: 'Manage canonical Skills source backups', historyDescription: 'List completed Skills transactions', rollbackDescription: 'Roll back the latest unchanged Skills transaction', backupListDescription: 'List canonical source backups', backupRestoreDescription: 'Restore the canonical source from a backup', backupRemoveDescription: 'Permanently remove a canonical source backup', receiptArgument: 'transaction receipt ID', backupVersionArgument: 'backup version', historyTitle: 'Skills transaction history', rollbackPlan: 'Skills rollback plan', rollbackResult: 'Skills rollback result', backupRestorePlan: 'Backup restore plan', backupRestoreResult: 'Backup restored', backupRemovePlan: 'Backup removal plan', backupRemoveResult: 'Backup removed', noTransactions: 'No completed Skills transactions.', noBackups: 'No canonical source backups.', restored: 'restored', rollbackRejected: 'rollback rejected', valid: 'valid', invalid: 'invalid',
-    choosePlatforms: 'Choose platforms to scan', scanOnlySelected: 'Space toggles · Enter confirms', platformRequired: 'Select at least one platform.', platformSelectionRequired: 'First scan requires --platform in non-interactive mode.',
+    uiDescription: 'Start or manage the local Nuxt management interface', portDescription: 'Local port; defaults to an available five-digit port', invalidPort: 'Invalid port', tokenDescription: 'Print a quick-login URL and the active local UI token', tokenUrl: 'Quick login URL', tokenValue: 'Token', noToken: 'No active UI session. Start "pnpm dev" or "askx ui start" first.', uiStartDescription: 'Start the local UI as a background service', uiStopDescription: 'Stop the background UI service', uiStatusDescription: 'Show background UI service status', uiRestartDescription: 'Restart the background UI service', uiAlreadyRunning: 'The local UI is already running', uiStarted: 'The local UI started in the background', uiStopped: 'The local UI service stopped', uiNotRunning: 'The local UI is not running', uiRunning: 'The local UI is running', uninstallDescription: 'Stop the local UI and uninstall AskAgent X globally', uninstallSourceOnly: 'Run this command from a globally installed AskAgent X package', uninstallFailed: 'npm uninstall failed',
+    manageBackups: 'Manage canonical Skills source backups', clearDescription: 'Clear the current Skill list and create a restorable backup', clearPlan: 'Skill list cleanup plan', clearResult: 'Skill list cleared', historyDescription: 'List completed Skills transactions', rollbackDescription: 'Roll back the latest unchanged Skills transaction', backupListDescription: 'List canonical source backups', backupRestoreDescription: 'Restore the canonical source from a backup', backupRemoveDescription: 'Permanently remove a canonical source backup', receiptArgument: 'transaction receipt ID', backupVersionArgument: 'backup version', historyTitle: 'Skills transaction history', rollbackPlan: 'Skills rollback plan', rollbackResult: 'Skills rollback result', backupRestorePlan: 'Backup restore plan', backupRestoreResult: 'Backup restored', backupRemovePlan: 'Backup removal plan', backupRemoveResult: 'Backup removed', noTransactions: 'No completed Skills transactions.', noBackups: 'No canonical source backups.', restored: 'restored', rollbackRejected: 'rollback rejected', valid: 'valid', invalid: 'invalid',
+    choosePlatforms: 'Choose platforms containing Skills', chooseLinkPlatforms: 'Choose platforms to connect with directory links', scanOnlySelected: 'Space toggles · Enter confirms', linkOnlySelected: 'Selected platforms will use the AskX Skill list · Space toggles · Enter continues', platformRequired: 'Select at least one platform.', platformSelectionRequired: 'First scan requires --platform in non-interactive mode.',
     skillConflict: 'Skill {name} has conflicting content.', skillBroken: 'Skill {name} has a broken link.', skillInvalid: 'Skill {name} has invalid metadata.',
     syncDescription: 'Synchronize safe Skills from selected roots into the AskX canonical source', linkDescription: 'Bind or resume selected Agent Skills directories to the canonical source', unlinkDescription: 'Suspend selected managed Skills-directory links without synchronizing content',
     directoryDescription: 'Add a custom directory as a read-only synchronization source', linkDirectoryDescription: 'Bind a custom local directory to the canonical source', yesDescription: 'Confirm the displayed immutable plan without an interactive prompt',
@@ -88,7 +89,7 @@ const messages = {
     planHash: 'Plan hash', adopt: 'adopt', merge: 'merge', keep: 'keep', customDirectories: 'custom directories', operations: 'operations', applied: 'applied', skipped: 'skipped', failed: 'failed',
     confirmApply: 'Apply this exact plan?', confirmKeys: 'Y confirms · N/Esc cancels', cancelled: 'Operation cancelled.', confirmationRequired: 'A write plan requires confirmation. Re-run with --yes in non-interactive or JSON mode.',
     skillsNotInitialized: 'Skills management is not initialized. Run "askx skills sync" first.', platformWriteRequired: 'Select at least one platform for this link operation.', conflictKept: 'Conflicting Skills are kept unchanged and are not overwritten automatically.',
-    linkTarget: 'link target', statsDescription: 'Show managed Skill versions, usage and target health', usageDescription: 'Record explicit local Skill usage', usageRecordDescription: 'Record one use by Skill name or stable ID', managerDescription: 'Manage the built-in AskX Skill Manager', managerRepairDescription: 'Repair a missing, corrupt or outdated built-in Skill Manager', manageAllDescription: 'Initialize version management for every eligible unmanaged Skill', manageSkillDescription: 'Initialize or refresh version management for a named Skill', migrateBoboDescription: 'Migrate a bobo-managed Skill to AskX while preserving its ID and version', statsTitle: 'Skill statistics', totalUsage: 'usage', totalTargets: 'targets', issueTargets: 'target issues', usagePlan: 'Usage record plan', usageResult: 'Usage recorded', managerRepairPlan: 'Skill Manager repair plan', managerRepairResult: 'Skill Manager repaired', skillName: 'Skill', version: 'Version', systemHealth: 'Previous health', preserveRegistry: 'Preserve registry', registryRevision: 'Registry revision', usageCount: 'Usage count', management: 'version management', repairWarnings: 'Warnings',
+    linkTarget: 'link target', statsDescription: 'View Skill versions, usage counts and connected targets', usageDescription: 'Record explicit local Skill usage', usageRecordDescription: 'Record one use by Skill name or stable ID', managerDescription: 'Manage the built-in AskX Skill Manager', managerRepairDescription: 'Repair a missing, corrupt or outdated built-in Skill Manager', manageAllDescription: 'Initialize version management for every eligible unmanaged Skill', manageSkillDescription: 'Initialize or refresh version management for a named Skill', migrateBoboDescription: 'Migrate a bobo-managed Skill to AskX while preserving its ID and version', statsTitle: 'Skill statistics', skillListTitle: 'Current Skill list', canonicalFolder: 'Skill folder', connectedPlatforms: 'Connected platforms', noManagedSkills: 'No managed Skills yet. Run askx skills to start setup.', statsHint: 'View statistics', manageHint: 'Scan or update the list', totalUsage: 'usage', totalTargets: 'targets', issueTargets: 'target issues', usagePlan: 'Usage record plan', usageResult: 'Usage recorded', managerRepairPlan: 'Skill Manager repair plan', managerRepairResult: 'Skill Manager repaired', skillName: 'Skill', version: 'Version', systemHealth: 'Previous health', preserveRegistry: 'Preserve registry', registryRevision: 'Registry revision', usageCount: 'Usage count', management: 'version management', repairWarnings: 'Warnings',
   },
   'zh-CN': {
     builtInModules: '内置模块', doctor: '环境诊断', skillsScan: 'Skills 扫描', skillsStatus: 'Skills 状态',
@@ -99,15 +100,15 @@ const messages = {
     writeLocked: '基础版本暂未开放写入操作。',
     appDescription: '扩展每一个 Agent，控制始终在你手中。', modulesDescription: '查看 AskAgent X 内置模块',
     doctorDescription: '检测 Agent 安装状态与整个 Skills 目录的代理条件', jsonDescription: '输出机器可读的 JSON',
-    skillsDescription: '以一份统一源管理各 Agent 的 Skills 目录', scanDescription: '只读扫描选中的 Skill 根目录', statusDescription: '显示当前只读 Skills 状态',
-    settingsDescription: '读取或更新 CLI/Web 共享设置', settingsShowDescription: '显示当前共享设置', settingsSetDescription: '更新共享设置',
+    skillsDescription: '查看当前 Skill 列表，并快速关联 Agent 平台', scanDescription: '扫描选中平台的文件夹，列出需要处理的 Skill', statusDescription: '检查当前 Skill 目录中的冲突和失效软链',
+    settingsDescription: '读取或更新 CLI/Web 共享设置', settingsShowDescription: '显示当前共享设置', settingsSetDescription: '更新共享设置', settingsResetDescription: '恢复全部共享设置默认值，不删除 Skills 或备份', settingsResetPlan: '共享设置重置计划', settingsResetResult: '全部共享设置已恢复默认值',
     backupArgument: 'on 或 off', backupDescription: '启用或关闭根目录切换前的整目录备份', backupError: '备份参数必须是 "on" 或 "off"',
     platformsArgument: 'codex、claude 和/或 cursor', platformsDescription: '设置启用的 Agent 平台', platformsError: '平台必须包含 codex、claude 和/或 cursor',
     languageArgument: 'zh-CN 或 en', languageDescription: '设置 CLI/Web 共享语言', languageError: '语言必须是 "zh-CN" 或 "en"',
     themeArgument: 'cyan 或 rose', themeDescription: '设置 CLI/Web 共享主题色', themeError: '主题色必须是 "cyan" 或 "rose"',
-    uiDescription: '启动或管理本地 Nuxt 管理界面', portDescription: '本地端口，默认自动选择可用的五位端口', invalidPort: '无效端口', tokenDescription: '输出当前本地 UI token', noToken: '没有活动的 UI 会话，请先运行 "pnpm dev" 或 "askx ui start"。', uiStartDescription: '以后台服务方式启动本地 UI', uiStopDescription: '停止后台 UI 服务', uiStatusDescription: '查看后台 UI 服务状态', uiRestartDescription: '重启后台 UI 服务', uiAlreadyRunning: '本地 UI 已在运行', uiStarted: '本地 UI 已在后台启动', uiStopped: '本地 UI 服务已停止', uiNotRunning: '本地 UI 未运行', uiRunning: '本地 UI 正在运行', uninstallDescription: '停止本地 UI 并全局卸载 AskAgent X', uninstallSourceOnly: '请从全局安装的 AskAgent X 包运行此命令', uninstallFailed: 'npm 卸载失败',
-    manageBackups: '管理统一 Skills 来源备份', historyDescription: '列出已完成的 Skills 事务', rollbackDescription: '回滚最新且状态未变化的 Skills 事务', backupListDescription: '列出统一源备份', backupRestoreDescription: '从指定备份恢复统一源', backupRemoveDescription: '永久删除指定统一源备份', receiptArgument: '事务回执 ID', backupVersionArgument: '备份版本', historyTitle: 'Skills 事务历史', rollbackPlan: 'Skills 回滚计划', rollbackResult: 'Skills 回滚结果', backupRestorePlan: '备份恢复计划', backupRestoreResult: '备份恢复完成', backupRemovePlan: '备份删除计划', backupRemoveResult: '备份删除完成', noTransactions: '没有已完成的 Skills 事务。', noBackups: '没有统一源备份。', restored: '已恢复', rollbackRejected: '拒绝回滚', valid: '有效', invalid: '无效',
-    choosePlatforms: '选择需要扫描的平台', scanOnlySelected: '空格切换 · 回车确认', platformRequired: '至少选择一个平台。', platformSelectionRequired: '非交互模式首次扫描必须传入 --platform。',
+    uiDescription: '启动或管理本地 Nuxt 管理界面', portDescription: '本地端口，默认自动选择可用的五位端口', invalidPort: '无效端口', tokenDescription: '输出本地 UI 快速登录地址和 token', tokenUrl: '快速登录地址', tokenValue: 'Token', noToken: '没有活动的 UI 会话，请先运行 "pnpm dev" 或 "askx ui start"。', uiStartDescription: '以后台服务方式启动本地 UI', uiStopDescription: '停止后台 UI 服务', uiStatusDescription: '查看后台 UI 服务状态', uiRestartDescription: '重启后台 UI 服务', uiAlreadyRunning: '本地 UI 已在运行', uiStarted: '本地 UI 已在后台启动', uiStopped: '本地 UI 服务已停止', uiNotRunning: '本地 UI 未运行', uiRunning: '本地 UI 正在运行', uninstallDescription: '停止本地 UI 并全局卸载 AskAgent X', uninstallSourceOnly: '请从全局安装的 AskAgent X 包运行此命令', uninstallFailed: 'npm 卸载失败',
+    manageBackups: '管理统一 Skills 来源备份', clearDescription: '清空当前 Skill 列表，并创建可恢复备份', clearPlan: 'Skill 列表清理计划', clearResult: 'Skill 列表已清空', historyDescription: '列出已完成的 Skills 事务', rollbackDescription: '回滚最新且状态未变化的 Skills 事务', backupListDescription: '列出统一源备份', backupRestoreDescription: '从指定备份恢复统一源', backupRemoveDescription: '永久删除指定统一源备份', receiptArgument: '事务回执 ID', backupVersionArgument: '备份版本', historyTitle: 'Skills 事务历史', rollbackPlan: 'Skills 回滚计划', rollbackResult: 'Skills 回滚结果', backupRestorePlan: '备份恢复计划', backupRestoreResult: '备份恢复完成', backupRemovePlan: '备份删除计划', backupRemoveResult: '备份删除完成', noTransactions: '没有已完成的 Skills 事务。', noBackups: '没有统一源备份。', restored: '已恢复', rollbackRejected: '拒绝回滚', valid: '有效', invalid: '无效',
+    choosePlatforms: '选择存放 Skill 的平台', chooseLinkPlatforms: '选择需要设置目录软链的平台', scanOnlySelected: '空格切换 · 回车确认', linkOnlySelected: '选中平台将使用 AskX Skill 列表 · 空格切换 · 回车进入下一步', platformRequired: '至少选择一个平台。', platformSelectionRequired: '非交互模式首次扫描必须传入 --platform。',
     skillConflict: 'Skill {name} 在不同平台的内容不一致。', skillBroken: 'Skill {name} 包含失效软链。', skillInvalid: 'Skill {name} 的元数据无效。',
     syncDescription: '将选中来源中可安全接管的 Skills 同步到 AskX 统一源', linkDescription: '将选中的 Agent Skills 根目录绑定或恢复到统一源', unlinkDescription: '无损停用选中的受管 Skills 根目录软链，不同步内容',
     directoryDescription: '添加一个只读同步来源的自定义目录', linkDirectoryDescription: '将一个自定义本地目录绑定到统一源', yesDescription: '无需交互确认，直接授权已展示的不可变计划',
@@ -115,7 +116,7 @@ const messages = {
     planHash: '计划指纹', adopt: '接管', merge: '合并', keep: '保留', customDirectories: '自定义目录', operations: '操作', applied: '已应用', skipped: '已跳过', failed: '失败',
     confirmApply: '确认执行这份完整计划？', confirmKeys: 'Y 确认 · N/Esc 取消', cancelled: '操作已取消。', confirmationRequired: '写操作必须明确授权；非交互或 JSON 模式请重新执行并传入 --yes。',
     skillsNotInitialized: 'Skills 管理尚未初始化，请先运行 "askx skills sync"。', platformWriteRequired: '软链操作至少需要选择一个平台。', conflictKept: '内容冲突的 Skills 会保留现状，不会自动覆盖。',
-    linkTarget: '软链目标', statsDescription: '查看受管 Skill 的版本、使用次数和目标状态', usageDescription: '记录明确的本地 Skill 使用', usageRecordDescription: '按 Skill 名称或稳定 ID 记录一次使用', managerDescription: '管理 AskX 内置 Skill Manager', managerRepairDescription: '修复缺失、损坏或过期的内置 Skill Manager', manageAllDescription: '为全部符合条件的未托管 Skill 初始化版本管理', manageSkillDescription: '为指定 Skill 初始化或刷新版本管理', migrateBoboDescription: '保留 ID 和版本，将 bobo 托管 Skill 迁移为 AskX 身份', statsTitle: 'Skill 统计', totalUsage: '累计使用', totalTargets: '同步目标', issueTargets: '异常目标', usagePlan: 'Usage 记录计划', usageResult: 'Usage 已记录', managerRepairPlan: 'Skill Manager 修复计划', managerRepairResult: 'Skill Manager 已修复', skillName: 'Skill', version: '版本', systemHealth: '修复前状态', preserveRegistry: '保留 Registry', registryRevision: 'Registry 版本', usageCount: '累计次数', management: '版本管理', repairWarnings: '提示',
+    linkTarget: '软链目标', statsDescription: '查看 Skill 版本、使用次数和已关联目标', usageDescription: '记录明确的本地 Skill 使用', usageRecordDescription: '按 Skill 名称或稳定 ID 记录一次使用', managerDescription: '管理 AskX 内置 Skill Manager', managerRepairDescription: '修复缺失、损坏或过期的内置 Skill Manager', manageAllDescription: '为全部符合条件的未托管 Skill 初始化版本管理', manageSkillDescription: '为指定 Skill 初始化或刷新版本管理', migrateBoboDescription: '保留 ID 和版本，将 bobo 托管 Skill 迁移为 AskX 身份', statsTitle: 'Skill 统计', skillListTitle: '当前 Skill 列表', canonicalFolder: 'Skill 文件夹', connectedPlatforms: '已关联平台', noManagedSkills: '当前还没有 Skill，请运行 askx skills 开始设置。', statsHint: '查看统计', manageHint: '重新扫描或更新列表', totalUsage: '累计使用', totalTargets: '同步目标', issueTargets: '异常目标', usagePlan: 'Usage 记录计划', usageResult: 'Usage 已记录', managerRepairPlan: 'Skill Manager 修复计划', managerRepairResult: 'Skill Manager 已修复', skillName: 'Skill', version: '版本', systemHealth: '修复前状态', preserveRegistry: '保留 Registry', registryRevision: 'Registry 版本', usageCount: '累计次数', management: '版本管理', repairWarnings: '提示',
   },
 } as const
 
@@ -213,10 +214,12 @@ interface PlatformPromptProps {
   locale: AskXLocale
   /** 完成选择时回传平台。 */
   onComplete: (platforms: SkillPlatformId[]) => void
+  /** 当前选择用于扫描来源还是建立软链。 */
+  mode?: 'scan' | 'link'
 }
 
 /** 首次扫描使用的 Ink 平台多选界面。 */
-function PlatformPrompt({ locale, onComplete }: PlatformPromptProps) {
+function PlatformPrompt({ locale, onComplete, mode = 'scan' }: PlatformPromptProps) {
   const options: Array<{ id: SkillPlatformId; label: string }> = [
     { id: 'codex', label: 'ChatGPT / Codex' },
     { id: 'claude', label: 'Claude Code' },
@@ -244,8 +247,8 @@ function PlatformPrompt({ locale, onComplete }: PlatformPromptProps) {
     }
   })
   return (
-    <Frame title={t(locale, 'choosePlatforms')}>
-      <Text dimColor>{t(locale, 'scanOnlySelected')}</Text>
+    <Frame title={t(locale, mode === 'link' ? 'chooseLinkPlatforms' : 'choosePlatforms')}>
+      <Text dimColor>{t(locale, mode === 'link' ? 'linkOnlySelected' : 'scanOnlySelected')}</Text>
       <Box flexDirection="column" marginTop={1}>
         {options.map((option, index) => (
           <Text key={option.id} {...(index === cursor ? { color: accent } : {})}>
@@ -259,8 +262,8 @@ function PlatformPrompt({ locale, onComplete }: PlatformPromptProps) {
 }
 
 /** 等待用户在 Ink 中确认首次扫描平台。 */
-function choosePlatforms(locale: AskXLocale): Promise<SkillPlatformId[]> {
-  return new Promise((resolve) => render(<PlatformPrompt locale={locale} onComplete={resolve} />))
+function choosePlatforms(locale: AskXLocale, mode: 'scan' | 'link' = 'scan'): Promise<SkillPlatformId[]> {
+  return new Promise((resolve) => render(<PlatformPrompt locale={locale} mode={mode} onComplete={resolve} />))
 }
 
 /** 写操作通用选项。 */
@@ -486,6 +489,26 @@ function SkillStatsView({ report, locale }: { report: SkillStatsReport; locale: 
   )
 }
 
+/** 当前 Skill 列表、统一目录和平台关联状态。 */
+function ManagedSkillListView({ bootstrap, locale }: { bootstrap: SkillsBootstrap; locale: AskXLocale }) {
+  const connected = bootstrap.platformBindings.filter((binding) => !binding.suspendedAt).map((binding) => binding.platform)
+  return (
+    <Frame title={t(locale, 'skillListTitle')}>
+      <Text>{t(locale, 'canonicalFolder')}  <Text color={accent}>{bootstrap.canonicalSkillsDir}</Text></Text>
+      <Text>{t(locale, 'connectedPlatforms')}  <Text color={connected.length ? 'green' : 'yellow'}>{connected.join(' · ') || '-'}</Text></Text>
+      <Box flexDirection="column" marginTop={1}>
+        {bootstrap.managedSkills.length
+          ? bootstrap.managedSkills.map((skill, index) => <Text key={skill.id}>{String(index + 1).padStart(2, '0')}  <Text bold>{skill.name}</Text>  <Text dimColor>{skill.canonicalPath}</Text></Text>)
+          : <Text dimColor>{t(locale, 'noManagedSkills')}</Text>}
+      </Box>
+      <Box flexDirection="column" marginTop={1}>
+        <Text dimColor>{t(locale, 'statsHint')}:  askx skills stats</Text>
+        <Text dimColor>{t(locale, 'manageHint')}:  askx skills scan / askx skills sync / askx skills link</Text>
+      </Box>
+    </Frame>
+  )
+}
+
 /** usage 计划终端视图。 */
 function SkillUsagePlanView({ plan, locale }: { plan: SkillUsagePlan; locale: AskXLocale }) {
   return (
@@ -555,7 +578,7 @@ function SettingsView({ settings, changed = false }: { settings: AskXConfig; cha
 
 const program = new Command()
 /** 当前 AskAgent X 发布版本，格式为“年.月日.当日次数”。 */
-const askxVersion = '26.805.1'
+const askxVersion = '26.805.2'
 program.name('askx').description(t(activeLocale, 'appDescription')).version(askxVersion)
 
 const modules = program.command('modules').description(t(activeLocale, 'modulesDescription'))
@@ -659,6 +682,48 @@ async function resolveSourcePlatforms(values: string[], initialized: boolean, js
   process.exitCode = 2
   return null
 }
+
+/** 裸 `askx skills` 命令：查看列表，首次使用时完成扫描与平台关联。 */
+skills.action(async () => {
+  const bootstrap = await skillsManager.bootstrap()
+  if (bootstrap.initialized) {
+    render(<ManagedSkillListView bootstrap={bootstrap} locale={activeLocale} />)
+    return
+  }
+  if (!process.stdin.isTTY) {
+    render(<NoticeView title={t(activeLocale, 'skillsTitle')} message={t(activeLocale, 'platformSelectionRequired')} />)
+    process.exitCode = 2
+    return
+  }
+
+  const platforms = await choosePlatforms(activeLocale)
+  let settings = await settingsStore.read()
+  if (settings.skills.platforms.join(',') !== platforms.join(',')) {
+    settings = await settingsStore.update({ skills: { platforms } }, { source: 'cli', expectedRevision: settings.revision })
+  }
+  const report = await skillsManager.scan(platforms)
+  const issues = scanIssues(report)
+  render(<SkillsScanView report={report} issues={issues} status={issues.length ? 'warning' : 'ok'} locale={activeLocale} />)
+
+  const linkPlatforms = await choosePlatforms(activeLocale, 'link')
+  const plan = await skillsManager.planOnboarding({
+    platforms,
+    detectionFingerprint: report.fingerprint,
+    settingsRevision: settings.revision,
+    decisions: createSafeSyncDecisions(report),
+    managementChoices: [],
+    mode: 'connect',
+    linkPlatforms,
+  })
+  render(<SkillsBatchPlanView plan={plan} report={report} locale={activeLocale} title={t(activeLocale, 'syncPlan')} />)
+  if (!await authorizeWrite({}, plan)) {
+    render(<NoticeView title={t(activeLocale, 'skillsTitle')} message={t(activeLocale, 'cancelled')} />)
+    return
+  }
+  const latestSettings = await settingsStore.read()
+  await skillsManager.applyOnboarding(plan, latestSettings.revision, consentFor(plan))
+  render(<ManagedSkillListView bootstrap={await skillsManager.bootstrap()} locale={activeLocale} />)
+})
 
 /** 单个平台软链计划执行状态。 */
 interface PlatformLinkExecution {
@@ -884,6 +949,20 @@ skills.command('status').description(t(activeLocale, 'statusDescription')).optio
   else render(<StatusView status={issues.length ? 'warning' : 'ok'} issues={issues} fingerprint={report.fingerprint} locale={activeLocale} />)
 })
 
+skills
+  .command('clear')
+  .description(t(activeLocale, 'clearDescription'))
+  .option('--json', t(activeLocale, 'jsonDescription'))
+  .option('-y, --yes', t(activeLocale, 'yesDescription'))
+  .action(async (options: SkillsWriteOptions) => {
+    const plan = await skillsManager.planCanonicalSource('clear')
+    if (!options.json) render(<CanonicalPlanView plan={plan} locale={activeLocale} title={t(activeLocale, 'clearPlan')} />)
+    if (!await authorizeWrite(options, plan)) return
+    const receipt = await skillsManager.applyCanonicalSource(plan, consentFor(plan))
+    if (options.json) console.log(JSON.stringify(receipt, null, 2))
+    else render(<NoticeView title={t(activeLocale, 'clearResult')} message={receipt.createdBackup?.version ?? receipt.status} />)
+  })
+
 const history = skills.command('history').description(t(activeLocale, 'historyDescription'))
 history.command('list').option('--json', t(activeLocale, 'jsonDescription')).action(async ({ json }: { json?: boolean }) => {
   const receipts = await skillsManager.history()
@@ -985,6 +1064,20 @@ settings
     const current = await settingsStore.read()
     if (json) console.log(JSON.stringify(current, null, 2))
     else render(<SettingsView settings={current} />)
+  })
+
+settings
+  .command('reset')
+  .description(t(activeLocale, 'settingsResetDescription'))
+  .option('--json', t(activeLocale, 'jsonDescription'))
+  .option('-y, --yes', t(activeLocale, 'yesDescription'))
+  .action(async (options: SkillsWriteOptions) => {
+    const plan = await settingsStore.createResetPlan()
+    if (!options.json) render(<NoticeView title={t(activeLocale, 'settingsResetPlan')} message={`${t(activeLocale, 'planHash')} ${plan.hash}\n${plan.operations[0]?.target}`} />)
+    if (!await authorizeWrite(options, plan)) return
+    const updated = await settingsStore.applyResetPlan(plan, consentFor(plan), 'cli')
+    if (options.json) console.log(JSON.stringify({ plan, settings: updated }, null, 2))
+    else render(<NoticeView title={t(activeLocale, 'settingsResetResult')} message={`${t(activeLocale, 'revision')} #${updated.revision}`} />)
   })
 
 const settingsSet = settings.command('set').description(t(activeLocale, 'settingsSetDescription'))
@@ -1125,9 +1218,11 @@ ui
   .command('token')
   .description(t(activeLocale, 'tokenDescription'))
   .action(async () => {
-    const activeToken = await readUiSessionToken()
-    if (activeToken) {
-      console.log(activeToken)
+    const activeSession = await readUiSession()
+    if (activeSession) {
+      const quickUrl = `http://127.0.0.1:${activeSession.port}/?token=${encodeURIComponent(activeSession.token)}`
+      console.log(`${t(activeLocale, 'tokenUrl')}: ${quickUrl}`)
+      console.log(`${t(activeLocale, 'tokenValue')}: ${activeSession.token}`)
       return
     }
 
@@ -1135,7 +1230,8 @@ ui
     try {
       const response = await fetch(`http://127.0.0.1:4242/api/health?token=${developmentToken}`)
       if (response.ok) {
-        console.log(developmentToken)
+        console.log(`${t(activeLocale, 'tokenUrl')}: http://127.0.0.1:4242/?token=${developmentToken}`)
+        console.log(`${t(activeLocale, 'tokenValue')}: ${developmentToken}`)
         return
       }
     } catch {

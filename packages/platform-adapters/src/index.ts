@@ -71,7 +71,7 @@ export function platformDescriptors(
   return [
     { id: 'agents', name: 'Agents shared', skillsDir: path.join(home, '.agents', 'skills') },
     { id: 'codex', name: 'ChatGPT / Codex', command: 'codex', skillsDir: path.join(home, '.codex', 'skills') },
-    { id: 'claude', name: 'Claude Code', command: 'claude', skillsDir: path.join(home, '.claude', 'skills') },
+    { id: 'claude', name: 'Claude / Claude Code', command: 'claude', skillsDir: path.join(home, '.claude', 'skills') },
     { id: 'cursor', name: 'Cursor', command: 'cursor', skillsDir: path.join(home, '.cursor', 'skills') },
   ]
 }
@@ -152,6 +152,29 @@ async function readCommandVersion(command: string, runtimePlatform: NodeJS.Platf
 }
 
 /**
+ * 生成桌面客户端和用户配置根目录的已知安装标记。
+ * @param descriptor 平台描述。
+ * @param home 用户主目录。
+ * @param runtimePlatform Node 运行时平台。
+ * @returns 可用于只读安装检测的路径列表。
+ */
+function installationMarkers(descriptor: PlatformDescriptor, home: string, runtimePlatform: NodeJS.Platform): string[] {
+  const path = runtimePlatform === 'win32' ? win32 : posix
+  const configRoot = dirname(descriptor.skillsDir)
+  if (descriptor.id === 'agents') return [descriptor.skillsDir]
+  if (runtimePlatform === 'darwin') {
+    const appNames = descriptor.id === 'codex' ? ['Codex.app', 'ChatGPT.app'] : descriptor.id === 'claude' ? ['Claude.app'] : ['Cursor.app']
+    return [configRoot, ...appNames.flatMap((name) => [path.join(home, 'Applications', name), path.join('/Applications', name)])]
+  }
+  if (runtimePlatform === 'win32') {
+    const appNames = descriptor.id === 'codex' ? ['Codex', 'ChatGPT'] : descriptor.id === 'claude' ? ['Claude'] : ['Cursor']
+    return [configRoot, ...appNames.map((name) => path.join(home, 'AppData', 'Local', 'Programs', name))]
+  }
+  const desktopNames = descriptor.id === 'codex' ? ['codex.desktop', 'chatgpt.desktop'] : descriptor.id === 'claude' ? ['claude.desktop'] : ['cursor.desktop']
+  return [configRoot, ...desktopNames.map((name) => path.join(home, '.local', 'share', 'applications', name))]
+}
+
+/**
  * 只读检测平台命令、预设目录和目录链接能力。
  * @param home 用户主目录。
  * @param runtimePlatform Node 运行时平台。
@@ -164,11 +187,13 @@ export async function detectPlatforms(
   return Promise.all(
     platformDescriptors(home, resolvePlatformPathFlavor(runtimePlatform)).map(async (descriptor) => {
       const version = descriptor.command ? await readCommandVersion(descriptor.command, runtimePlatform) : undefined
-      const installed = descriptor.id === 'agents' ? await pathExists(descriptor.skillsDir) : Boolean(version)
+      const detectedMarker = (await Promise.all(installationMarkers(descriptor, home, runtimePlatform).map(async (path) => await pathExists(path) ? path : undefined))).find(Boolean)
+      const installed = Boolean(version || detectedMarker)
       const linkSupported = await canBindSkillsRoot(descriptor.skillsDir)
       const notes: string[] = []
       if (descriptor.id === 'agents') notes.push('Shared discovery directory; not a standalone Agent installation.')
       if (descriptor.id === 'cursor') notes.push('Cursor may discover Skills from additional compatible directories.')
+      if (!version && detectedMarker && descriptor.id !== 'agents') notes.push(`Detected desktop application or user configuration: ${detectedMarker}`)
       if (!linkSupported) notes.push('The Skills root path is not writable and cannot be replaced with a managed directory link.')
       return {
         ...descriptor,

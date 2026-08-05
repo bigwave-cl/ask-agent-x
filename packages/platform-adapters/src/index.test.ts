@@ -35,7 +35,21 @@ describe('detectPlatforms', () => {
     process.env.PATH = ''
     try {
       const codex = (await detectPlatforms(home)).find((platform) => platform.id === 'codex')
-      expect(codex).toMatchObject({ installed: false, linkSupported: true })
+      expect(codex).toMatchObject({ installed: true, linkSupported: true })
+    } finally {
+      process.env.PATH = originalPath
+    }
+  })
+
+  it('未配置 CLI 时仍能识别桌面客户端', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'askx-platform-home-'))
+    await mkdir(join(home, 'Applications', 'Claude.app'), { recursive: true })
+    const originalPath = process.env.PATH
+    process.env.PATH = ''
+    try {
+      const claude = (await detectPlatforms(home, 'darwin')).find((platform) => platform.id === 'claude')
+      expect(claude).toMatchObject({ installed: true, linkSupported: true })
+      expect(claude?.notes.join(' ')).toContain('Claude.app')
     } finally {
       process.env.PATH = originalPath
     }

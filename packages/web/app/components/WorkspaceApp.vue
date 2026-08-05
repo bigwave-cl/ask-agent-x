@@ -19,7 +19,7 @@ const agents: Array<{ id: ManagedPlatformId; name: string; icon: AskxIconName; n
   { id: 'cursor', ...skillPlatformPresentations.cursor, note: '~/.cursor/skills' },
 ]
 
-type FeedbackKey = 'feedbackConnecting' | 'feedbackConnected' | 'feedbackSynced' | 'feedbackExternal' | 'feedbackMinPlatform' | 'feedbackUnsaved' | 'feedbackSaved' | 'feedbackReadFailed' | 'feedbackSaveFailed' | 'feedbackConflict'
+type FeedbackKey = 'feedbackConnecting' | 'feedbackConnected' | 'feedbackSynced' | 'feedbackExternal' | 'feedbackMinPlatform' | 'feedbackUnsaved' | 'feedbackSaved' | 'feedbackReadFailed' | 'feedbackSaveFailed' | 'feedbackConflict' | 'feedbackReset'
 type AuthState = 'checking' | 'authenticated' | 'unauthenticated'
 type WorkspaceView = 'home' | 'skills-x' | 'theme' | 'settings'
 type VisualTheme = 'light' | 'dark' | 'system'
@@ -32,7 +32,7 @@ const props = withDefaults(defineProps<{
   login: false,
 })
 
-const tokenCommand = 'pnpm askx ui token'
+const tokenCommand = 'askx ui token'
 const pipelineKeys = ['pipelineDetect', 'pipelinePlan', 'pipelineConsent', 'pipelineApply', 'pipelineVerify', 'pipelineRollback'] as const
 const localePath = useLocalePath()
 const { locale, setLocale: setI18nLocale, t } = useI18n()
@@ -54,6 +54,8 @@ const draft = reactive<{ backupBeforeLink: boolean; platforms: ManagedPlatformId
 })
 const loading = ref(true)
 const saving = ref(false)
+const resetOpen = ref(false)
+const resetting = ref(false)
 const dirty = ref(false)
 const feedbackKey = ref<FeedbackKey>('feedbackConnecting')
 const feedbackArgs = ref<Record<string, string | number>>({})
@@ -291,6 +293,30 @@ async function saveSettings() {
     }
   } finally {
     saving.value = false
+  }
+}
+
+/** 恢复全部共享设置默认值，同时保留 Skills、备份和链接数据。 */
+async function resetSettings(close: () => void) {
+  if (!settings.value || resetting.value) return
+  resetting.value = true
+  try {
+    const updated = await $fetch<AskXConfig>('/api/settings/reset', {
+      method: 'POST',
+      body: { revision: settings.value.revision, confirmed: true },
+    })
+    await applySettings(updated, 'feedbackReset', { revision: updated.revision })
+    close()
+  } catch (error) {
+    if (errorStatus(error) === 409) {
+      dirty.value = false
+      await refreshSettings(false, true)
+      setFeedback('feedbackConflict')
+    } else {
+      setFeedback('feedbackSaveFailed')
+    }
+  } finally {
+    resetting.value = false
   }
 }
 
@@ -559,8 +585,37 @@ onBeforeUnmount(() => {
               <p class="text-center text-[11px] text-muted-foreground">{{ copy.comingSoon }}</p>
             </CardFooter>
           </Card>
+
+          <Card class="border-destructive/30">
+            <CardHeader>
+              <CardTitle>{{ copy.resetSettingsTitle }}</CardTitle>
+              <CardDescription>{{ copy.resetSettingsDescription }}</CardDescription>
+            </CardHeader>
+            <CardFooter>
+              <Button variant="destructive" size="40" :disabled="loading || saving" data-testid="reset-settings" @click="resetOpen = true">
+                <Icon name="askx-actions:refresh" />{{ copy.resetSettingsAction }}
+              </Button>
+            </CardFooter>
+          </Card>
         </div>
       </section>
+
+      <CsResponsiveOverlayDialogDrawer
+        v-model:open="resetOpen"
+        :title="copy.resetSettingsConfirmTitle"
+        :description="copy.resetSettingsConfirmDescription"
+        :dismissible="!resetting"
+        :close-disabled="resetting"
+        :close-label="copy.resetSettingsCancel"
+      >
+        <p class="rounded-2xl border bg-muted/20 p-4 text-xs leading-5 text-muted-foreground">{{ copy.resetSettingsPreserved }}</p>
+        <template #footer="{ close }">
+          <Button variant="outline" :disabled="resetting" @click="close">{{ copy.resetSettingsCancel }}</Button>
+          <Button variant="destructive" :disabled="resetting" data-testid="confirm-reset-settings" @click="resetSettings(close)">
+            <Icon name="askx-actions:refresh" :class="{ 'animate-spin': resetting }" />{{ resetting ? copy.resettingSettings : copy.confirmResetSettings }}
+          </Button>
+        </template>
+      </CsResponsiveOverlayDialogDrawer>
     </CsWorkspaceContent>
 
   </div>

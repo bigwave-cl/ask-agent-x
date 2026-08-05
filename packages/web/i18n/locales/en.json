@@ -186,7 +186,17 @@
     "feedbackSaved": "WEB saved · revision #{revision}",
     "feedbackReadFailed": "Failed to read settings",
     "feedbackSaveFailed": "Failed to save settings; try again",
-    "feedbackConflict": "Settings changed elsewhere; reloading…"
+    "feedbackConflict": "Settings changed elsewhere; reloading…",
+    "feedbackReset": "All shared settings were restored to defaults (revision #{revision}).",
+    "resetSettingsTitle": "Restore all default settings",
+    "resetSettingsDescription": "Reset language, theme, platform selection and the backup option.",
+    "resetSettingsAction": "Reset settings",
+    "resetSettingsConfirmTitle": "Restore all default settings?",
+    "resetSettingsConfirmDescription": "The current shared settings will be replaced with defaults and saved as a new revision.",
+    "resetSettingsPreserved": "Skills, the canonical source, backups, managed links and transaction history are preserved.",
+    "resetSettingsCancel": "Cancel",
+    "confirmResetSettings": "Confirm reset",
+    "resettingSettings": "Resetting…"
   },
   "skills": {
     "eyebrow": "SKILL CONTROL ORBIT",

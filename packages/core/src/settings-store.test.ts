@@ -55,4 +55,29 @@ describe('SettingsStore', () => {
       store.update({ skills: { backupBeforeLink: true } }, { source: 'web', expectedRevision: 0 }),
     ).rejects.toBeInstanceOf(SettingsConflictError)
   })
+
+  it('按已授权计划恢复全部共享设置默认值', async () => {
+    const store = new SettingsStore(await mkdtemp(join(tmpdir(), 'askx-settings-')))
+    await store.update({ locale: 'en', themeColor: 'rose', skills: { backupBeforeLink: false, platforms: ['cursor'] } }, { source: 'web' })
+    const plan = await store.createResetPlan()
+
+    const updated = await store.applyResetPlan(plan, { planHash: plan.hash, confirmedAt: new Date().toISOString() }, 'cli')
+
+    expect(updated).toMatchObject({
+      revision: 2,
+      updatedBy: 'cli',
+      locale: 'zh-CN',
+      themeColor: 'cyan',
+      skills: { backupBeforeLink: true, platforms: ['codex', 'claude', 'cursor'] },
+    })
+  })
+
+  it('拒绝配置变化后的过期重置计划', async () => {
+    const store = new SettingsStore(await mkdtemp(join(tmpdir(), 'askx-settings-')))
+    const plan = await store.createResetPlan()
+    await store.update({ locale: 'en' }, { source: 'web' })
+
+    await expect(store.applyResetPlan(plan, { planHash: plan.hash, confirmedAt: new Date().toISOString() }, 'cli'))
+      .rejects.toBeInstanceOf(SettingsConflictError)
+  })
 })

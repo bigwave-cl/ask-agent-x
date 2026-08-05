@@ -9,7 +9,13 @@ npm install --global askagent-x
 askx --help
 ```
 
-全局安装完成后会通过 npm `postinstall` 自动启动后台 UI。使用 `askx ui start|status|stop|restart` 管理服务，使用 `askx ui token` 获取当前会话 token。
+全局安装完成后会通过 npm `postinstall` 自动启动后台 UI。使用 `askx ui start|status|stop|restart` 管理服务，使用 `askx ui token` 获取快速登录地址和当前会话 token。
+
+使用 `askx settings reset` 恢复全部共享设置默认值；该命令不会删除 Skills、备份或受管链接。
+
+运行 `askx skills` 可直接查看当前 Skill 列表；首次运行会依次选择扫描平台、展示文件夹与待处理 Skill、选择软链平台并确认保存。使用 `askx skills stats` 查看版本、使用次数和关联目标统计。
+
+使用 `askx skills clear` 按计划清空当前 Skill 列表并创建可恢复备份；使用 `askx skills backups list|restore|remove` 管理清理后的备份。
 
 ## 卸载
 

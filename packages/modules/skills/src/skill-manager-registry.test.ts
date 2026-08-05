@@ -51,6 +51,24 @@ describe('Skill Manager Registry', () => {
     expect(current?.skills.skill_demo?.content_sha256).toBe('a'.repeat(64))
   })
 
+  it('统计只展示当前仍可用的 Skill', async () => {
+    const { store } = await createStore()
+    const initial = await store.read()
+    await store.write({
+      ...initial!,
+      skills: {
+        skill_available: { current_name: 'available', aliases: [], version: '26.805.1', content_sha256: 'a'.repeat(64), usage_count: 2, targets: {} },
+        skill_removed: { current_name: 'removed', aliases: [], version: '26.805.1', content_sha256: 'b'.repeat(64), usage_count: 9, targets: {} },
+      },
+    }, initial!.revision)
+
+    const report = await store.stats({ managed: [], unmanaged: [] }, new Set(['skill_available']))
+
+    expect(report.totalSkills).toBe(1)
+    expect(report.totalUsage).toBe(2)
+    expect(report.items.map(item => item.skillId)).toEqual(['skill_available'])
+  })
+
   it('系统 Skill 缺失时可从最新有效备份恢复 Registry', async () => {
     const { store, systemSkill } = await createStore()
     const current = await store.read()

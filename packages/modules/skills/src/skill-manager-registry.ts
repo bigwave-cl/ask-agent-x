@@ -119,7 +119,7 @@ export interface SkillStatsReport {
   revision: number
   /** 更新时间。 */
   updatedAt: string
-  /** Registry 中的 Skill 数量。 */
+  /** 当前可用且已登记统计的 Skill 数量。 */
   totalSkills: number
   /** 累计显式记录次数。 */
   totalUsage: number
@@ -278,13 +278,23 @@ export class SkillManagerRegistryStore {
     return { id: randomUUID(), planHash: plan.hash, appliedAt, skillId: plan.skillId, usageCount: saved.skills[plan.skillId]!.usage_count, registryRevision: saved.revision }
   }
 
-  /** 生成 Web 与 CLI 共用的统计报告。 */
-  async stats(management: SkillManagementOverview = { managed: [], unmanaged: [] }): Promise<SkillStatsReport> {
+  /**
+   * 生成 Web 与 CLI 共用的统计报告。
+   * @param management 当前 Skill 的版本管理覆盖状态。
+   * @param availableSkillIds 当前仍存在于 manifest 的 Skill 身份；未传入时统计完整 Registry。
+   * @returns 仅包含当前可用 Skill 的统计报告。
+   */
+  async stats(
+    management: SkillManagementOverview = { managed: [], unmanaged: [] },
+    availableSkillIds?: ReadonlySet<string>,
+  ): Promise<SkillStatsReport> {
     const registry = await this.read()
     if (!registry) throw new Error('AskX Skill Manager 尚未安装或 registry 不可用。')
     const versions: Record<string, number> = {}
     const targetStatuses: Record<string, number> = {}
-    const items = Object.entries(registry.skills).map(([skillId, entry]) => {
+    const items = Object.entries(registry.skills)
+      .filter(([skillId]) => !availableSkillIds || availableSkillIds.has(skillId))
+      .map(([skillId, entry]) => {
       versions[entry.version || 'unknown'] = (versions[entry.version || 'unknown'] ?? 0) + 1
       const targets = Object.values(entry.targets)
       for (const target of targets) targetStatuses[target.status] = (targetStatuses[target.status] ?? 0) + 1
@@ -305,7 +315,7 @@ export class SkillManagerRegistryStore {
           ...(target.synced_at ? { syncedAt: target.synced_at } : {}),
         })),
       }
-    }).sort((left, right) => right.usageCount - left.usageCount || left.name.localeCompare(right.name))
+      }).sort((left, right) => right.usageCount - left.usageCount || left.name.localeCompare(right.name))
     return {
       revision: registry.revision,
       updatedAt: registry.updated_at,

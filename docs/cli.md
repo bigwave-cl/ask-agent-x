@@ -1,554 +1,627 @@
 # AskAgent X CLI 操作手册
 
-本文档对应 AskAgent X `26.805.1` 的当前实现，介绍 `askx` 命令的用途、参数、操作顺序和安全边界。
+本文档对应 AskAgent X `26.805.2`，按照 `askx --help` 中的命令顺序说明用途、语法、操作过程、输出和影响。
 
 - [返回项目 README](../README.md)
 
-## 1. 安装与运行
+## 1. 安装与通用用法
 
-通过 npm 全局安装：
+### 安装
 
 ```bash
 npm install --global askagent-x
 askx --help
 ```
 
-全局安装会通过 npm `postinstall` 自动启动后台 UI。使用 `askx ui start|status|stop|restart` 管理后台服务，使用 `askx ui token` 获取当前 token。
+安装完成后，npm `postinstall` 会自动启动本地 Web 服务。使用 `askx ui status` 查看服务状态，使用 `askx ui token` 获取快速登录地址。
 
-卸载使用 `askx uninstall`，由 CLI 先停止服务再调用 npm。现代 npm 不执行可靠的卸载生命周期钩子，直接运行 `npm uninstall -g askagent-x` 可能留下仍在运行的后台进程；如需直接使用 npm，应先运行 `askx ui stop`。npm 的 `--ignore-scripts` 会跳过安装后的自动启动。
-
-## 2. 核心概念
-
-### 2.1 统一源
-
-AskX 默认把受管 Skill 保存到：
-
-```text
-~/.askx/skills
-```
-
-统一源是 AskX 管理的唯一 Skill 内容来源。平台完成整目录绑定后，其 Skills 根目录会指向统一源，因此只需更新一份内容，各平台就能读取相同版本。
-
-### 2.2 支持的平台
-
-| CLI 标识 | 展示名称 | 默认 Skills 目录 |
-| --- | --- | --- |
-| `codex` | ChatGPT / Codex | `~/.codex/skills` |
-| `claude` | Claude Code | `~/.claude/skills` |
-| `cursor` | Cursor | `~/.cursor/skills` |
-
-`askx doctor` 还会检测 `~/.agents/skills`，但它目前只是共享发现目录，不属于 `--platform` 可管理范围。
-
-macOS 和 Linux 使用目录软链接；原生 Windows 使用目录 junction。CLI 参数和操作语义保持一致。
-
-### 2.3 扫描、同步与软链不是同一操作
-
-| 操作 | 是否读取 Skill | 是否修改统一源 | 是否修改平台目录 |
-| --- | --- | --- | --- |
-| `skills scan` | 是 | 否 | 否 |
-| `skills sync` | 是 | 是，复制安全版本 | 否 |
-| `skills link` | 可能，只读校验计划前置条件 | 否 | 是，建立或恢复整目录绑定 |
-| `skills unlink` | 否 | 否 | 是，无损取消绑定并恢复原目录 |
-
-`scan` 只读是指不会修改任何 Skill 内容或平台目录；如果命令选择了新的平台范围，它会把该范围保存到共享设置。
-
-## 3. 推荐操作顺序
-
-首次使用建议依次执行：
+如果安装时使用 `--ignore-scripts`，自动启动会被跳过，需要手动执行：
 
 ```bash
-# 1. 检查平台、目录和链接条件
+askx ui start
+```
+
+### 通用帮助
+
+```bash
+askx --version
+askx --help
+askx <command> --help
+```
+
+### 通用参数
+
+| 参数 | 说明 |
+| --- | --- |
+| `--json` | 输出适合脚本读取的 JSON |
+| `-y, --yes` | 明确授权当前已展示的写入计划，跳过交互确认 |
+| `-p, --platform <platform>` | 指定 `codex`、`claude` 或 `cursor`；可重复或用逗号分隔 |
+| `-d, --directory <path>` | 指定额外的本地 Skill 文件夹 |
+
+除只读命令外，AskAgent X 会先生成不可变计划。交互终端按 `Y` 确认，按 `N` 或 `Esc` 取消；非交互环境必须显式传入 `--yes`。
+
+## 2. 从关联到统计、清理的完整流程
+
+本节是一条可以从上往下直接执行的完整操作路径。只想完成首次关联、查看统计并安全清理时，不需要先阅读后面的命令参考。
+
+### 第一步：检查本机平台
+
+```bash
 askx doctor
+```
 
-# 2. 只读查看已有 Skill
-askx skills scan --platform claude
+确认 ChatGPT/Codex、Claude、Cursor 的安装状态及 Skills 文件夹地址。该步骤只读，不修改文件。
 
-# 3. 把安全版本同步到统一源
-askx skills sync --platform claude
+### 第二步：完成首次关联
 
-# 4. 将平台的整个 Skills 目录绑定到统一源
-askx skills link --platform claude
+```bash
+askx skills
+```
 
-# 5. 检查当前扫描拓扑
+按照终端提示依次完成：
+
+1. 选择哪些平台包含需要扫描的 Skill。
+2. 核对终端输出的平台 Skills 文件夹地址。
+3. 查看扫描得到的待处理 Skill 列表。
+4. 选择需要设置目录软链的平台。
+5. 核对接管、合并、保留、冲突和软链操作。
+6. 按 `Y` 确认保存。
+
+完成后，终端会输出统一目录、已关联平台和最终 Skill 列表。
+
+### 第三步：查看当前 Skill 列表
+
+```bash
+askx skills
+```
+
+初始化完成后再次运行不再进入引导，而是直接显示当前可用 Skill。统一目录默认为 `~/.askx/skills`。
+
+### 第四步：记录使用并查看统计
+
+先从列表中找到 Skill 名称，再记录一次明确使用：
+
+```bash
+askx skills usage record <skill-name>
+```
+
+确认计划后查看统计：
+
+```bash
+askx skills stats
+```
+
+统计包含当前可用 Skill 的版本、usage 和关联目标。已经清空或移除的 Skill 不会显示。
+
+### 第五步：日常扫描、同步和软链调整
+
+只检查平台目录，不修改内容：
+
+```bash
+askx skills scan --platform codex,claude,cursor
 askx skills status
 ```
 
-需要恢复平台绑定前的目录时：
+把新 Skill 保存到统一源，但暂不设置软链：
 
 ```bash
-askx skills unlink --platform claude
+askx skills sync --platform codex --platform claude
 ```
 
-取消绑定不会把统一源内容同步回平台，也不会删除统一源。之后再次执行 `skills link` 会恢复受管绑定。
-
-## 4. 顶层命令
-
-| 命令 | 作用 |
-| --- | --- |
-| `askx modules list` | 查看内置模块 |
-| `askx doctor` | 检测 Agent 安装、Skills 目录和整目录绑定条件 |
-| `askx skills` | 扫描、同步和管理 Skills 根目录绑定 |
-| `askx settings` | 读取或更新 CLI/Web 共享设置 |
-| `askx ui` | 启动或管理本地 Web 界面 |
-| `askx uninstall` | 停止后台服务并全局卸载 AskAgent X |
-
-可在任意层级追加 `--help` 查看当前版本的命令帮助：
+新增或恢复平台软链：
 
 ```bash
-askx --help
-askx skills --help
-askx skills sync --help
+askx skills link --platform codex --platform claude
 ```
 
-## 5. 环境诊断
+无损停用平台软链并恢复平台原目录：
+
+```bash
+askx skills unlink --platform codex --platform claude
+```
+
+### 第六步：查看可恢复记录
+
+执行清理前先查看事务和已有备份：
+
+```bash
+askx skills history list
+askx skills backups list
+```
+
+### 第七步：清空当前 Skill 列表
+
+如果还需要平台恢复各自原目录，先执行 `askx skills unlink`。然后清空统一 Skill 列表：
+
+```bash
+askx skills clear
+```
+
+命令会先展示当前 Skill 数量、是否创建备份和计划 Hash。按 `Y` 后才会清空；用户 Skill 会进入长期备份，系统 Skill Manager、事务记录和平台软链关系不会被静默删除。
+
+清理后验证：
+
+```bash
+askx skills
+askx skills stats
+askx skills backups list
+```
+
+Skill 列表和统计只显示当前仍可用的内容，历史 Registry 条目不会继续出现在统计中。
+
+### 第八步：恢复或永久删除备份
+
+需要恢复时：
+
+```bash
+askx skills backups list
+askx skills backups restore <backup-version>
+askx skills
+```
+
+确认不再需要某份备份后永久删除：
+
+```bash
+askx skills backups remove <backup-version>
+```
+
+### 第九步：恢复默认设置
+
+```bash
+askx settings reset
+```
+
+这只恢复语言、主题、平台选择和备份开关，不会清空 Skill。清空 Skill 必须使用 `askx skills clear`。
+
+### 第十步：登录 Web 或安全卸载
+
+```bash
+askx ui status
+askx ui token
+```
+
+不再使用 AskAgent X 时：
+
+```bash
+askx uninstall
+```
+
+该命令会先停止后台 Web 服务，再调用 npm 完成全局卸载。
+
+## 3. `askx modules`
 
 ### `askx modules list`
 
-列出当前注册到 Core 的 AskX 模块。该命令不写入配置或文件。
+用途：查看当前注册到 AskAgent X Core 的内置模块。
 
 ```bash
 askx modules list
 ```
 
-### `askx doctor [--json]`
+操作过程：读取当前模块注册表并输出模块名称。该命令不扫描平台、不修改配置或文件。
 
-检查平台命令版本、默认 Skills 目录是否存在，以及目录是否具备切换为受管链接的条件。
+## 4. `askx doctor`
+
+用途：检查 ChatGPT/Codex、Claude、Cursor 的安装状态、Skills 文件夹和目录软链条件。
 
 ```bash
 askx doctor
 askx doctor --json
 ```
 
-`--json` 适用于脚本读取，不包含 Ink 装饰输出。
+操作过程：
 
-## 6. Skills 命令
+1. 检查 CLI 版本、桌面客户端和用户配置目录。
+2. 输出各平台默认 Skills 文件夹。
+3. 检查目标路径是否允许建立受管目录软链。
 
-### 6.1 公共参数
+默认目录：
 
-| 参数 | 适用命令 | 说明 |
-| --- | --- | --- |
-| `-p, --platform <platform>` | `scan`、`sync`、`link`、`unlink` | 指定 `codex`、`claude` 或 `cursor`；可以重复传入，也可以使用逗号分隔 |
-| `-d, --directory <path>` | `scan`、`sync` | 添加只读扫描来源；`sync` 成功后最多保存 3 个自定义来源 |
-| `-d, --directory <path>` | `link` | 将自定义目录作为使用端绑定到统一源；最多配置 3 个自定义绑定目录 |
-| `--json` | `scan`、`sync`、`link`、`unlink` | 输出机器可读 JSON |
-| `-y, --yes` | `sync`、`link`、`unlink` | 授权当前生成的不可变计划，跳过交互确认 |
-| `--manage-all` | `sync` | 为本次将进入统一源的全部符合条件 Skill 初始化或刷新版本管理 |
-| `--manage-skill <name>` | `sync` | 为指定 Skill 初始化或刷新版本管理；可以重复传入 |
-| `--migrate-bobo <name>` | `sync` | 保留原 `skill_id/version`，把指定 Skill 从个人 manager 迁移为 AskX 身份；可以重复传入 |
+| 平台 | Skills 文件夹 |
+| --- | --- |
+| ChatGPT / Codex | `~/.codex/skills` |
+| Claude / Claude Code | `~/.claude/skills` |
+| Cursor | `~/.cursor/skills` |
+| Agents shared | `~/.agents/skills`，只读发现，不属于当前可管理平台 |
 
-平台参数的两种写法等价：
+该命令只读。桌面客户端已安装但 CLI 未加入 `PATH` 时，仍可通过应用或配置目录识别。
+
+## 5. `askx skills`
+
+### `askx skills`
+
+用途：查看当前 Skill 列表；首次使用时完成扫描、接管和平台软链设置。
 
 ```bash
-askx skills scan --platform codex --platform claude
+askx skills
+```
+
+已初始化时直接输出：
+
+- AskX 统一 Skill 文件夹。
+- 当前已关联平台。
+- 当前可用 Skill 列表及其文件夹。
+- 查看统计命令 `askx skills stats`。
+
+首次使用时依次执行：
+
+1. 选择存放 Skill 的平台。
+2. 输出所选平台的 Skills 文件夹地址。
+3. 扫描并列出需要接管、合并、保留或处理冲突的 Skill。
+4. 选择需要设置目录软链的平台。
+5. 展示完整保存计划并等待确认。
+6. 保存后输出最终 Skill 列表。
+
+统一源位于 `~/.askx/skills`。平台建立整目录软链后，会读取这份统一列表。
+
+### `askx skills scan`
+
+用途：只扫描指定文件夹并输出待处理 Skill，不复制内容、不建立软链。
+
+```bash
+askx skills scan --platform codex
 askx skills scan --platform codex,claude
+askx skills scan --platform cursor --directory /absolute/path/to/skills
+askx skills scan --platform codex --json
 ```
 
-### 6.2 `askx skills scan`
+操作过程：读取平台和自定义文件夹，按 Skill 名称与内容指纹合并结果，标记内容冲突、无效 Skill 和失效链接。
 
-只读扫描选中平台的 Skills 根目录，按名称、内容指纹和有效性整理扫描结果。
+首次交互运行时可以不传 `--platform`，CLI 会打开平台多选；非交互环境必须明确传入平台。
 
-```bash
-askx skills scan --platform claude
-askx skills scan --platform codex --platform cursor --json
-askx skills scan --platform codex --directory /absolute/path/to/skills
-```
+### `askx skills sync`
 
-行为说明：
-
-- 不复制、不删除、不执行 Skill 中的脚本。
-- 不建立或取消软链。
-- 已初始化时不传 `--platform`，默认使用共享设置中的平台。
-- 首次交互运行时不传平台，会打开 Ink 多选界面。
-- 首次非交互运行必须显式传入平台，否则返回 `PLATFORM_SELECTION_REQUIRED`。
-
-### 6.3 `askx skills sync`
-
-扫描平台和自定义来源，把能够安全处理的 Skill 复制到 `~/.askx/skills`。
+用途：把扫描到且可以安全处理的 Skill 保存到 AskX 统一源，但不设置平台软链。
 
 ```bash
-# 从 Claude Code 同步
 askx skills sync --platform claude
-
-# 同时扫描平台和额外目录
-askx skills sync \
-  --platform claude \
-  --directory /absolute/path/to/skills
-
-# 自动化环境
-askx skills sync --platform claude --yes --json
-
-# 同步并为符合条件的 Skill 初始化版本管理
-askx skills sync --platform claude --manage-all
-
-# 逐项纳管或迁移旧的 bobo 身份
-askx skills sync --platform claude \
-  --manage-skill my-skill \
-  --migrate-bobo bobo-managed-skill
+askx skills sync --platform codex --directory /absolute/path/to/skills
+askx skills sync --platform codex --manage-all
+askx skills sync --platform codex --manage-skill my-skill
+askx skills sync --platform codex --migrate-bobo old-skill
+askx skills sync --platform codex --yes --json
 ```
 
-默认处理规则：
+处理规则：
 
-- 单一有效版本：接管到统一源。
-- 多个平台内容完全一致：合并为统一版本。
-- 同名但内容不同：保留现状，不自动覆盖。
-- 无效 Skill、失效链接或无法解析的内容：保留现状并在结果中标记。
-- `sync` 不会顺便建立平台软链。
-- 一键纳入版本管理默认关闭；未选择时 Skill 仍可进入统一源，但不会记录版本、usage 或同步统计。
-- 改造只发生在 AskX staging 或既有统一源，不回写只读扫描来源。
+- 单一有效版本进入统一源。
+- 多个来源内容一致时合并为一个 Skill。
+- 同名但内容不同、无效或失效的 Skill 保留现状，不静默覆盖。
+- `--manage-all` 为全部符合条件的 Skill 开启版本与 usage 管理。
+- `--manage-skill <name>` 只管理指定 Skill，可重复传入。
+- `--migrate-bobo <name>` 保留旧 `skill_id` 和版本并迁移身份。
 
-写入前会生成包含扫描指纹、settings revision、manifest revision 和 `planHash` 的计划。交互终端使用 `Y` 确认，`N` 或 `Esc` 取消。
+写入前会显示扫描结果、处理数量、文件操作和计划 Hash；确认后才保存。
 
-### 6.4 `askx skills link`
+### `askx skills link`
 
-将选中平台的整个 Skills 根目录绑定到统一源，或恢复之前取消的受管绑定。
+用途：把平台的整个 Skills 文件夹关联到 AskX 统一源，或恢复之前停用的软链。
 
 ```bash
-# 绑定或恢复一个平台
 askx skills link --platform claude
-
-# 一次处理多个平台
 askx skills link --platform codex --platform cursor
-
-# 将自定义使用目录指向统一源
 askx skills link --directory /absolute/path/to/agent-skills
-
-# 自动化环境
-askx skills link --platform claude --yes --json
+askx skills link --platform codex --yes --json
 ```
 
-行为说明：
+操作过程：
 
-- 必须先完成 Skills 初始化，通常先运行一次 `skills sync`。
-- `link` 可能为计划新接入读取当前扫描指纹，但不会接管、合并或同步 Skill 内容。
-- 已接入的平台会返回 `skipped`，不会重复修改。
-- 已取消的平台执行恢复绑定。
-- 首次接入的平台会生成独立计划并保护原 Skills 根目录。
-- 多个平台逐个处理；单个平台失败不会阻止其他平台继续执行。
+1. 检查 Skills 管理是否已经初始化。
+2. 输出平台原 Skills 路径和统一源目标路径。
+3. 为首次关联的平台保护原文件夹。
+4. 展示计划并要求确认。
+5. 逐个平台建立或恢复目录软链。
 
-### 6.5 `askx skills unlink`
+已经关联的平台返回 `skipped`。单个平台失败不会阻止其他平台继续处理。
 
-无损取消选中平台的受管整目录链接，并恢复接入前的平台 Skills 目录。
+### `askx skills unlink`
+
+用途：无损停用平台软链，并恢复关联前的平台 Skills 文件夹。
 
 ```bash
 askx skills unlink --platform claude
-askx skills unlink --platform claude --yes --json
+askx skills unlink --platform codex --yes --json
 ```
 
-行为说明：
+该命令不会删除统一源，也不会把统一源内容复制回平台。路径被外部内容占用时会停止，不覆盖现有文件。之后运行 `askx skills link` 可以重新关联。
 
-- 不把统一源内容复制回平台。
-- 不删除或修改统一源中的 Skill。
-- AskX 创建的链接会移动到平台旁的受管停用位置。
-- 接入前的平台目录会从记录的备份关系中原样恢复。
-- 之后执行 `skills link` 可以重新绑定，仍不会触发同步。
-- 路径被其他内容占用时会安全失败，不覆盖占用内容。
+### `askx skills status`
 
-### 6.6 `askx skills status`
-
-扫描共享设置中启用的平台，展示内容冲突、失效链接和拓扑问题。
+用途：检查当前启用平台中的 Skill 冲突、失效链接和无效内容。
 
 ```bash
 askx skills status
+askx skills status --json
 ```
 
-该命令目前没有 `--json` 参数，也不是平台绑定清单。需要查看完整绑定状态时使用 Web 的 Skills X 页面。
+该命令只读。需要查看当前 Skill 列表和已关联平台时，直接运行 `askx skills`。
 
-### 6.7 `askx skills history list` 与 `askx skills rollback`
+### `askx skills clear`
 
-列出已完成事务，并按不可变计划回滚最新且状态未变化的批次：
+用途：清空当前统一 Skill 列表，并在有用户 Skill 时创建可恢复的长期备份。
+
+```bash
+askx skills clear
+askx skills clear --yes
+askx skills clear --yes --json
+```
+
+命令会先输出当前 Skill 数量、备份版本和计划 Hash。清理完成后可以通过 `askx skills backups list` 查看备份，通过 `askx skills backups restore <backup-version>` 恢复。
+
+### `askx skills history list`
+
+用途：查看已完成的 Skills 写入事务和回执 ID。
 
 ```bash
 askx skills history list
 askx skills history list --json
+```
+
+最新事务会优先显示。回执 ID 可用于下一条回滚命令。
+
+### `askx skills rollback <receipt-id>`
+
+用途：按回执回滚最新且状态未变化的 Skills 事务。
+
+```bash
 askx skills rollback <receipt-id>
 askx skills rollback <receipt-id> --yes --json
 ```
 
-回滚会先校验 receipt、manifest revision、原事务计划指纹和当前文件系统状态。授权与回滚计划 hash 不一致，或事务后又发生写入时都会拒绝执行。
+操作过程：重新校验回执、manifest revision、计划指纹和当前文件状态，然后展示回滚计划。事务之后出现外部修改时会拒绝回滚。
 
-### 6.8 `askx skills backups`
+### `askx skills stats`
 
-管理清空统一源时产生的长期备份：
-
-```bash
-askx skills backups list
-askx skills backups list --json
-askx skills backups restore <backup-version>
-askx skills backups remove <backup-version>
-```
-
-恢复和删除均先生成计划并要求确认；非交互模式必须使用 `--yes`。删除表示永久移出可恢复列表。
-
-### 6.9 `askx skills stats`
-
-读取默认 `askx-skill-manager` 中的本地 Registry，展示受管 Skill 的版本、显式 usage 和同步目标状态。
+用途：查看当前可用 Skill 的版本、显式使用次数和已关联目标状态。
 
 ```bash
 askx skills stats
 askx skills stats --json
 ```
 
-该命令只读，不扫描 Agent 行为，也不会上传数据。系统 Skill 缺失或损坏时，统计保持不可用，需先执行修复。
+统计只包含当前 manifest 和统一源中仍存在的 Skill。已经清空或移除的历史项不会显示；Registry 中的历史 usage 会保留，以便同一 Skill 恢复后继续使用。
 
-### 6.10 `askx skills usage record`
+### `askx skills usage record <name-or-id>`
 
-用户明确记录某个已纳入版本管理 Skill 的一次使用：
+用途：明确记录某个已纳入版本管理 Skill 的一次使用。
 
 ```bash
 askx skills usage record my-skill
 askx skills usage record skill_26_805_example --yes --json
 ```
 
-写入只增加 Registry 中的 `usage_count` 和 `last_used_at`，不会修改 Skill 内容、版本、业务 Hash 或 manifest。命令会先展示不可变计划，再要求确认。
+该操作只增加 `usage_count` 并更新 `last_used_at`，不会修改 Skill 内容、版本或业务 Hash。
 
-### 6.11 `askx skills manager repair`
+### `askx skills manager repair`
 
-修复缺失、损坏或低于内置版本的默认 `askx-skill-manager`：
+用途：修复缺失、损坏或过期的内置 `askx-skill-manager`。
 
 ```bash
 askx skills manager repair
 askx skills manager repair --yes --json
 ```
 
-修复会优先保留当前有效 Registry；当前 Registry 无效时，会从 AskX 自有备份中选择最新有效快照。没有任何有效快照时会明确提示原 usage 与同步统计无法恢复。修复只替换系统指令、脚本和自身元数据，不执行其中的 Python 脚本。
+修复优先保留当前有效 Registry；当前 Registry 无效时，从 AskX 自有备份恢复最新有效快照。该命令不会执行 Skill 附带脚本。
 
-### 6.12 默认 Skill Manager 与 local-only
+### `askx skills backups list`
 
-首次保存 Skills 配置时，AskX 会把内置 `askx-skill-manager` 作为计划中的明确操作安装到：
+用途：查看清空统一源时保存的长期备份。
 
-```text
-~/.askx/skills/askx-skill-manager
+```bash
+askx skills backups list
+askx skills backups list --json
 ```
 
-系统 Skill 不能通过普通删除或一键清空移除。`local_only: true` 的 Skill 保存在 `~/.askx/local-skills`，不参与平台根目录软链或导出；当前版本通过 Web 的“本地 Skills”页生成计划并迁移到共享统一源。
+### `askx skills backups restore <backup-version>`
 
-## 7. 共享设置
+用途：从指定长期备份恢复统一 Skill 列表。
 
-CLI 和 Web 共用：
-
-```text
-~/.askx/config.json
+```bash
+askx skills backups restore <backup-version>
+askx skills backups restore <backup-version> --yes --json
 ```
 
-每次写入都会增加 revision，并记录 `updatedBy`。Web 会轮询新 revision，因此 CLI 修改语言、主题或平台范围后，已打开的 Web 会自动同步。
+恢复前会重新校验备份并要求确认；平台软链关系保持不变。
 
-### `askx settings show [--json]`
+### `askx skills backups remove <backup-version>`
+
+用途：永久删除指定长期备份。
+
+```bash
+askx skills backups remove <backup-version>
+askx skills backups remove <backup-version> --yes --json
+```
+
+删除后不能通过 AskAgent X 恢复该备份。
+
+## 6. `askx settings`
+
+CLI 和 Web 共用 `~/.askx/config.json`，每次修改都会增加 revision。
+
+### `askx settings show`
+
+用途：查看当前共享配置。
 
 ```bash
 askx settings show
 askx settings show --json
 ```
 
-输出 revision、写入来源、平台、备份偏好、语言和主题色。
+输出语言、主题色、启用平台、挂接前备份开关、revision 和最近修改来源。
+
+### `askx settings reset`
+
+用途：恢复全部共享设置默认值。
+
+```bash
+askx settings reset
+askx settings reset --yes
+askx settings reset --yes --json
+```
+
+该命令重置语言、主题色、平台选择和备份开关，但不会删除 Skill、统一源、备份、受管链接或事务记录。
 
 ### `askx settings set backup <on|off>`
+
+用途：设置建立平台软链前是否保护原 Skills 文件夹。
 
 ```bash
 askx settings set backup on
 askx settings set backup off
 ```
 
-更新 CLI/Web 共享的备份偏好。Skills 模块仍会遵守自身的事务快照、路径保护和回滚约束；`off` 不代表允许静默覆盖平台目录。
-
 ### `askx settings set platforms <platforms...>`
+
+用途：设置默认扫描和管理的平台。
 
 ```bash
 askx settings set platforms codex claude
 askx settings set platforms codex,cursor
 ```
 
-设置后续默认扫描和管理的平台范围，至少需要一个有效平台。
+至少需要一个平台，只支持 `codex`、`claude`、`cursor`。
 
 ### `askx settings set language <zh-CN|en>`
+
+用途：设置 CLI 与 Web 共用的语言。
 
 ```bash
 askx settings set language zh-CN
 askx settings set language en
 ```
 
-更新 CLI 和受保护 Web 工作台的共享语言。默认中文路由不带语言前缀，英文路由使用 `/en`。
-
 ### `askx settings set theme <cyan|rose>`
+
+用途：设置 Web 使用的共享主题色。
 
 ```bash
 askx settings set theme cyan
 askx settings set theme rose
 ```
 
-更新 Web 共享主题色。已打开的 Web 会在下一次设置轮询后应用新主题。
+## 7. `askx ui`
 
-## 8. 本地 Web 管理界面
-
-全局安装成功后，后台服务通常已经自动启动。先查看当前状态：
-
-```bash
-askx ui status
-```
-
-### `askx ui start [--port <port>]`
-
-在后台启动 Web 服务：
-
-```bash
-askx ui start
-askx ui start --port 4300
-```
-
-未指定端口时会自动选择一个可用的五位本地端口。命令在服务就绪后退出，服务继续在后台运行。
-
-### `askx ui stop`
-
-停止当前受管后台服务：
-
-```bash
-askx ui stop
-```
-
-### `askx ui restart [--port <port>]`
-
-停止当前服务并重新在后台启动：
-
-```bash
-askx ui restart
-askx ui restart --port 4300
-```
-
-### `askx ui status [--json]`
-
-显示后台服务的运行状态、PID、端口和访问地址：
-
-```bash
-askx ui status
-askx ui status --json
-```
+Web 服务仅监听 `127.0.0.1`，每次启动生成本地会话 Token。
 
 ### `askx ui [--port <port>]`
 
-以前台方式启动 Web 服务，适合临时运行和故障排查：
+用途：以前台方式启动 Web 服务，用于临时运行或故障排查。
 
 ```bash
 askx ui
 askx ui --port 4300
 ```
 
-显式端口必须是 `1` 至 `65535` 的整数。服务只监听 `127.0.0.1`，启动时生成本地会话 Token，并在终端显示实际访问地址；按 `Ctrl+C` 停止。已有后台服务运行时，不会重复启动前台实例。
+终端会保持占用，按 `Ctrl+C` 停止服务。
+
+### `askx ui start`
+
+用途：在后台启动本地 Web 服务。
+
+```bash
+askx ui start
+askx ui start --port 4300
+askx ui start --json
+```
+
+不指定端口时自动选择可用的五位端口。已有后台服务运行时不会重复启动。
+
+### `askx ui stop`
+
+用途：停止后台 Web 服务并等待进程退出。
+
+```bash
+askx ui stop
+askx ui stop --json
+```
+
+### `askx ui status`
+
+用途：查看后台服务是否运行、PID、端口和访问地址。
+
+```bash
+askx ui status
+askx ui status --json
+```
+
+### `askx ui restart`
+
+用途：停止并重新启动后台 Web 服务。
+
+```bash
+askx ui restart
+askx ui restart --port 4300
+askx ui restart --json
+```
 
 ### `askx ui token`
 
-输出当前运行中的 UI Token：
+用途：获取快速登录地址和独立 Token。
 
 ```bash
 askx ui token
 ```
 
-没有活动服务时命令会报错。
+输出两行：
 
-不要把 Token 写入仓库、日志或远程脚本。它只用于本机 Web 会话认证。
+```text
+快速登录地址: http://127.0.0.1:<port>/?token=<token>
+Token: <token>
+```
 
-## 9. 卸载
+把第一行地址复制到浏览器后，Web 会自动校验 Token、建立会话并从地址栏移除 Token。已经打开登录页时，可以复制第二行 Token。不要把 Token 写入仓库、日志或远程脚本。
 
-使用受管卸载命令：
+## 8. `askx uninstall`
+
+用途：先停止后台 Web 服务，再安全卸载全局 AskAgent X 包。
 
 ```bash
 askx uninstall
 ```
 
-该命令先停止后台 UI 并确认进程退出，再调用 npm 全局卸载当前 AskAgent X。不要直接执行 `npm uninstall -g askagent-x`，否则包文件可能已删除，但后台进程仍继续运行并占用端口。
+推荐始终使用该命令卸载。现代 npm 不提供可靠的卸载生命周期钩子；直接执行 `npm uninstall --global askagent-x` 时，包文件可能已删除，但后台进程仍在运行。
 
-如果必须直接使用 npm，请执行：
-
-```bash
-askx ui stop && npm uninstall -g askagent-x
-```
-
-## 10. 自动化与 JSON 输出
-
-只读命令可以直接使用 `--json`：
+如果必须直接使用 npm，请先执行：
 
 ```bash
-askx doctor --json
-askx skills scan --platform claude --json
-askx settings show --json
+askx ui stop
+npm uninstall --global askagent-x
 ```
 
-Skills 写命令在非交互或 JSON 模式下必须同时使用 `--yes`：
+## 9. 命令速查
+
+### 首次使用
 
 ```bash
-askx skills sync --platform claude --yes --json
-askx skills link --platform claude --yes --json
-askx skills unlink --platform claude --yes --json
+askx doctor
+askx skills
+askx skills stats
 ```
 
-缺少授权时，CLI 返回完整计划和稳定错误码：
-
-```json
-{
-  "error": {
-    "code": "CONFIRMATION_REQUIRED"
-  },
-  "plan": {}
-}
-```
-
-自动化脚本不能只依赖进程退出码判断多平台操作结果，还应检查 JSON 中每个平台或事务单元的 `status`。
-
-## 11. 数据文件
-
-| 路径 | 用途 |
-| --- | --- |
-| `~/.askx/config.json` | CLI/Web 共享设置及 revision |
-| `~/.askx/skills` | 统一 Skill 源目录 |
-| `~/.askx/skills-manifest.json` | 受管 Skill、平台绑定和自定义目录关系 |
-| `~/.askx/backups/skills` | Skills 事务备份与恢复材料 |
-| `~/.askx/ui-session.json` | 当前本地 UI 会话信息 |
-
-不要手工修改 manifest、事务备份或受管软链。需要调整绑定时使用 `skills link`、`skills unlink` 或 Web 界面。
-
-## 12. 安全边界
-
-Skills 写操作遵循：
-
-```text
-detect → plan → resolve → consent → apply → verify → rollback
-```
-
-- 扫描和接管过程不会执行 Skill 附带的脚本。
-- 内容冲突不会自动覆盖。
-- 未被 manifest 管理的目录或链接不会直接删除。
-- 计划与授权通过 `planHash` 绑定；扫描内容或 revision 变化后必须重新生成计划。
-- 单个平台或单个 Skill 失败时，只回滚对应事务单元。
-- 软链取消和恢复只调整绑定关系，不隐式同步 Skill。
-
-## 13. 常见问题
-
-### 首次运行提示 `PLATFORM_SELECTION_REQUIRED`
-
-非交互环境无法打开平台多选界面，需要显式传入平台：
+### 只扫描，不修改
 
 ```bash
-askx skills scan --platform claude --json
+askx skills scan --platform codex,claude,cursor
 ```
 
-### 写命令提示 `CONFIRMATION_REQUIRED`
-
-当前环境不能进行交互确认。检查返回的计划后，重新执行并加入 `--yes`：
+### 分步骤同步和关联
 
 ```bash
-askx skills link --platform claude --yes --json
+askx skills sync --platform codex --platform claude
+askx skills link --platform codex --platform claude
+askx skills
 ```
 
-### 为什么同步后平台内容没有变化
-
-`skills sync` 只更新 AskX 统一源，不建立平台绑定。确认统一源内容后，再执行：
+### 查看服务并登录 Web
 
 ```bash
-askx skills link --platform claude
+askx ui status
+askx ui token
 ```
 
-### 为什么取消软链后没有把新 Skill 复制回平台
+### 查看历史并恢复
 
-`skills unlink` 只恢复绑定前的平台目录，不执行同步。需要复制内容时使用同步或导出能力，不要依赖取消绑定完成复制。
-
-### Web 为什么会响应 CLI 设置
-
-CLI 和 Web 使用同一个 `~/.askx/config.json`。CLI 写入会增加 revision，Web 在轮询周期内读取并应用新设置。
+```bash
+askx skills history list
+askx skills backups list
+```

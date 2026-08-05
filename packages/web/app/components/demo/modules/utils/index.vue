@@ -27,7 +27,7 @@ let targetResetTimer: ReturnType<typeof setTimeout> | undefined
 const directCopyCode = `const isCopied = await useCopyText('bg-ds-brand-default')`
 const targetCopyCode = `const handleCopy = async (event: MouseEvent) => {
   const isCopied = await useCopyText({
-    text: 'pnpm askx ui token',
+    text: 'askx ui token',
     el: event.currentTarget instanceof Element ? event.currentTarget : undefined,
   })
 }`
@@ -53,7 +53,7 @@ async function copyDirectly() {
 
 async function copyFromTarget(event: MouseEvent) {
   const targetElement = event.currentTarget instanceof Element ? event.currentTarget : undefined
-  const copied = await useCopyText({ text: 'pnpm askx ui token', el: targetElement })
+  const copied = await useCopyText({ text: 'askx ui token', el: targetElement })
   targetCopyState.value = copied ? 'success' : 'error'
   if (copied) toast.success('命令已复制')
   else toast.error('复制失败，请重试')
