@@ -15,6 +15,7 @@ import type {
   SkillsBatchMode,
   SkillsBatchPlan,
   SkillsBatchReceipt,
+  SkillsRollbackPlan,
   SkillsBootstrap,
   SkillsScanReport,
 } from '@askx/module-skills/skill-types'
@@ -340,7 +341,11 @@ async function rollbackTransaction(receiptId: string): Promise<void> {
   busy.value = true
   clearRequestError()
   try {
-    const result = await $fetch<RollbackResult>('/api/skills/rollback', { method: 'POST', body: { receiptId } })
+    const plan = await $fetch<SkillsRollbackPlan>('/api/skills/rollback/plan', { method: 'POST', body: { receiptId } })
+    const result = await $fetch<RollbackResult>('/api/skills/rollback', {
+      method: 'POST',
+      body: { plan, consent: { planHash: plan.hash, confirmedAt: new Date().toISOString() } },
+    })
     if (!result.rolledBack) throw new Error(result.warnings.join('\n'))
     await loadBootstrap()
   } catch (error) {
