@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SkillCustomScanRoot, SkillDecision, SkillGroup, SkillLocation } from '@askx/module-skills/skill-types'
+import type { SkillCustomScanRoot, SkillDecision, SkillGroup, SkillLocation, SkillManagementChoice } from '@askx/module-skills/skill-types'
 import type { AskxIconName } from '@/lib/iconCatalog'
 import type { ResponsiveSelectOption } from '@/components/common/responsive-select/types'
 import { getSkillPlatformPresentation } from '@/lib/skillPlatformPresentation'
@@ -22,12 +22,19 @@ interface Props {
   group: SkillGroup
   /** 当前用户决策。 */
   decision: SkillDecision
+  /** 当前分组可执行的版本管理动作。 */
+  managementAction?: SkillManagementChoice['action'] | undefined
+  /** 是否已选择在保存时执行版本管理动作。 */
+  managementSelected: boolean
   /** 用户选择的额外扫描根目录。 */
   customRoots: SkillCustomScanRoot[]
 }
 
 const props = defineProps<Props>()
-const emit = defineEmits<{ /** 更新当前分组决策。 */ 'update:decision': [value: SkillDecision] }>()
+const emit = defineEmits<{
+  /** 更新当前分组决策。 */ 'update:decision': [value: SkillDecision]
+  /** 更新当前分组版本管理选择。 */ 'update:management': [value: SkillManagementChoice['action'] | undefined]
+}>()
 const { t } = useI18n()
 /** 组件创建时的决策快照，用于稳定推导高级操作初值。 */
 const initialDecision = props.decision
@@ -233,7 +240,7 @@ watch(renameSourceId, (locationId) => {
         <span class="font-mono text-[9px] text-muted-foreground/70">{{ group.hashes[0]?.slice(0, 8) ?? 'NO HASH' }}</span>
       </div>
 
-      <div class="w-full min-w-0 lg:w-[180px] lg:justify-self-end">
+      <div class="grid w-full min-w-0 gap-2 lg:w-[180px] lg:justify-self-end">
         <CsResponsiveSelect
           v-model="decisionModel"
           :options="decisionOptions"
@@ -270,6 +277,17 @@ watch(renameSourceId, (locationId) => {
             </span>
           </template>
         </CsResponsiveSelect>
+        <button
+          v-if="managementAction"
+          type="button"
+          class="flex h-8 items-center justify-center gap-2 rounded-lg border px-2 text-[10px] font-medium transition hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/25"
+          :class="managementSelected ? 'border-primary bg-primary/10 text-primary' : 'bg-background text-muted-foreground'"
+          :aria-pressed="managementSelected"
+          @click="emit('update:management', managementSelected ? undefined : managementAction)"
+        >
+          <Icon :name="managementSelected ? 'askx-status:check' : 'askx-actions:adjust'" class="size-3.5" />
+          {{ t(managementSelected ? 'skills.managementSelected' : 'skills.manageThisSkill') }}
+        </button>
       </div>
     </div>
 

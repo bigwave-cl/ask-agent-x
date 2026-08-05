@@ -186,10 +186,29 @@ function createSelections(): SkillCopySelection[] {
 async function preparePlan(moveToReview = true): Promise<boolean> {
   busy.value = true
   try {
-    plan.value = await $fetch<SkillCopyBatchPlan>('/api/skills/copy/plan', {
+    let nextPlan = await $fetch<SkillCopyBatchPlan>('/api/skills/copy/plan', {
       method: 'POST',
       body: { selections: createSelections() },
     })
+    const recommendedChoices = { ...conflictChoices.value }
+    let recommendationApplied = false
+    for (const unit of nextPlan.units) {
+      if (unit.targetState !== 'conflict' || unit.identityConflict) continue
+      const key = unitKey(unit.skillId, unit.target)
+      if (recommendedChoices[key]) continue
+      if (unit.versionRelation === 'newer') recommendedChoices[key] = 'replace'
+      else if (unit.versionRelation === 'older') recommendedChoices[key] = 'keep'
+      else continue
+      recommendationApplied = true
+    }
+    if (recommendationApplied) {
+      conflictChoices.value = recommendedChoices
+      nextPlan = await $fetch<SkillCopyBatchPlan>('/api/skills/copy/plan', {
+        method: 'POST',
+        body: { selections: createSelections() },
+      })
+    }
+    plan.value = nextPlan
     if (moveToReview) step.value = 'review'
     return true
   } catch (error) {
@@ -229,6 +248,15 @@ async function applyPlan(): Promise<void> {
 function notifyError(error: unknown): void {
   const candidate = error as { data?: { message?: string }, statusMessage?: string }
   toast.error(candidate.data?.message ?? candidate.statusMessage ?? t('skills.copyFailed'))
+}
+
+/** 返回版本关系对应的用户可见说明。 */
+function versionRelationLabel(unit: SkillCopyPlan): string {
+  if (unit.identityConflict) return t('skills.copyIdentityConflict')
+  if (unit.versionRelation === 'newer') return t('skills.copySourceNewer', { source: unit.sourceVersion, target: unit.targetVersion })
+  if (unit.versionRelation === 'older') return t('skills.copySourceOlder', { source: unit.sourceVersion, target: unit.targetVersion })
+  if (unit.versionRelation === 'same') return t('skills.copySameVersionDifferentContent', { version: unit.sourceVersion })
+  return t('skills.copyUnknownVersionConflict')
 }
 
 /** 关闭弹窗后清理本次批量同步的临时状态。 */
@@ -345,7 +373,11 @@ watch(open, (nextOpen) => {
         <div class="border-b px-4 py-3"><strong class="text-sm">{{ t('skills.copyConflictsTitle') }}</strong><p class="mt-1 text-xs text-muted-foreground">{{ t('skills.copyConflictsDescription') }}</p></div>
         <ScrollArea class="h-[min(28rem,48svh)]">
           <div v-for="unit in conflictUnits" :key="unit.id" class="grid gap-3 border-b p-4 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-            <div class="min-w-0"><div class="flex items-center gap-2"><Icon name="askx-status:warning" class="size-4 shrink-0 text-warning" /><strong class="truncate text-sm">{{ unit.skillName }}</strong><Badge variant="outline">{{ targetLabel(unit.target) }}</Badge></div><code class="mt-1 block truncate pl-6 font-mono text-[9px] text-muted-foreground">{{ unit.destinationPath }}</code></div>
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2"><Icon name="askx-status:warning" class="size-4 shrink-0 text-warning" /><strong class="truncate text-sm">{{ unit.skillName }}</strong><Badge variant="outline">{{ targetLabel(unit.target) }}</Badge></div>
+              <p class="mt-1 pl-6 text-xs text-muted-foreground">{{ versionRelationLabel(unit) }}</p>
+              <code class="mt-1 block truncate pl-6 font-mono text-[9px] text-muted-foreground">{{ unit.destinationPath }}</code>
+            </div>
             <div class="flex gap-2">
               <Button size="36" :variant="conflictChoices[unitKey(unit.skillId, unit.target)] === 'keep' ? 'primary' : 'outline'" :disabled="busy" @click="chooseConflict(unit, 'keep')"><Icon name="askx-status:prohibited" />{{ t('skills.copyKeepTarget') }}</Button>
               <Button size="36" :variant="conflictChoices[unitKey(unit.skillId, unit.target)] === 'replace' ? 'destructive' : 'outline'" :disabled="busy" @click="chooseConflict(unit, 'replace')"><Icon name="askx-actions:delete" />{{ t('skills.copyReplaceTarget') }}</Button>

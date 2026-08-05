@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import type { SkillDecision, SkillGroup, SkillsBatchMode, SkillsScanReport } from '@askx/module-skills/skill-types'
+import type { SkillDecision, SkillGroup, SkillManagementChoice, SkillsBatchMode, SkillsScanReport } from '@askx/module-skills/skill-types'
 import Tabs from '@/components/ui/tabs/Tabs.vue'
 import TabsList from '@/components/ui/tabs/TabsList.vue'
 import TabsTrigger from '@/components/ui/tabs/TabsTrigger.vue'
+import Switch from '@/components/ui/switch/Switch.vue'
 
 /** 最终 Skill 清单筛选类型。 */
 type SkillListFilter = 'all' | 'included' | 'review' | 'skipped'
@@ -23,6 +24,8 @@ interface Props {
   report: SkillsScanReport
   /** 每个分组的当前决策。 */
   decisions: SkillDecision[]
+  /** 用户明确选择的版本管理动作。 */
+  managementChoices: SkillManagementChoice[]
   /** 当前是平台接入还是只同步统一源。 */
   mode: SkillsBatchMode
 }
@@ -31,6 +34,8 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   /** 更新一个分组的决策。 */
   'update-decision': [groupId: string, decision: SkillDecision]
+  /** 更新一个分组的版本管理动作。 */
+  'update-management': [groupId: string, action: SkillManagementChoice['action'] | undefined]
   /** 重新执行扫描。 */
   'rescan': []
 }>()
@@ -39,6 +44,36 @@ const { t } = useI18n()
 const searchQuery = ref('')
 /** 当前最终清单筛选条件。 */
 const activeFilter = ref<SkillListFilter>('all')
+
+/**
+ * 返回当前分组可执行的版本管理动作。
+ * @param group 扫描分组。
+ * @returns 可用动作；无有效改造路径时返回 undefined。
+ */
+function managementAction(group: SkillGroup): SkillManagementChoice['action'] | undefined {
+  const decision = groupDecision(group)
+  if (decision.kind === 'keep' || decision.kind === 'archive') return undefined
+  const state = group.locations.find(location => location.id === decision.sourceLocationId)?.managerState
+  if (state === 'bobo-managed') return 'migrate-bobo'
+  if (state === 'unmanaged') return 'initialize'
+  if (state === 'metadata-stale') return 'refresh'
+  return undefined
+}
+
+/** 当前分组是否已选择纳入版本管理。 */
+function managementSelected(groupId: string): boolean {
+  return props.managementChoices.some(choice => choice.groupId === groupId)
+}
+
+/** 符合版本管理改造条件的扫描分组。 */
+const manageableGroups = computed(() => props.report.groups.filter(group => Boolean(managementAction(group))))
+/** 是否已选中全部可改造分组。 */
+const manageAll = computed(() => Boolean(manageableGroups.value.length) && manageableGroups.value.every(group => managementSelected(group.id)))
+
+/** 批量选择或取消当前可改造分组。 */
+function toggleManageAll(enabled: boolean): void {
+  for (const group of manageableGroups.value) emit('update-management', group.id, enabled ? managementAction(group) : undefined)
+}
 
 /**
  * 返回分组对应的当前决策。
@@ -120,7 +155,7 @@ const visibleGroups = computed<SkillGroup[]>(() => {
       <section class="overflow-hidden rounded-[24px] border bg-background/75 shadow-sm">
         <header class="grid gap-4 border-b px-4 py-4 sm:px-5 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-center">
           <div><div class="flex items-center gap-2"><h3 class="font-semibold">{{ t('skills.finalSkillList') }}</h3><Badge variant="secondary">{{ t('skills.skillCount', { count: report.groups.length }) }}</Badge></div><p class="mt-1 text-xs text-muted-foreground">{{ t('skills.finalSkillListDescription') }}</p></div>
-          <div class="relative"><Icon name="askx-actions:search" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" /><Input v-model="searchQuery" class="h-10 pl-9" :placeholder="t('skills.skillSearchPlaceholder')" /></div>
+          <div class="grid gap-3"><label v-if="manageableGroups.length" class="flex cursor-pointer items-center justify-end gap-2 text-xs"><Switch :model-value="manageAll" @update:model-value="toggleManageAll" /><span>{{ t('skills.manageAllSkills') }}</span></label><div class="relative"><Icon name="askx-actions:search" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" /><Input v-model="searchQuery" class="h-10 pl-9" :placeholder="t('skills.skillSearchPlaceholder')" /></div></div>
         </header>
 
         <Tabs v-model="activeFilter" class="border-b bg-muted/20 px-3">
@@ -139,8 +174,11 @@ const visibleGroups = computed<SkillGroup[]>(() => {
           :key="group.id"
           :group="group"
           :decision="groupDecision(group)"
+          :management-action="managementAction(group)"
+          :management-selected="managementSelected(group.id)"
           :custom-roots="report.customRoots"
           @update:decision="emit('update-decision', group.id, $event)"
+          @update:management="emit('update-management', group.id, $event)"
         />
         <div v-if="!report.groups.length" class="p-8 text-center"><Icon name="askx-objects:skills" class="mx-auto size-8 text-primary" /><h3 class="mt-4 font-semibold">{{ t('skills.noFilesFound') }}</h3><p class="mt-2 text-sm text-muted-foreground">{{ t(mode === 'sync' ? 'skills.noSyncFilesDescription' : 'skills.noFilesDescription') }}</p></div>
         <div v-else-if="!visibleGroups.length" class="p-8 text-center"><Icon name="askx-actions:search" class="mx-auto size-7 text-muted-foreground" /><h3 class="mt-3 font-semibold">{{ t('skills.noMatchingSkills') }}</h3><p class="mt-1 text-xs text-muted-foreground">{{ t('skills.noMatchingSkillsDescription') }}</p></div>

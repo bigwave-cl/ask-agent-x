@@ -7,6 +7,7 @@ import type {
   CustomLinkReceipt,
   SkillDecision,
   SkillGroup,
+  SkillManagementChoice,
   PlatformLinkAction,
   PlatformLinkPlan,
   PlatformLinkReceipt,
@@ -50,6 +51,8 @@ const selectedLinkDirectories = ref<Array<{ name: string; path: string }>>([])
 const linkSelectionInitialized = ref(false)
 const report = ref<SkillsScanReport | null>(null)
 const decisions = ref<SkillDecision[]>([])
+/** 用户明确选择的版本管理改造动作；默认保持关闭。 */
+const managementChoices = ref<SkillManagementChoice[]>([])
 const plan = ref<SkillsBatchPlan | null>(null)
 const receipt = ref<SkillsBatchReceipt | null>(null)
 const history = ref<SkillsBatchReceipt[]>([])
@@ -235,6 +238,7 @@ async function scan(enterDecision = true): Promise<void> {
     body: { platforms: selectedPlatforms.value, customRoots: selectedDirectories.value.map((directory) => directory.path) },
   })
   decisions.value = report.value.groups.map(defaultDecision)
+  managementChoices.value = []
   if (enterDecision) state.value = 'scan'
 }
 
@@ -247,6 +251,28 @@ function updateDecision(groupId: string, decision: SkillDecision): void {
     if (candidate.kind === 'archive') return candidate.locationIds.some((id) => entry.locations.some((location) => location.id === id))
     return entry.locations.some((location) => location.id === candidate.sourceLocationId)
   }) ?? defaultDecision(entry))
+  const selectedManagement = managementChoices.value.find(choice => choice.groupId === groupId)
+  if (!selectedManagement || decision.kind === 'keep' || decision.kind === 'archive') {
+    if (selectedManagement) updateManagement(groupId, undefined)
+    return
+  }
+  const source = group.locations.find(location => location.id === decision.sourceLocationId)
+  const compatible = (selectedManagement.action === 'initialize' && source?.managerState === 'unmanaged')
+    || (selectedManagement.action === 'migrate-bobo' && source?.managerState === 'bobo-managed')
+    || (selectedManagement.action === 'refresh' && source?.managerState === 'metadata-stale')
+  if (!compatible) updateManagement(groupId, undefined)
+}
+
+/**
+ * 更新一个 Skill 的版本管理选择。
+ * @param groupId 扫描分组标识。
+ * @param action 版本管理动作；undefined 表示保持原状。
+ */
+function updateManagement(groupId: string, action: SkillManagementChoice['action'] | undefined): void {
+  managementChoices.value = [
+    ...managementChoices.value.filter(choice => choice.groupId !== groupId),
+    ...(action ? [{ groupId, action }] : []),
+  ]
 }
 
 /** 基于最新 revision 生成后端计划。 */
@@ -264,6 +290,7 @@ async function preparePlan(): Promise<void> {
         detectionFingerprint: report.value.fingerprint,
         settingsRevision: props.settings.revision,
         decisions: decisions.value,
+        managementChoices: managementChoices.value,
         mode: flowMode.value,
         linkPlatforms: selectedLinkPlatforms.value,
         linkCustomRoots: selectedLinkDirectories.value.map((directory) => directory.path),
@@ -346,6 +373,7 @@ function openSetup(): void {
   selectedLinkDirectories.value = []
   linkSelectionInitialized.value = false
   decisions.value = []
+  managementChoices.value = []
   plan.value = null
   receipt.value = null
   state.value = 'platforms'
@@ -581,7 +609,7 @@ onMounted(loadBootstrap)
       />
 
       <template v-if="bootstrap.initialized && report">
-        <BusSkillsSkillList :managed-skills="bootstrap.managedSkills" :health="bootstrap.managedHealth" :platforms="bootstrap.platforms" :platform-health="bootstrap.platformHealth ?? []" :report="report" :busy="busy" @add="openSetup" @updated="refreshManagedResources" />
+        <BusSkillsSkillManagerControl :managed-skills="bootstrap.managedSkills" :local-skills="bootstrap.localSkills ?? []" :health="bootstrap.managedHealth" :platforms="bootstrap.platforms" :platform-health="bootstrap.platformHealth ?? []" :report="report" :busy="busy" @add="openSetup" @updated="refreshManagedResources" />
         <BusSkillsTransactionHistory :receipts="history" :busy="busy" @rollback="rollbackTransaction" />
       </template>
       <BusSkillsEmptyState v-else :initialized="bootstrap.initialized" @action="openSetup" />
@@ -624,7 +652,7 @@ onMounted(loadBootstrap)
           @select-directories="selectDirectories"
           @remove-directory="removeDirectory"
         />
-        <BusSkillsScanResult v-else-if="state === 'scan' && report" :report="report" :decisions="decisions" :mode="flowMode" @update-decision="updateDecision" @rescan="rescanForManagement" />
+        <BusSkillsScanResult v-else-if="state === 'scan' && report" :report="report" :decisions="decisions" :management-choices="managementChoices" :mode="flowMode" @update-decision="updateDecision" @update-management="updateManagement" @rescan="rescanForManagement" />
         <BusSkillsPlatformLinkSelection
           v-else-if="state === 'links' && report"
           v-model:selected="selectedLinkPlatforms"
@@ -683,6 +711,12 @@ onMounted(loadBootstrap)
         :plan="customLinkPlan"
         :busy="busy"
         @confirm="applyCustomLinkAction"
+      />
+
+      <BusSkillsSystemSkillRepair
+        v-if="bootstrap.initialized && bootstrap.systemSkillHealth !== 'ready'"
+        :health="bootstrap.systemSkillHealth"
+        @repaired="refreshManagedResources"
       />
 
     </template>
