@@ -32,7 +32,7 @@ interface WorkspaceNavigationItem {
   /** 导航序号。 */
   index: string
   /** 目标业务路径。 */
-  path: '/' | '/demo' | '/skills-x' | '/theme' | '/settings'
+  path: '/' | '/skills-x' | '/theme' | '/settings'
   /** 本地图标名称。 */
   icon: AskxIconName
   /** 标题翻译键。 */
@@ -82,13 +82,6 @@ const navigationItems: WorkspaceNavigationItem[] = [
     icon: 'askx-actions:settings',
     titleKey: 'common.settingsNav',
     descriptionKey: 'layout.settingsDescription',
-  },
-  {
-    index: '04',
-    path: '/demo',
-    icon: 'askx-objects:model',
-    titleKey: 'common.demoNav',
-    descriptionKey: 'layout.demoDescription',
   },
 ]
 
@@ -187,16 +180,7 @@ function closeNavigation() {
             </Button>
           </div>
 
-          <div class="mt-9">
-            <Badge variant="soft" class="font-mono text-[10px] tracking-[0.12em]">
-              <span class="size-1.5 rounded-full bg-primary" />
-              {{ t('layout.toolBadge') }}
-            </Badge>
-            <h2 class="mt-5 text-3xl font-semibold tracking-[-0.05em]">{{ t('layout.navigationTitle') }}</h2>
-            <p class="mt-3 text-xs leading-5 text-ds-text-helper">{{ t('layout.navigationDescription') }}</p>
-          </div>
-
-          <nav class="mt-8 grid gap-2" :aria-label="t('layout.overview')">
+          <nav class="mt-10 grid gap-2" :aria-label="t('layout.navigationTitle')">
             <NuxtLink
               v-for="item in navigationItems"
               :key="item.path"
