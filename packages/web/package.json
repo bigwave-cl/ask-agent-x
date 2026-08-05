@@ -10,7 +10,7 @@
     }
   },
   "scripts": {
-    "build": "nuxt build && node scripts/verify-highlight-chunks.mjs && tsup src/server.ts --format esm --dts --out-dir dist/server --clean",
+    "build": "nuxt build && node scripts/copy-builtin-skills.mjs && node scripts/verify-highlight-chunks.mjs && tsup src/server.ts --format esm --dts --out-dir dist/server --clean",
     "typecheck": "nuxt typecheck && tsc --noEmit -p tsconfig.server.json",
     "test": "vitest run --passWithNoTests --exclude=perf/**",
     "test:performance": "playwright test --config perf/playwright.config.ts",
