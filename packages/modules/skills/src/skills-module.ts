@@ -19,15 +19,20 @@ import {
   type CanonicalSourceMutationPlan,
   type CanonicalSourceMutationReceipt,
 } from './canonical-source-manager.js'
+import { applyCustomLinkPlan, createCustomLinkPlan } from './custom-link-manager.js'
 import { applySkillCustomRootRemovalPlan, createSkillCustomRootRemovalPlan } from './custom-root-manager.js'
 import { applySkillsBatchPlan, listSkillsReceipts, rollbackSkillsReceipt } from './skills-executor.js'
 import { applySkillFileUpdatePlan, createSkillFileUpdatePlan, inspectManagedSkillDetail, readManagedSkillFile } from './skill-file-manager.js'
+import { applySkillCopyBatchPlan, createSkillCopyBatchPlan } from './skill-copy-manager.js'
 import { SkillsManifestStore } from './manifest-store.js'
 import { applyPlatformLinkPlan, createPlatformLinkPlan } from './platform-link-manager.js'
 import { detectSkillPlatforms, scanSkills, supportedSkillPlatforms } from './scanner.js'
 import { createSkillsBatchPlan } from './skills-planner.js'
 import { inspectManagedPlatformBinding, inspectManagedSkill } from './skills-verifier.js'
 import type {
+  CustomLinkAction,
+  CustomLinkPlan,
+  CustomLinkReceipt,
   ManagedPlatformBinding,
   ManagedPlatformHealth,
   PlatformLinkAction,
@@ -39,6 +44,9 @@ import type {
   SkillCustomRootRemovalPlan,
   SkillCustomRootRemovalReceipt,
   SkillDecision,
+  SkillCopyBatchPlan,
+  SkillCopyBatchReceipt,
+  SkillCopySelection,
   SkillFileUpdatePlan,
   SkillFileUpdateReceipt,
   SkillBackupMove,
@@ -216,9 +224,11 @@ export class SkillsManager {
    * 应用一次经过确认的批量计划。
    * @param plan 完整批量计划。
    * @param settingsRevision 当前共享设置 revision。
+   * @param consent 与计划 hash 对应的用户授权。
    */
-  applyOnboarding(plan: SkillsBatchPlan, settingsRevision: number): Promise<SkillsBatchReceipt> {
-    return applySkillsBatchPlan({
+  async applyOnboarding(plan: SkillsBatchPlan, settingsRevision: number, consent: UserConsent): Promise<SkillsBatchReceipt> {
+    if (consent.planHash !== plan.hash) throw new Error('用户授权与当前 Skills 计划不匹配。')
+    return await applySkillsBatchPlan({
       plan,
       settingsRevision,
       homeDir: this.context.homeDir,
@@ -245,6 +255,24 @@ export class SkillsManager {
   async applyPlatformLink(plan: PlatformLinkPlan, consent: UserConsent): Promise<PlatformLinkReceipt> {
     const originalRootBackups = collectOriginalRootBackups(await listSkillsReceipts(this.context.dataDir))
     return applyPlatformLinkPlan({ manifestStore: this.manifestStore, originalRootBackups }, plan, consent)
+  }
+
+  /**
+   * 生成一个自定义目录软链的取消、恢复或删除计划。
+   * @param bindingId Manifest 中的自定义绑定标识。
+   * @param action 取消、恢复或删除操作。
+   */
+  planCustomLink(bindingId: string, action: CustomLinkAction): Promise<CustomLinkPlan> {
+    return createCustomLinkPlan({ manifestStore: this.manifestStore }, bindingId, action)
+  }
+
+  /**
+   * 应用一个经过确认的自定义目录软链计划。
+   * @param plan 自定义软链计划。
+   * @param consent 与计划 hash 对应的用户授权。
+   */
+  applyCustomLink(plan: CustomLinkPlan, consent: UserConsent): Promise<CustomLinkReceipt> {
+    return applyCustomLinkPlan({ manifestStore: this.manifestStore }, plan, consent)
   }
 
   /**
@@ -299,6 +327,23 @@ export class SkillsManager {
    */
   applySkillFileUpdate(plan: SkillFileUpdatePlan, consent: UserConsent): Promise<SkillFileUpdateReceipt> {
     return applySkillFileUpdatePlan({ manifestStore: this.manifestStore }, plan, consent)
+  }
+
+  /**
+   * 为多个统一源 Skill 和目标组合生成批量同步确认计划。
+   * @param selections Skill 与目标组合及冲突策略。
+   */
+  planSkillCopyBatch(selections: SkillCopySelection[]): Promise<SkillCopyBatchPlan> {
+    return createSkillCopyBatchPlan({ homeDir: this.context.homeDir, manifestStore: this.manifestStore }, selections)
+  }
+
+  /**
+   * 应用经过确认的批量同步计划。
+   * @param plan 批量同步计划。
+   * @param consent 与批量计划 hash 对应的用户授权。
+   */
+  applySkillCopyBatch(plan: SkillCopyBatchPlan, consent: UserConsent): Promise<SkillCopyBatchReceipt> {
+    return applySkillCopyBatchPlan({ homeDir: this.context.homeDir, manifestStore: this.manifestStore }, plan, consent)
   }
 
   /** 列出统一 Skill 来源的用户可管理备份。 */

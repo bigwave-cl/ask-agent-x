@@ -1,7 +1,7 @@
 import { access, lstat, mkdtemp, mkdir, readFile, readlink, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { stableHash } from '@askx/core'
+import { stableHash, type UserConsent } from '@askx/core'
 import { describe, expect, it, vi } from 'vitest'
 import { SkillsManager } from './skills-module.js'
 
@@ -11,6 +11,11 @@ async function createSkill(home: string, platform: 'codex' | 'claude' | 'cursor'
   const path = join(home, platformDirectory, 'skills', name)
   await mkdir(path, { recursive: true })
   await writeFile(join(path, 'SKILL.md'), `---\nname: ${name}\ndescription: 测试 Skill\n---\n\n${content}\n`)
+}
+
+/** 为测试计划创建与 hash 绑定的用户授权。 */
+function consent(plan: { hash: string }): UserConsent {
+  return { planHash: plan.hash, confirmedAt: new Date().toISOString() }
 }
 
 describe('SkillsManager', () => {
@@ -41,12 +46,21 @@ describe('SkillsManager', () => {
     const report = await manager.scan(['codex'])
     const plan = await manager.planOnboarding({ platforms: ['codex'], detectionFingerprint: report.fingerprint, settingsRevision: 0, decisions: [] })
 
-    const receipt = await manager.applyOnboarding(plan, 0)
+    const receipt = await manager.applyOnboarding(plan, 0, consent(plan))
     const bootstrap = await manager.bootstrap()
 
     expect(receipt.results).toEqual([])
     expect(bootstrap.initialized).toBe(true)
     expect(bootstrap.canonicalSkillsDir).toBe(join(dataDir, 'skills'))
+  })
+
+  it('拒绝与 onboarding 计划指纹不匹配的授权', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-consent-home-'))
+    const manager = new SkillsManager({ homeDir, dataDir: join(homeDir, '.askx') })
+    const report = await manager.scan(['codex'])
+    const plan = await manager.planOnboarding({ platforms: ['codex'], detectionFingerprint: report.fingerprint, settingsRevision: 0, decisions: [] })
+
+    await expect(manager.applyOnboarding(plan, 0, { planHash: 'different-plan', confirmedAt: new Date().toISOString() })).rejects.toThrow('用户授权')
   })
 
   it('接管有效 Skill 并登记统一源', async () => {
@@ -63,7 +77,7 @@ describe('SkillsManager', () => {
       decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
     })
 
-    const receipt = await manager.applyOnboarding(plan, 2)
+    const receipt = await manager.applyOnboarding(plan, 2, consent(plan))
     const bootstrap = await manager.bootstrap()
 
     expect(receipt.results[0]?.status).toBe('applied')
@@ -95,7 +109,7 @@ describe('SkillsManager', () => {
       decisions: report.groups.map((group) => ({ kind: 'adopt' as const, sourceLocationId: group.locations.find((location) => location.metadata.valid)!.id })),
     })
 
-    const receipt = await manager.applyOnboarding(plan, 0)
+    const receipt = await manager.applyOnboarding(plan, 0, consent(plan))
     const bootstrap = await manager.bootstrap()
 
     expect(receipt.platformResults).toEqual([])
@@ -122,7 +136,7 @@ describe('SkillsManager', () => {
       settingsRevision: 0,
       decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
     })
-    await manager.applyOnboarding(onboardingPlan, 0)
+    await manager.applyOnboarding(onboardingPlan, 0, consent(onboardingPlan))
 
     const suspendPlan = await manager.planPlatformLink('codex', 'suspend')
     const suspendReceipt = await manager.applyPlatformLink(suspendPlan, { planHash: suspendPlan.hash, confirmedAt: new Date().toISOString() })
@@ -179,7 +193,7 @@ describe('SkillsManager', () => {
       settingsRevision: 0,
       decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
     })
-    await manager.applyOnboarding(onboardingPlan, 0)
+    await manager.applyOnboarding(onboardingPlan, 0, consent(onboardingPlan))
     const suspendPlan = await manager.planPlatformLink('codex', 'suspend')
     await manager.applyPlatformLink(suspendPlan, { planHash: suspendPlan.hash, confirmedAt: new Date().toISOString() })
     const backupPath = suspendPlan.originalRootBackup!.backupPath
@@ -199,7 +213,7 @@ describe('SkillsManager', () => {
     const manager = new SkillsManager({ homeDir, dataDir })
     const report = await manager.scan(['codex'])
     const onboardingPlan = await manager.planOnboarding({ platforms: ['codex'], detectionFingerprint: report.fingerprint, settingsRevision: 0, decisions: [] })
-    await manager.applyOnboarding(onboardingPlan, 0)
+    await manager.applyOnboarding(onboardingPlan, 0, consent(onboardingPlan))
 
     const suspendPlan = await manager.planPlatformLink('codex', 'suspend')
     expect(suspendPlan.originalRootBackup).toBeUndefined()
@@ -226,7 +240,7 @@ describe('SkillsManager', () => {
       settingsRevision: 0,
       decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
     })
-    await manager.applyOnboarding(onboardingPlan, 0)
+    await manager.applyOnboarding(onboardingPlan, 0, consent(onboardingPlan))
 
     const manifestPath = join(dataDir, 'skills-manifest.json')
     const legacyManifest = JSON.parse(await readFile(manifestPath, 'utf8')) as { platformBindings: Array<Record<string, unknown>> }
@@ -257,7 +271,7 @@ describe('SkillsManager', () => {
       settingsRevision: 0,
       decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
     })
-    await manager.applyOnboarding(onboardingPlan, 0)
+    await manager.applyOnboarding(onboardingPlan, 0, consent(onboardingPlan))
     const suspendPlan = await manager.planPlatformLink('codex', 'suspend')
     vi.spyOn(manager.manifestStore, 'write').mockRejectedValueOnce(new Error('模拟 manifest 写入失败'))
 
@@ -284,7 +298,7 @@ describe('SkillsManager', () => {
       decisions: report.groups.map((group) => ({ kind: 'adopt' as const, sourceLocationId: group.locations[0]!.id })),
     })
 
-    await manager.applyOnboarding(plan, 0)
+    await manager.applyOnboarding(plan, 0, consent(plan))
 
     expect(await readlink(join(homeDir, '.codex', 'skills'))).toBe(join(dataDir, 'skills'))
     expect(await readlink(join(homeDir, '.claude', 'skills'))).toBe(join(dataDir, 'skills'))
@@ -310,7 +324,7 @@ describe('SkillsManager', () => {
     expect(plan.platforms).toEqual(['claude'])
     expect(plan.platformOperations.map((operation) => operation.platform)).toEqual(['claude', 'cursor'])
 
-    await manager.applyOnboarding(plan, 0)
+    await manager.applyOnboarding(plan, 0, consent(plan))
 
     expect(await readlink(join(homeDir, '.cursor', 'skills'))).toBe(join(dataDir, 'skills'))
     expect(await readFile(join(homeDir, '.cursor', 'skills', 'source-only', 'SKILL.md'), 'utf8')).toContain('source body')
@@ -335,7 +349,7 @@ describe('SkillsManager', () => {
       decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
     })
 
-    const receipt = await manager.applyOnboarding(plan, 0)
+    const receipt = await manager.applyOnboarding(plan, 0, consent(plan))
     const bootstrap = await manager.bootstrap()
 
     expect(receipt.customLinkResults).toMatchObject([{ name: 'shared-skills', path: customRoot, status: 'applied' }])
@@ -343,6 +357,35 @@ describe('SkillsManager', () => {
     expect(await readFile(join(customRoot, 'custom-demo', 'SKILL.md'), 'utf8')).toContain('custom body')
     expect(bootstrap.customRoots).toEqual([])
     expect(bootstrap.customLinkBindings).toMatchObject([{ name: 'shared-skills', path: customRoot, target: join(dataDir, 'skills') }])
+
+    const bindingId = bootstrap.customLinkBindings[0]!.id
+    const suspendPlan = await manager.planCustomLink(bindingId, 'suspend')
+    await manager.applyCustomLink(suspendPlan, consent(suspendPlan))
+
+    expect((await lstat(customRoot)).isDirectory()).toBe(true)
+    expect(await readFile(join(customRoot, 'custom-demo', 'SKILL.md'), 'utf8')).toContain('custom body')
+    expect((await manager.bootstrap()).customLinkBindings[0]).toMatchObject({ id: bindingId, suspendedAt: expect.any(String) })
+
+    const resumePlan = await manager.planCustomLink(bindingId, 'resume')
+    await manager.applyCustomLink(resumePlan, consent(resumePlan))
+
+    expect((await lstat(customRoot)).isSymbolicLink()).toBe(true)
+    expect((await manager.bootstrap()).customLinkBindings[0]?.suspendedAt).toBeUndefined()
+
+    const failedDeletePlan = await manager.planCustomLink(bindingId, 'delete')
+    vi.spyOn(manager.manifestStore, 'write').mockRejectedValueOnce(new Error('模拟自定义软链删除 manifest 写入失败'))
+    await expect(manager.applyCustomLink(failedDeletePlan, consent(failedDeletePlan))).rejects.toThrow('模拟自定义软链删除 manifest 写入失败')
+
+    expect((await lstat(customRoot)).isSymbolicLink()).toBe(true)
+    expect((await manager.bootstrap()).customLinkBindings).toHaveLength(1)
+
+    const deletePlan = await manager.planCustomLink(bindingId, 'delete')
+    await manager.applyCustomLink(deletePlan, consent(deletePlan))
+
+    expect((await lstat(customRoot)).isDirectory()).toBe(true)
+    expect(await readFile(join(customRoot, 'custom-demo', 'SKILL.md'), 'utf8')).toContain('custom body')
+    expect(await readFile(join(dataDir, 'skills', 'custom-demo', 'SKILL.md'), 'utf8')).toContain('custom body')
+    expect((await manager.bootstrap()).customLinkBindings).toEqual([])
   })
 
   it('自定义软链目录保存失败时会恢复接入前的完整目录', async () => {
@@ -365,7 +408,7 @@ describe('SkillsManager', () => {
     })
     vi.spyOn(manager.manifestStore, 'write').mockRejectedValueOnce(new Error('模拟自定义软链 manifest 写入失败'))
 
-    await expect(manager.applyOnboarding(plan, 0)).rejects.toThrow('模拟自定义软链 manifest 写入失败')
+    await expect(manager.applyOnboarding(plan, 0, consent(plan))).rejects.toThrow('模拟自定义软链 manifest 写入失败')
 
     expect((await lstat(customRoot)).isDirectory()).toBe(true)
     expect(await readFile(join(customRoot, 'custom-demo', 'SKILL.md'), 'utf8')).toContain('original body')
@@ -389,7 +432,7 @@ describe('SkillsManager', () => {
       decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
     })
 
-    const receipt = await manager.applyOnboarding(plan, 0)
+    const receipt = await manager.applyOnboarding(plan, 0, consent(plan))
 
     expect(receipt.results[0]?.status).toBe('applied')
     expect(await readFile(join(customSkill, 'SKILL.md'), 'utf8')).toContain('custom body')
@@ -429,7 +472,7 @@ describe('SkillsManager', () => {
     })
     await writeFile(join(source.path, 'SKILL.md'), 'changed')
 
-    await expect(manager.applyOnboarding(plan, 0)).rejects.toThrow('重新扫描')
+    await expect(manager.applyOnboarding(plan, 0, consent(plan))).rejects.toThrow('重新扫描')
   })
 
   it('临时统一目录构建失败时不会切换平台根目录', async () => {
@@ -448,7 +491,7 @@ describe('SkillsManager', () => {
       decisions: [{ kind: 'adopt', sourceLocationId: alpha.id }],
     })
 
-    await expect(manager.applyOnboarding(plan, 0)).rejects.toThrow('已经存在不同内容')
+    await expect(manager.applyOnboarding(plan, 0, consent(plan))).rejects.toThrow('已经存在不同内容')
 
     expect((await lstat(join(homeDir, '.codex', 'skills'))).isDirectory()).toBe(true)
     expect(await readFile(join(homeDir, '.codex', 'skills', 'alpha', 'SKILL.md'), 'utf8')).toContain('platform alpha')
@@ -469,7 +512,7 @@ describe('SkillsManager', () => {
       decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
     })
 
-    const receipt = await manager.applyOnboarding(plan, 0)
+    const receipt = await manager.applyOnboarding(plan, 0, consent(plan))
     const firstBootstrap = await manager.bootstrap()
 
     expect(receipt.platformResults).toMatchObject([
@@ -491,7 +534,7 @@ describe('SkillsManager', () => {
       settingsRevision: 0,
       decisions: [],
     })
-    const retryReceipt = await manager.applyOnboarding(retryPlan, 0)
+    const retryReceipt = await manager.applyOnboarding(retryPlan, 0, consent(retryPlan))
     const retryBootstrap = await manager.bootstrap()
 
     expect(retryReceipt.platformResults).toMatchObject([{ platform: 'claude', status: 'applied' }])
@@ -513,7 +556,7 @@ describe('SkillsManager', () => {
       settingsRevision: 0,
       decisions: [{ kind: 'adopt', sourceLocationId: initialSource.id }],
     })
-    await manager.applyOnboarding(initialPlan, 0)
+    await manager.applyOnboarding(initialPlan, 0, consent(initialPlan))
     await createSkill(homeDir, 'claude', 'alpha', 'claude version')
 
     const report = await manager.scan(['claude'])
@@ -528,7 +571,7 @@ describe('SkillsManager', () => {
       settingsRevision: 0,
       decisions: [{ kind: 'replace', sourceLocationId: source.id, targetLocationIds: [canonical.id] }],
     })
-    await manager.applyOnboarding(plan, 0)
+    await manager.applyOnboarding(plan, 0, consent(plan))
 
     expect(await readFile(join(dataDir, 'skills', 'alpha', 'SKILL.md'), 'utf8')).toContain('claude version')
     expect(await readlink(join(homeDir, '.claude', 'skills'))).toBe(join(dataDir, 'skills'))
@@ -546,7 +589,7 @@ describe('SkillsManager', () => {
       settingsRevision: 0,
       decisions: [{ kind: 'adopt', sourceLocationId: initialReport.groups[0]!.locations[0]!.id }],
     })
-    await manager.applyOnboarding(initialPlan, 0)
+    await manager.applyOnboarding(initialPlan, 0, consent(initialPlan))
     await createSkill(homeDir, 'claude', 'beta', 'claude only version')
 
     const report = await manager.scan(['claude'])
@@ -561,7 +604,7 @@ describe('SkillsManager', () => {
         : { kind: 'keep' as const, groupId: group.id }),
       mode: 'sync',
     })
-    const receipt = await manager.applyOnboarding(plan, 0)
+    const receipt = await manager.applyOnboarding(plan, 0, consent(plan))
 
     expect(plan.platformOperations).toEqual([])
     expect(receipt.platformResults).toEqual([])
@@ -584,7 +627,7 @@ describe('SkillsManager', () => {
       settingsRevision: 0,
       decisions: [{ kind: 'adopt', sourceLocationId: initialReport.groups[0]!.locations[0]!.id }],
     })
-    await manager.applyOnboarding(initialPlan, 0)
+    await manager.applyOnboarding(initialPlan, 0, consent(initialPlan))
     const suspendPlan = await manager.planPlatformLink('codex', 'suspend')
     await manager.applyPlatformLink(suspendPlan, { planHash: suspendPlan.hash, confirmedAt: new Date().toISOString() })
     await createSkill(homeDir, 'codex', 'beta', 'beta from suspended platform')
@@ -601,7 +644,7 @@ describe('SkillsManager', () => {
       }),
       mode: 'sync',
     })
-    await manager.applyOnboarding(plan, 0)
+    await manager.applyOnboarding(plan, 0, consent(plan))
     const bootstrap = await manager.bootstrap()
 
     expect((await lstat(join(homeDir, '.codex', 'skills'))).isDirectory()).toBe(true)
@@ -645,7 +688,7 @@ describe('SkillsManager', () => {
     const { hash: _hash, ...unsigned } = plan
     const incomplete = { ...unsigned, units: unsigned.units.slice(0, 1) }
 
-    await expect(manager.applyOnboarding({ ...incomplete, hash: stableHash(incomplete) }, 0)).rejects.toThrow('每个扫描分组')
+    await expect(manager.applyOnboarding({ ...incomplete, hash: stableHash(incomplete) }, 0, { planHash: stableHash(incomplete), confirmedAt: new Date().toISOString() })).rejects.toThrow('每个扫描分组')
   })
 
   it('可以按批次回执恢复首次接管', async () => {
@@ -661,7 +704,7 @@ describe('SkillsManager', () => {
       settingsRevision: 0,
       decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
     })
-    const receipt = await manager.applyOnboarding(plan, 0)
+    const receipt = await manager.applyOnboarding(plan, 0, consent(plan))
 
     const rollback = await manager.rollbackReceipt(receipt.id)
 
@@ -685,7 +728,7 @@ describe('SkillsManager', () => {
       settingsRevision: 0,
       decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
     })
-    const receipt = await manager.applyOnboarding(plan, 0)
+    const receipt = await manager.applyOnboarding(plan, 0, consent(plan))
     await writeFile(join(dataDir, 'skills', 'demo', 'SKILL.md'), 'user changed content')
 
     const rollback = await manager.rollbackReceipt(receipt.id)

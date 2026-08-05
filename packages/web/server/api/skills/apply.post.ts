@@ -14,9 +14,8 @@ const requestSchema = z.object({
 export default defineEventHandler(async (event) => {
   try {
     const input = requestSchema.parse(await readBody(event))
-    if (input.consent.planHash !== input.plan.hash) throw new Error('用户授权与当前计划不匹配。')
     const settings = await settingsStore.read()
-    return await skillsManager.applyOnboarding(input.plan, settings.revision)
+    return await skillsManager.applyOnboarding(input.plan, settings.revision, input.consent)
   } catch (error) {
     throwSkillsApiError(error)
   }

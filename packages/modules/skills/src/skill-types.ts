@@ -182,6 +182,10 @@ export interface ManagedCustomLinkBinding {
   originalRootBackup?: SkillBackupMove | undefined
   /** 最近更新时间。 */
   updatedAt: string
+  /** 软链被无损取消的时间；未取消时不存在。 */
+  suspendedAt?: string | undefined
+  /** 取消期间保留受管软链的隐藏路径。 */
+  suspendedPath?: string | undefined
 }
 
 /** 一个受 AskX 管理的逻辑 Skill。 */
@@ -302,6 +306,150 @@ export interface SkillFileUpdateReceipt {
   manifestRevision: number
 }
 
+/** 单个 Skill 可复制到的目标。 */
+export type SkillCopyTarget =
+  | {
+      /** 目标类型。 */
+      kind: 'platform'
+      /** 目标 Agent 平台。 */
+      platform: SkillPlatformId
+    }
+  | {
+      /** 目标类型。 */
+      kind: 'folder'
+      /** 作为 Skill 容器使用的本地目录绝对路径。 */
+      path: string
+    }
+
+/** 目标存在同名但不同内容时的处理方式。 */
+export const skillCopyConflictStrategySchema = z.enum(['keep', 'replace'])
+
+/** 目标存在同名但不同内容时的处理方式。 */
+export type SkillCopyConflictStrategy = z.infer<typeof skillCopyConflictStrategySchema>
+
+/** 单个 Skill 复制计划检测到的目标状态。 */
+export type SkillCopyTargetState = 'missing' | 'identical' | 'conflict'
+
+/** 单个 Skill 复制到平台或本地目录前的确认计划。 */
+export interface SkillCopyPlan {
+  /** 计划标识。 */
+  id: string
+  /** 计划生成时间。 */
+  createdAt: string
+  /** 来源 Skill 标识。 */
+  skillId: string
+  /** 来源 Skill 名称。 */
+  skillName: string
+  /** 统一源中的来源绝对路径。 */
+  sourcePath: string
+  /** 来源 Skill 内容指纹。 */
+  sourceContentHash: string
+  /** 用户选择的复制目标。 */
+  target: SkillCopyTarget
+  /** 解析后的目标根目录。 */
+  targetRoot: string
+  /** 最终写入的 Skill 目录。 */
+  destinationPath: string
+  /** 计划阶段检测到的目标状态。 */
+  targetState: SkillCopyTargetState
+  /** 目标冲突时原内容的指纹。 */
+  previousTargetHash?: string | undefined
+  /** 目标冲突时的处理方式。 */
+  conflictStrategy: SkillCopyConflictStrategy
+  /** 覆盖前保存原目标内容的 AskX 备份路径。 */
+  backupPath?: string | undefined
+  /** 计划基于的 manifest revision。 */
+  manifestRevision: number
+  /** 计划基于的目标文件系统状态指纹。 */
+  detectionFingerprint: string
+  /** 用户授权所对应的稳定指纹。 */
+  hash: string
+}
+
+/** 一次单 Skill 复制操作的回执。 */
+export interface SkillCopyReceipt {
+  /** 回执标识。 */
+  id: string
+  /** 对应计划指纹。 */
+  planHash: string
+  /** 操作完成时间。 */
+  appliedAt: string
+  /** 来源 Skill 标识。 */
+  skillId: string
+  /** 来源 Skill 名称。 */
+  skillName: string
+  /** 用户选择的复制目标。 */
+  target: SkillCopyTarget
+  /** 最终目标目录。 */
+  destinationPath: string
+  /** 应用成功或幂等跳过。 */
+  status: 'applied' | 'skipped'
+  /** 应用后的内容指纹。 */
+  contentHash: string
+  /** 覆盖前保存的原目标目录。 */
+  backup?: SkillBackupMove | undefined
+  /** 可向用户解释的提示。 */
+  warnings: string[]
+}
+
+/** 一次批量同步允许选择的最大目标数量。 */
+export const MAX_SKILL_COPY_TARGETS = 10
+
+/** 一次批量同步允许包含的最大 Skill 与目标组合数量。 */
+export const MAX_SKILL_COPY_UNITS = 1_000
+
+/** 批量同步中的一个 Skill 与目标组合。 */
+export interface SkillCopySelection {
+  /** 来源 Skill 标识。 */
+  skillId: string
+  /** 平台或本地文件夹目标。 */
+  target: SkillCopyTarget
+  /** 同名不同内容时的处理方式。 */
+  conflictStrategy: SkillCopyConflictStrategy
+}
+
+/** 多个 Skill 到多个目标的只读批量同步计划。 */
+export interface SkillCopyBatchPlan {
+  /** 批量计划标识。 */
+  id: string
+  /** 计划生成时间。 */
+  createdAt: string
+  /** 每个 Skill 与目标组合的独立计划。 */
+  units: SkillCopyPlan[]
+  /** 用户授权所对应的稳定指纹。 */
+  hash: string
+}
+
+/** 批量同步中一个独立组合的执行结果。 */
+export interface SkillCopyBatchUnitResult {
+  /** 来源 Skill 标识。 */
+  skillId: string
+  /** 来源 Skill 名称。 */
+  skillName: string
+  /** 本次复制目标。 */
+  target: SkillCopyTarget
+  /** 最终目标目录。 */
+  destinationPath: string
+  /** 独立执行结果。 */
+  status: 'applied' | 'skipped' | 'failed'
+  /** 成功或跳过时生成的回执标识。 */
+  receiptId?: string | undefined
+  /** 可向用户解释的执行信息。 */
+  warnings: string[]
+}
+
+/** 一次批量同步的执行回执。 */
+export interface SkillCopyBatchReceipt {
+  /** 批量回执标识。 */
+  id: string
+  /** 对应批量计划指纹。 */
+  planHash: string
+  /** 批量处理完成时间。 */
+  appliedAt: string
+  /** 各 Skill 与目标组合的独立结果。 */
+  results: SkillCopyBatchUnitResult[]
+}
+
 /** 一个受管 Skill 的只读健康状态。 */
 export interface ManagedSkillHealth {
   /** 对应受管 Skill 标识。 */
@@ -395,6 +543,80 @@ export interface PlatformLinkReceipt {
   /** 停用期间保存软链的隐藏路径。 */
   suspendedPath: string
   /** 接入前的平台 Skills 根目录及其备份位置。 */
+  originalRootBackup?: SkillBackupMove | undefined
+}
+
+/** 自定义目录软链支持的状态操作。 */
+export const customLinkActionSchema = z.enum(['suspend', 'resume', 'delete'])
+
+/** 自定义目录软链支持的状态操作。 */
+export type CustomLinkAction = z.infer<typeof customLinkActionSchema>
+
+/** 自定义目录软链计划中的原子移动操作。 */
+export interface CustomLinkMoveOperation {
+  /** 操作类型。 */
+  kind: 'move-path'
+  /** 本次移动的是受管软链还是接入前的原目录。 */
+  role: 'managed-link' | 'original-root'
+  /** 当前路径。 */
+  source: string
+  /** 原子移动后的路径。 */
+  target: string
+}
+
+/** 一个自定义目录软链状态操作计划。 */
+export interface CustomLinkPlan {
+  /** 计划标识。 */
+  id: string
+  /** 计划生成时间。 */
+  createdAt: string
+  /** Manifest 中的自定义绑定标识。 */
+  bindingId: string
+  /** 自定义目录展示名称。 */
+  name: string
+  /** 已确认的状态操作。 */
+  action: CustomLinkAction
+  /** 自定义目录的正常使用路径。 */
+  path: string
+  /** 软链预期指向的统一源。 */
+  target: string
+  /** 取消期间保存软链的隐藏路径。 */
+  suspendedPath: string
+  /** 接入前的自定义目录及其备份位置。 */
+  originalRootBackup?: SkillBackupMove | undefined
+  /** 计划基于的 manifest 版本。 */
+  manifestRevision: number
+  /** 计划基于的文件系统状态指纹。 */
+  detectionFingerprint: string
+  /** 实际需要执行的原子移动操作。 */
+  operations: CustomLinkMoveOperation[]
+  /** 计划授权指纹。 */
+  hash: string
+}
+
+/** 一个自定义目录软链状态操作回执。 */
+export interface CustomLinkReceipt {
+  /** 回执标识。 */
+  id: string
+  /** 对应计划指纹。 */
+  planHash: string
+  /** Manifest 中的自定义绑定标识。 */
+  bindingId: string
+  /** 已确认的状态操作。 */
+  action: CustomLinkAction
+  /** 应用或幂等跳过状态。 */
+  status: 'applied' | 'skipped'
+  /** 操作完成时间。 */
+  appliedAt: string
+  /** 操作完成后的 manifest 版本。 */
+  manifestRevision: number
+  /** 自定义目录的正常使用路径。 */
+  path: string
+  /** 软链预期指向的统一源。 */
+  target: string
+  /** 取消期间保存软链的隐藏路径。 */
+  suspendedPath: string
+  /** 接入前的自定义目录及其备份位置。 */
   originalRootBackup?: SkillBackupMove | undefined
 }
 
@@ -762,9 +984,39 @@ export const managedCustomLinkBindingSchema = z.object({
   target: z.string().min(1),
   originalRootBackup: z.object({ originalPath: z.string().min(1), backupPath: z.string().min(1) }).optional(),
   updatedAt: z.string().datetime(),
+  suspendedAt: z.string().datetime().optional(),
+  suspendedPath: z.string().min(1).optional(),
 }).refine(
+  (binding) => Boolean(binding.suspendedAt) === Boolean(binding.suspendedPath),
+  { message: '自定义目录软链的取消时间和保留路径必须同时存在。' },
+).refine(
   (binding) => !binding.originalRootBackup || binding.originalRootBackup.originalPath === binding.path,
   { message: '自定义目录备份必须对应当前软链路径。' },
+)
+
+/** Zod 使用的自定义目录软链状态计划 schema。 */
+export const customLinkPlanSchema = z.object({
+  id: z.string().uuid(),
+  createdAt: z.string().datetime(),
+  bindingId: z.string().min(1),
+  name: z.string().min(1),
+  action: customLinkActionSchema,
+  path: z.string().min(1),
+  target: z.string().min(1),
+  suspendedPath: z.string().min(1),
+  originalRootBackup: z.object({ originalPath: z.string().min(1), backupPath: z.string().min(1) }).optional(),
+  manifestRevision: z.number().int().nonnegative(),
+  detectionFingerprint: z.string().min(1),
+  operations: z.array(z.object({
+    kind: z.literal('move-path'),
+    role: z.enum(['managed-link', 'original-root']),
+    source: z.string().min(1),
+    target: z.string().min(1),
+  })).max(2),
+  hash: z.string().min(1),
+}).refine(
+  (plan) => !plan.originalRootBackup || plan.originalRootBackup.originalPath === plan.path,
+  { message: '自定义目录原始备份必须对应计划中的软链路径。' },
 )
 
 /** Zod 使用的自定义扫描来源移除计划 schema。 */
@@ -788,6 +1040,54 @@ export const skillFileUpdatePlanSchema = z.object({
   previousContentHash: z.string().min(1),
   nextContent: z.string().max(524_288),
   nextContentHash: z.string().min(1),
+  hash: z.string().min(1),
+})
+
+/** Zod 使用的单 Skill 复制目标 schema。 */
+export const skillCopyTargetSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('platform'), platform: skillPlatformIdSchema }),
+  z.object({ kind: z.literal('folder'), path: z.string().min(1) }),
+])
+
+/** Zod 使用的批量同步选择 schema。 */
+export const skillCopySelectionSchema = z.object({
+  skillId: z.string().uuid(),
+  target: skillCopyTargetSchema,
+  conflictStrategy: skillCopyConflictStrategySchema,
+})
+
+/** Zod 使用的单 Skill 复制计划 schema。 */
+export const skillCopyPlanSchema = z.object({
+  id: z.string().uuid(),
+  createdAt: z.string().datetime(),
+  skillId: z.string().uuid(),
+  skillName: z.string().min(1),
+  sourcePath: z.string().min(1),
+  sourceContentHash: z.string().min(1),
+  target: skillCopyTargetSchema,
+  targetRoot: z.string().min(1),
+  destinationPath: z.string().min(1),
+  targetState: z.enum(['missing', 'identical', 'conflict']),
+  previousTargetHash: z.string().min(1).optional(),
+  conflictStrategy: skillCopyConflictStrategySchema,
+  backupPath: z.string().min(1).optional(),
+  manifestRevision: z.number().int().nonnegative(),
+  detectionFingerprint: z.string().min(1),
+  hash: z.string().min(1),
+}).superRefine((plan, context) => {
+  if (plan.targetState === 'conflict' && !plan.previousTargetHash) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['previousTargetHash'], message: '冲突目标必须记录原内容指纹。' })
+  }
+  if (plan.targetState === 'conflict' && plan.conflictStrategy === 'replace' && !plan.backupPath) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['backupPath'], message: '覆盖目标必须预留备份路径。' })
+  }
+})
+
+/** Zod 使用的批量同步计划 schema。 */
+export const skillCopyBatchPlanSchema = z.object({
+  id: z.string().uuid(),
+  createdAt: z.string().datetime(),
+  units: z.array(skillCopyPlanSchema).min(1).max(MAX_SKILL_COPY_UNITS),
   hash: z.string().min(1),
 })
 
