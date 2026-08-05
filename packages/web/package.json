@@ -1,6 +1,6 @@
 {
   "name": "@askx/web",
-  "version": "0.1.0",
+  "version": "26.805.1",
   "private": true,
   "type": "module",
   "exports": {
@@ -32,6 +32,7 @@
     "lowlight": "^3.3.0",
     "marked": "^17.0.6",
     "mitt": "^3.0.1",
+    "nanoid": "^5.1.6",
     "nuxt": "^4.4.8",
     "reka-ui": "^2.10.1",
     "shadcn-nuxt": "^2.8.0",

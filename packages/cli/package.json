@@ -1,29 +1,46 @@
 {
   "name": "askagent-x",
-  "version": "0.1.0",
+  "version": "26.805.1",
   "description": "Extend every agent. Keep control.",
   "type": "module",
   "bin": {
     "askx": "./dist/index.js"
   },
   "exports": "./dist/index.js",
-  "files": ["dist"],
+  "files": ["dist", "README.md"],
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bigwave-cl/ask-agent-x.git"
+  },
+  "homepage": "https://github.com/bigwave-cl/ask-agent-x#readme",
+  "bugs": {
+    "url": "https://github.com/bigwave-cl/ask-agent-x/issues"
+  },
+  "keywords": ["agent", "skills", "codex", "claude", "cursor", "cli"],
   "scripts": {
-    "build": "tsup src/index.tsx --format esm --dts --clean",
+    "build": "tsup && node scripts/prepare-package.mjs",
     "dev": "tsup src/index.tsx --format esm --dts --watch",
+    "postinstall": "node ./dist/lifecycle.mjs start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "commander": "^13.0.0",
+    "hookable": "^6.1.1",
+    "ink": "^7.1.0",
+    "nanoid": "^5.1.6",
+    "react": "^19.2.7",
+    "vue": "^3.5.40",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
     "@askx/core": "workspace:*",
     "@askx/module-skills": "workspace:*",
     "@askx/platform-adapters": "workspace:*",
     "@askx/web": "workspace:*",
-    "commander": "^13.0.0",
-    "ink": "^7.1.0",
-    "react": "^19.2.7"
-  },
-  "devDependencies": {
     "@types/react": "^19.2.17"
   }
 }

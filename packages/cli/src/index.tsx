@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+import { spawn } from 'node:child_process'
+import { once } from 'node:events'
+import { dirname, basename, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   defaultContext,
   ModuleRegistry,
@@ -31,7 +35,7 @@ import type {
 import type { SystemSkillRepairPlan, SystemSkillRepairReceipt } from '@askx/module-skills/builtin-skill-manager'
 import type { SkillStatsReport, SkillUsagePlan, SkillUsageReceipt } from '@askx/module-skills/skill-manager-registry'
 import { detectPlatforms, type PlatformDetection } from '@askx/platform-adapters'
-import { readUiSessionToken, startUi } from '@askx/web/server'
+import { readUiSession, readUiSessionToken, startUi, stopUi } from '@askx/web/server'
 import { Command } from 'commander'
 import { Box, render as inkRender, Text, useApp, useInput } from 'ink'
 import { useState, type ReactNode } from 'react'
@@ -74,7 +78,7 @@ const messages = {
     platformsArgument: 'codex, claude and/or cursor', platformsDescription: 'Set enabled Agent platforms', platformsError: 'Platforms must contain codex, claude and/or cursor',
     languageArgument: 'zh-CN or en', languageDescription: 'Set the shared CLI/Web language', languageError: 'Language must be "zh-CN" or "en"',
     themeArgument: 'cyan or rose', themeDescription: 'Set the shared CLI/Web theme color', themeError: 'Theme color must be "cyan" or "rose"',
-    uiDescription: 'Start the local Nuxt management interface', portDescription: 'Local port; defaults to an available five-digit port', invalidPort: 'Invalid port', tokenDescription: 'Print the active local UI token', noToken: 'No active UI session. Start "pnpm dev" or "askx ui" first.',
+    uiDescription: 'Start or manage the local Nuxt management interface', portDescription: 'Local port; defaults to an available five-digit port', invalidPort: 'Invalid port', tokenDescription: 'Print the active local UI token', noToken: 'No active UI session. Start "pnpm dev" or "askx ui start" first.', uiStartDescription: 'Start the local UI as a background service', uiStopDescription: 'Stop the background UI service', uiStatusDescription: 'Show background UI service status', uiRestartDescription: 'Restart the background UI service', uiAlreadyRunning: 'The local UI is already running', uiStarted: 'The local UI started in the background', uiStopped: 'The local UI service stopped', uiNotRunning: 'The local UI is not running', uiRunning: 'The local UI is running', uninstallDescription: 'Stop the local UI and uninstall AskAgent X globally', uninstallSourceOnly: 'Run this command from a globally installed AskAgent X package', uninstallFailed: 'npm uninstall failed',
     manageBackups: 'Manage canonical Skills source backups', historyDescription: 'List completed Skills transactions', rollbackDescription: 'Roll back the latest unchanged Skills transaction', backupListDescription: 'List canonical source backups', backupRestoreDescription: 'Restore the canonical source from a backup', backupRemoveDescription: 'Permanently remove a canonical source backup', receiptArgument: 'transaction receipt ID', backupVersionArgument: 'backup version', historyTitle: 'Skills transaction history', rollbackPlan: 'Skills rollback plan', rollbackResult: 'Skills rollback result', backupRestorePlan: 'Backup restore plan', backupRestoreResult: 'Backup restored', backupRemovePlan: 'Backup removal plan', backupRemoveResult: 'Backup removed', noTransactions: 'No completed Skills transactions.', noBackups: 'No canonical source backups.', restored: 'restored', rollbackRejected: 'rollback rejected', valid: 'valid', invalid: 'invalid',
     choosePlatforms: 'Choose platforms to scan', scanOnlySelected: 'Space toggles · Enter confirms', platformRequired: 'Select at least one platform.', platformSelectionRequired: 'First scan requires --platform in non-interactive mode.',
     skillConflict: 'Skill {name} has conflicting content.', skillBroken: 'Skill {name} has a broken link.', skillInvalid: 'Skill {name} has invalid metadata.',
@@ -101,7 +105,7 @@ const messages = {
     platformsArgument: 'codex、claude 和/或 cursor', platformsDescription: '设置启用的 Agent 平台', platformsError: '平台必须包含 codex、claude 和/或 cursor',
     languageArgument: 'zh-CN 或 en', languageDescription: '设置 CLI/Web 共享语言', languageError: '语言必须是 "zh-CN" 或 "en"',
     themeArgument: 'cyan 或 rose', themeDescription: '设置 CLI/Web 共享主题色', themeError: '主题色必须是 "cyan" 或 "rose"',
-    uiDescription: '启动本地 Nuxt 管理界面', portDescription: '本地端口，默认自动选择可用的五位端口', invalidPort: '无效端口', tokenDescription: '输出当前本地 UI token', noToken: '没有活动的 UI 会话，请先运行 "pnpm dev" 或 "askx ui"。',
+    uiDescription: '启动或管理本地 Nuxt 管理界面', portDescription: '本地端口，默认自动选择可用的五位端口', invalidPort: '无效端口', tokenDescription: '输出当前本地 UI token', noToken: '没有活动的 UI 会话，请先运行 "pnpm dev" 或 "askx ui start"。', uiStartDescription: '以后台服务方式启动本地 UI', uiStopDescription: '停止后台 UI 服务', uiStatusDescription: '查看后台 UI 服务状态', uiRestartDescription: '重启后台 UI 服务', uiAlreadyRunning: '本地 UI 已在运行', uiStarted: '本地 UI 已在后台启动', uiStopped: '本地 UI 服务已停止', uiNotRunning: '本地 UI 未运行', uiRunning: '本地 UI 正在运行', uninstallDescription: '停止本地 UI 并全局卸载 AskAgent X', uninstallSourceOnly: '请从全局安装的 AskAgent X 包运行此命令', uninstallFailed: 'npm 卸载失败',
     manageBackups: '管理统一 Skills 来源备份', historyDescription: '列出已完成的 Skills 事务', rollbackDescription: '回滚最新且状态未变化的 Skills 事务', backupListDescription: '列出统一源备份', backupRestoreDescription: '从指定备份恢复统一源', backupRemoveDescription: '永久删除指定统一源备份', receiptArgument: '事务回执 ID', backupVersionArgument: '备份版本', historyTitle: 'Skills 事务历史', rollbackPlan: 'Skills 回滚计划', rollbackResult: 'Skills 回滚结果', backupRestorePlan: '备份恢复计划', backupRestoreResult: '备份恢复完成', backupRemovePlan: '备份删除计划', backupRemoveResult: '备份删除完成', noTransactions: '没有已完成的 Skills 事务。', noBackups: '没有统一源备份。', restored: '已恢复', rollbackRejected: '拒绝回滚', valid: '有效', invalid: '无效',
     choosePlatforms: '选择需要扫描的平台', scanOnlySelected: '空格切换 · 回车确认', platformRequired: '至少选择一个平台。', platformSelectionRequired: '非交互模式首次扫描必须传入 --platform。',
     skillConflict: 'Skill {name} 在不同平台的内容不一致。', skillBroken: 'Skill {name} 包含失效软链。', skillInvalid: 'Skill {name} 的元数据无效。',
@@ -550,7 +554,9 @@ function SettingsView({ settings, changed = false }: { settings: AskXConfig; cha
 }
 
 const program = new Command()
-program.name('askx').description(t(activeLocale, 'appDescription')).version('0.1.0')
+/** 当前 AskAgent X 发布版本，格式为“年.月日.当日次数”。 */
+const askxVersion = '26.805.1'
+program.name('askx').description(t(activeLocale, 'appDescription')).version(askxVersion)
 
 const modules = program.command('modules').description(t(activeLocale, 'modulesDescription'))
 modules.command('list').action(() => {
@@ -1029,6 +1035,17 @@ settingsSet
     render(<SettingsView settings={updated} changed />)
   })
 
+/**
+ * 解析 UI 端口参数。
+ * @param port 命令行传入的端口文本。
+ * @returns 可用端口；未传入时返回 undefined。
+ */
+function parseUiPort(port?: string): number | undefined {
+  const parsedPort = port === undefined ? undefined : Number.parseInt(port, 10)
+  if (port !== undefined && (!Number.isInteger(parsedPort) || parsedPort! < 1 || parsedPort! > 65535)) throw new Error(`${t(activeLocale, 'invalidPort')}: ${port}`)
+  return parsedPort
+}
+
 const ui = program
   .command('ui')
   .description(t(activeLocale, 'uiDescription'))
@@ -1036,8 +1053,9 @@ const ui = program
 
 ui
   .action(async ({ port }: { port?: string }) => {
-    const parsedPort = port === undefined ? undefined : Number.parseInt(port, 10)
-    if (port !== undefined && (!Number.isInteger(parsedPort) || parsedPort! < 1 || parsedPort! > 65535)) throw new Error(`${t(activeLocale, 'invalidPort')}: ${port}`)
+    const activeSession = await readUiSession()
+    if (activeSession) throw new Error(`${t(activeLocale, 'uiAlreadyRunning')}: http://127.0.0.1:${activeSession.port}`)
+    const parsedPort = parseUiPort(port)
     const server = await startUi(parsedPort === undefined ? {} : { port: parsedPort })
     const ink = render(<UiView url={server.url} locale={activeLocale} />)
     const close = async () => {
@@ -1047,6 +1065,60 @@ ui
     }
     process.once('SIGINT', close)
     process.once('SIGTERM', close)
+  })
+
+ui
+  .command('start')
+  .description(t(activeLocale, 'uiStartDescription'))
+  .option('-p, --port <port>', t(activeLocale, 'portDescription'))
+  .option('--json', t(activeLocale, 'jsonDescription'))
+  .action(async ({ port, json }: { port?: string; json?: boolean }) => {
+    const activeSession = await readUiSession()
+    if (activeSession) {
+      const result = { running: true, pid: activeSession.pid, port: activeSession.port, url: `http://127.0.0.1:${activeSession.port}` }
+      console.log(json ? JSON.stringify(result, null, 2) : `${t(activeLocale, 'uiAlreadyRunning')}: ${result.url}`)
+      return
+    }
+    const parsedPort = parseUiPort(port)
+    const server = await startUi({ ...(parsedPort === undefined ? {} : { port: parsedPort }), detached: true })
+    const session = await readUiSession()
+    const result = { running: true, pid: session?.pid, port: session?.port, url: server.url }
+    console.log(json ? JSON.stringify(result, null, 2) : `${t(activeLocale, 'uiStarted')}: ${server.url}`)
+  })
+
+ui
+  .command('stop')
+  .description(t(activeLocale, 'uiStopDescription'))
+  .option('--json', t(activeLocale, 'jsonDescription'))
+  .action(async ({ json }: { json?: boolean }) => {
+    const stopped = await stopUi()
+    console.log(json ? JSON.stringify({ stopped }, null, 2) : t(activeLocale, stopped ? 'uiStopped' : 'uiNotRunning'))
+  })
+
+ui
+  .command('status')
+  .description(t(activeLocale, 'uiStatusDescription'))
+  .option('--json', t(activeLocale, 'jsonDescription'))
+  .action(async ({ json }: { json?: boolean }) => {
+    const session = await readUiSession()
+    const result = session
+      ? { running: true, pid: session.pid, port: session.port, url: `http://127.0.0.1:${session.port}`, createdAt: session.createdAt }
+      : { running: false }
+    console.log(json ? JSON.stringify(result, null, 2) : session ? `${t(activeLocale, 'uiRunning')}: ${result.url}` : t(activeLocale, 'uiNotRunning'))
+  })
+
+ui
+  .command('restart')
+  .description(t(activeLocale, 'uiRestartDescription'))
+  .option('-p, --port <port>', t(activeLocale, 'portDescription'))
+  .option('--json', t(activeLocale, 'jsonDescription'))
+  .action(async ({ port, json }: { port?: string; json?: boolean }) => {
+    await stopUi()
+    const parsedPort = parseUiPort(port)
+    const server = await startUi({ ...(parsedPort === undefined ? {} : { port: parsedPort }), detached: true })
+    const session = await readUiSession()
+    const result = { running: true, pid: session?.pid, port: session?.port, url: server.url }
+    console.log(json ? JSON.stringify(result, null, 2) : `${t(activeLocale, 'uiStarted')}: ${server.url}`)
   })
 
 ui
@@ -1070,6 +1142,31 @@ ui
       // The local development server is not running.
     }
     throw new Error(t(activeLocale, 'noToken'))
+  })
+
+/** @returns 当前全局 npm 安装对应的 prefix；源码构建运行时返回 null。 */
+function resolveGlobalInstallPrefix(): string | null {
+  const packageDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+  const nodeModulesDirectory = dirname(packageDirectory)
+  if (basename(nodeModulesDirectory) !== 'node_modules') return null
+  const parentDirectory = dirname(nodeModulesDirectory)
+  return basename(parentDirectory) === 'lib' ? dirname(parentDirectory) : parentDirectory
+}
+
+program
+  .command('uninstall')
+  .description(t(activeLocale, 'uninstallDescription'))
+  .action(async () => {
+    const prefix = resolveGlobalInstallPrefix()
+    if (!prefix) throw new Error(t(activeLocale, 'uninstallSourceOnly'))
+    await stopUi()
+    const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+    const child = spawn(npmExecutable, ['uninstall', '--global', '--prefix', prefix, 'askagent-x'], {
+      stdio: 'inherit',
+      windowsHide: true,
+    })
+    const [code] = await once(child, 'exit')
+    if (code !== 0) throw new Error(`${t(activeLocale, 'uninstallFailed')} (${code ?? 1})`)
   })
 
 await program.parseAsync()

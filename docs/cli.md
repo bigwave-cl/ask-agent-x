@@ -1,25 +1,21 @@
 # AskAgent X CLI 操作手册
 
-本文档对应 AskAgent X `0.1.0` 的当前实现，介绍 `askx` 命令的用途、参数、操作顺序和安全边界。
+本文档对应 AskAgent X `26.805.1` 的当前实现，介绍 `askx` 命令的用途、参数、操作顺序和安全边界。
 
 - [返回项目 README](../README.md)
-- [产品规划](../PLAN.md)
 
-## 1. 运行方式
+## 1. 安装与运行
 
-在当前仓库开发时，通过根目录脚本运行 CLI：
-
-```bash
-pnpm askx --help
-```
-
-安装 `askagent-x` 包并将其二进制加入 `PATH` 后，可以直接使用：
+通过 npm 全局安装：
 
 ```bash
+npm install --global askagent-x
 askx --help
 ```
 
-本文后续统一使用 `askx`。在仓库内操作时，在命令前补充 `pnpm` 即可。
+全局安装会通过 npm `postinstall` 自动启动后台 UI。使用 `askx ui start|status|stop|restart` 管理后台服务，使用 `askx ui token` 获取当前 token。
+
+卸载使用 `askx uninstall`，由 CLI 先停止服务再调用 npm。现代 npm 不执行可靠的卸载生命周期钩子，直接运行 `npm uninstall -g askagent-x` 可能留下仍在运行的后台进程；如需直接使用 npm，应先运行 `askx ui stop`。npm 的 `--ignore-scripts` 会跳过安装后的自动启动。
 
 ## 2. 核心概念
 
@@ -93,7 +89,8 @@ askx skills unlink --platform claude
 | `askx doctor` | 检测 Agent 安装、Skills 目录和整目录绑定条件 |
 | `askx skills` | 扫描、同步和管理 Skills 根目录绑定 |
 | `askx settings` | 读取或更新 CLI/Web 共享设置 |
-| `askx ui` | 启动本地 Nuxt 管理界面 |
+| `askx ui` | 启动或管理本地 Web 界面 |
+| `askx uninstall` | 停止后台服务并全局卸载 AskAgent X |
 
 可在任意层级追加 `--help` 查看当前版本的命令帮助：
 
@@ -382,16 +379,59 @@ askx settings set theme rose
 
 ## 8. 本地 Web 管理界面
 
+全局安装成功后，后台服务通常已经自动启动。先查看当前状态：
+
+```bash
+askx ui status
+```
+
+### `askx ui start [--port <port>]`
+
+在后台启动 Web 服务：
+
+```bash
+askx ui start
+askx ui start --port 4300
+```
+
+未指定端口时会自动选择一个可用的五位本地端口。命令在服务就绪后退出，服务继续在后台运行。
+
+### `askx ui stop`
+
+停止当前受管后台服务：
+
+```bash
+askx ui stop
+```
+
+### `askx ui restart [--port <port>]`
+
+停止当前服务并重新在后台启动：
+
+```bash
+askx ui restart
+askx ui restart --port 4300
+```
+
+### `askx ui status [--json]`
+
+显示后台服务的运行状态、PID、端口和访问地址：
+
+```bash
+askx ui status
+askx ui status --json
+```
+
 ### `askx ui [--port <port>]`
 
-构建完成后启动本地 Nuxt 服务，只监听 `127.0.0.1`：
+以前台方式启动 Web 服务，适合临时运行和故障排查：
 
 ```bash
 askx ui
 askx ui --port 4300
 ```
 
-未指定端口时，发布版命令会自动选择一个当前可用的五位本地端口，降低与其他开发服务冲突的概率。显式端口仍必须是 `1` 至 `65535` 的整数。启动时会生成本地会话 Token，并在终端显示实际访问地址；按 `Ctrl+C` 停止。
+显式端口必须是 `1` 至 `65535` 的整数。服务只监听 `127.0.0.1`，启动时生成本地会话 Token，并在终端显示实际访问地址；按 `Ctrl+C` 停止。已有后台服务运行时，不会重复启动前台实例。
 
 ### `askx ui token`
 
@@ -401,11 +441,27 @@ askx ui --port 4300
 askx ui token
 ```
 
-如果仓库开发服务运行在默认端口，该命令会返回开发 Token `askx-local-dev`。没有活动服务时命令会报错。
+没有活动服务时命令会报错。
 
 不要把 Token 写入仓库、日志或远程脚本。它只用于本机 Web 会话认证。
 
-## 9. 自动化与 JSON 输出
+## 9. 卸载
+
+使用受管卸载命令：
+
+```bash
+askx uninstall
+```
+
+该命令先停止后台 UI 并确认进程退出，再调用 npm 全局卸载当前 AskAgent X。不要直接执行 `npm uninstall -g askagent-x`，否则包文件可能已删除，但后台进程仍继续运行并占用端口。
+
+如果必须直接使用 npm，请执行：
+
+```bash
+askx ui stop && npm uninstall -g askagent-x
+```
+
+## 10. 自动化与 JSON 输出
 
 只读命令可以直接使用 `--json`：
 
@@ -436,7 +492,7 @@ askx skills unlink --platform claude --yes --json
 
 自动化脚本不能只依赖进程退出码判断多平台操作结果，还应检查 JSON 中每个平台或事务单元的 `status`。
 
-## 10. 数据文件
+## 11. 数据文件
 
 | 路径 | 用途 |
 | --- | --- |
@@ -448,7 +504,7 @@ askx skills unlink --platform claude --yes --json
 
 不要手工修改 manifest、事务备份或受管软链。需要调整绑定时使用 `skills link`、`skills unlink` 或 Web 界面。
 
-## 11. 安全边界
+## 12. 安全边界
 
 Skills 写操作遵循：
 
@@ -463,7 +519,7 @@ detect → plan → resolve → consent → apply → verify → rollback
 - 单个平台或单个 Skill 失败时，只回滚对应事务单元。
 - 软链取消和恢复只调整绑定关系，不隐式同步 Skill。
 
-## 12. 常见问题
+## 13. 常见问题
 
 ### 首次运行提示 `PLATFORM_SELECTION_REQUIRED`
 
@@ -496,21 +552,3 @@ askx skills link --platform claude
 ### Web 为什么会响应 CLI 设置
 
 CLI 和 Web 使用同一个 `~/.askx/config.json`。CLI 写入会增加 revision，Web 在轮询周期内读取并应用新设置。
-
-## 13. 仓库开发命令
-
-```bash
-# 构建 CLI 及其依赖
-pnpm dev:prepare
-
-# 只启动 CLI 依赖链监听
-pnpm dev:cli
-
-# 启动 CLI 与 Web 联调环境
-pnpm dev
-
-# 完整检查
-pnpm check
-```
-
-CLI 命令发生变化时，应同步更新本文档和根目录 README 中的快速开始。

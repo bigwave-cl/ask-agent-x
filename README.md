@@ -14,6 +14,7 @@ AskAgent X 是一个面向本地 Agent 的体验增强与扩展平台。当前�
 | 文档 | 内容 |
 | --- | --- |
 | [CLI 操作手册](./docs/cli.md) | 完整命令、参数、Skills 同步与软链流程、共享设置及常见问题 |
+| [npm 本地安装验证](./docs/npm-local-preview.md) | 发布前构建 tarball、隔离安装、持续观察、升级与卸载 |
 | [产品规划](./PLAN.md) | 产品边界、阶段目标和未来能力 |
 | [Agent 开发指南](./AGENTS.md) | 仓库结构、package 导航与开发约束 |
 
@@ -70,6 +71,40 @@ pnpm askx skills scan
 ```bash
 pnpm dev:cli
 pnpm dev:web
+```
+
+## npm 发布前本地安装
+
+生成与正式发布内容一致的本地 tarball：
+
+```bash
+pnpm package:pack
+```
+
+默认输出 `./dist/npm/askagent-x-26.805.1.tgz`。本地验证和正式发布都使用这个文件。推荐安装到个人隔离前缀：
+
+```bash
+npm install --global --prefix "$HOME/.local/askx-preview" ./dist/npm/askagent-x-26.805.1.tgz
+ASKX_DATA_DIR="$HOME/.askx-preview-data" "$HOME/.local/askx-preview/bin/askx" --help
+ASKX_DATA_DIR="$HOME/.askx-preview-data" "$HOME/.local/askx-preview/bin/askx" ui status
+```
+
+正常全局安装完成后会通过 npm `postinstall` 自动启动后台 UI。使用 `askx ui start|status|stop|restart` 管理服务。
+
+卸载必须优先使用：
+
+```bash
+askx uninstall
+```
+
+它会先停止后台服务，再调用 npm 删除包。现代 npm 不执行可靠的卸载生命周期钩子；直接运行 `npm uninstall -g askagent-x` 可能删除源文件但留下仍在运行、继续占用端口的进程。如需直接使用 npm，应运行 `askx ui stop && npm uninstall -g askagent-x`。使用 `npm install --ignore-scripts` 会跳过安装后的自动启动。
+
+完整的更新、检查和卸载流程见 [npm 发布前本地安装与观察](./docs/npm-local-preview.md)。
+
+本地观察通过后，正式发布同一份已验证产物，不重新打包：
+
+```bash
+npm publish ./dist/npm/askagent-x-26.805.1.tgz --access public
 ```
 
 `askx ui` 只监听 `127.0.0.1`，发布版未指定 `--port` 时会由系统选择一个当前可用的五位端口；本地 `pnpm dev` 仍固定使用 `4242`，方便日常联调。启动时会生成一次性会话 token。打开不带 token 的页面会进入欢迎登录页，可通过 `askx ui token` 获取当前 token；验证成功后使用 HttpOnly Cookie 保存本次会话。共享设置已支持 CLI/Web 双向写入。
