@@ -1,8 +1,8 @@
-import { cp, mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { applySystemSkillRepairPlan, createSystemSkillRepairPlan, installBuiltinSkillManager } from './builtin-skill-manager.js'
+import { applySystemSkillRepairPlan, createSystemSkillRepairPlan, inspectSystemSkillManager, installBuiltinSkillManager } from './builtin-skill-manager.js'
 import { SkillsManifestStore } from './manifest-store.js'
 import { SkillManagerRegistryStore } from './skill-manager-registry.js'
 import type { ManagedSkillRecord } from './skill-types.js'
@@ -24,6 +24,15 @@ afterEach(async () => {
 })
 
 describe('Skill Manager Registry', () => {
+  it('系统 Skill 业务内容漂移时标记为损坏', async () => {
+    const { store } = await createStore()
+    const skillPath = join(store.dataDir, 'skills', 'askx-skill-manager', 'SKILL.md')
+    await writeFile(skillPath, `${await readFile(skillPath, 'utf8')}\n测试漂移\n`, 'utf8')
+    const inspection = await inspectSystemSkillManager(store.dataDir)
+    expect(inspection.health).toBe('corrupt')
+    expect(inspection.issues).toContain('Skill 业务内容与声明指纹不一致。')
+  })
+
   it('usage 只更新 Registry revision，不修改版本和业务指纹', async () => {
     const { store } = await createStore()
     const initial = await store.read()

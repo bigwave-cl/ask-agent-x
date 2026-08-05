@@ -185,6 +185,15 @@ export async function ensureAskxManagedDeclaration(root: string, localOnly: bool
   await writeFile(path, source, 'utf8')
 }
 
+/** 从 SKILL.md 中移除 AskX 自己写入的托管声明，不触碰其他 Managed By 内容。 */
+export async function removeAskxManagedDeclaration(root: string): Promise<void> {
+  const path = join(root, 'SKILL.md')
+  const source = await readFile(path, 'utf8')
+  const pattern = /\n## Managed By\n[\s\S]*?(?=\n## |$)/
+  const next = source.replace(pattern, block => block.includes('`askx-skill-manager`') ? '' : block).replace(/\s+$/, '\n')
+  if (next !== source) await writeFile(path, next, 'utf8')
+}
+
 /** 判断一个普通文件是否存在。 */
 export async function managerMetadataExists(root: string): Promise<boolean> {
   try {

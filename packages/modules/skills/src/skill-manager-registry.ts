@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { stableHash, type UserConsent } from '@askx/core'
 import { z } from 'zod'
 import { ASKX_SKILL_MANAGER_NAME } from './skill-manager-metadata.js'
+import type { SkillManagementOverview } from './skill-management-manager.js'
 
 const LOCK_MAX_AGE_MS = 30_000
 const LOCK_RETRY_MS = 40
@@ -132,6 +133,8 @@ export interface SkillStatsReport {
   versions: Record<string, number>
   /** 各目标状态数量。 */
   targetStatuses: Record<string, number>
+  /** Manifest、实际目录与 Registry 三方校验后的管理覆盖状态。 */
+  management: SkillManagementOverview
 }
 
 /** 旧版 bobo registry 的最小兼容 schema。 */
@@ -276,7 +279,7 @@ export class SkillManagerRegistryStore {
   }
 
   /** 生成 Web 与 CLI 共用的统计报告。 */
-  async stats(): Promise<SkillStatsReport> {
+  async stats(management: SkillManagementOverview = { managed: [], unmanaged: [] }): Promise<SkillStatsReport> {
     const registry = await this.read()
     if (!registry) throw new Error('AskX Skill Manager 尚未安装或 registry 不可用。')
     const versions: Record<string, number> = {}
@@ -313,6 +316,7 @@ export class SkillManagerRegistryStore {
       items,
       versions,
       targetStatuses,
+      management,
     }
   }
 

@@ -35,11 +35,15 @@
     "./local-skill-manager": {
       "types": "./dist/local-skill-manager.d.ts",
       "import": "./dist/local-skill-manager.js"
+    },
+    "./skill-management-manager": {
+      "types": "./dist/skill-management-manager.d.ts",
+      "import": "./dist/skill-management-manager.js"
     }
   },
   "scripts": {
-    "build": "tsup src/skills-module.ts src/scanner.ts src/skill-types.ts src/canonical-source-manager.ts src/skill-manager-metadata.ts src/skill-manager-registry.ts src/builtin-skill-manager.ts src/local-skill-manager.ts --format esm --dts --clean && node scripts/copy-builtin-skills.mjs",
-    "dev": "node scripts/copy-builtin-skills.mjs && tsup src/skills-module.ts src/scanner.ts src/skill-types.ts src/canonical-source-manager.ts src/skill-manager-metadata.ts src/skill-manager-registry.ts src/builtin-skill-manager.ts src/local-skill-manager.ts --format esm --dts --watch",
+    "build": "tsup src/skills-module.ts src/scanner.ts src/skill-types.ts src/canonical-source-manager.ts src/skill-manager-metadata.ts src/skill-manager-registry.ts src/builtin-skill-manager.ts src/local-skill-manager.ts src/skill-management-manager.ts --format esm --dts --clean && node scripts/copy-builtin-skills.mjs",
+    "dev": "node scripts/copy-builtin-skills.mjs && tsup src/skills-module.ts src/scanner.ts src/skill-types.ts src/canonical-source-manager.ts src/skill-manager-metadata.ts src/skill-manager-registry.ts src/builtin-skill-manager.ts src/local-skill-manager.ts src/skill-management-manager.ts --format esm --dts --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

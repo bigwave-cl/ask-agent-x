@@ -174,7 +174,7 @@ export async function inspectSystemSkillManager(dataDir: string): Promise<System
     } catch {
       registryValid = false
     }
-    if (!manager.metadata || manager.metadata.managed_by !== ASKX_SKILL_MANAGER_NAME || !registryValid) {
+    if (!manager.metadata || manager.state !== 'askx-managed' || !registryValid) {
       return {
         health: 'corrupt',
         contentHash: fingerprint.contentHash,

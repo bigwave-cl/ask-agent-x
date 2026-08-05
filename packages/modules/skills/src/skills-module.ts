@@ -42,6 +42,19 @@ import { applyPlatformLinkPlan, createPlatformLinkPlan } from './platform-link-m
 import { detectSkillPlatforms, scanSkills, supportedSkillPlatforms } from './scanner.js'
 import { createSkillsBatchPlan } from './skills-planner.js'
 import { SkillManagerRegistryStore, type SkillStatsReport, type SkillUsagePlan, type SkillUsageReceipt } from './skill-manager-registry.js'
+import {
+  applySkillManagementBatchPlan,
+  applySkillManagementPlan,
+  createSkillManagementBatchPlan,
+  createSkillManagementPlan,
+  inspectSkillManagementOverview,
+  type SkillManagementAction,
+  type SkillManagementBatchPlan,
+  type SkillManagementBatchReceipt,
+  type SkillManagementBatchSelection,
+  type SkillManagementPlan,
+  type SkillManagementReceipt,
+} from './skill-management-manager.js'
 import { inspectManagedPlatformBinding, inspectManagedSkill } from './skills-verifier.js'
 import type {
   CustomLinkAction,
@@ -248,8 +261,29 @@ export class SkillsManager {
   }
 
   /** 读取本机 Skill 版本、usage 与同步状态统计。 */
-  stats(): Promise<SkillStatsReport> {
-    return this.registryStore.stats()
+  async stats(): Promise<SkillStatsReport> {
+    const management = await inspectSkillManagementOverview(this.manifestStore, this.registryStore)
+    return this.registryStore.stats(management)
+  }
+
+  /** 为统计页中的单 Skill 纳入或移除版本管理生成确认计划。 */
+  planSkillManagement(recordId: string, action: SkillManagementAction): Promise<SkillManagementPlan> {
+    return createSkillManagementPlan(this.manifestStore, recordId, action)
+  }
+
+  /** 应用一次经过确认的单 Skill 版本管理计划。 */
+  applySkillManagement(plan: SkillManagementPlan, consent: UserConsent): Promise<SkillManagementReceipt> {
+    return applySkillManagementPlan(this.manifestStore, plan, consent)
+  }
+
+  /** 为统计页中保存的全部管理草稿生成批量计划。 */
+  planSkillManagementBatch(selections: SkillManagementBatchSelection[]): Promise<SkillManagementBatchPlan> {
+    return createSkillManagementBatchPlan(this.manifestStore, selections)
+  }
+
+  /** 应用一次经过确认的 Skill 批量管理计划。 */
+  applySkillManagementBatch(plan: SkillManagementBatchPlan, consent: UserConsent): Promise<SkillManagementBatchReceipt> {
+    return applySkillManagementBatchPlan(this.manifestStore, plan, consent)
   }
 
   /** 为一次显式 usage 记录生成确认计划。 */
