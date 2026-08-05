@@ -135,6 +135,9 @@ askx doctor --json
 | `-d, --directory <path>` | `link` | 将自定义目录作为使用端绑定到统一源；最多配置 3 个自定义绑定目录 |
 | `--json` | `scan`、`sync`、`link`、`unlink` | 输出机器可读 JSON |
 | `-y, --yes` | `sync`、`link`、`unlink` | 授权当前生成的不可变计划，跳过交互确认 |
+| `--manage-all` | `sync` | 为本次将进入统一源的全部符合条件 Skill 初始化或刷新版本管理 |
+| `--manage-skill <name>` | `sync` | 为指定 Skill 初始化或刷新版本管理；可以重复传入 |
+| `--migrate-bobo <name>` | `sync` | 保留原 `skill_id/version`，把指定 Skill 从个人 manager 迁移为 AskX 身份；可以重复传入 |
 
 平台参数的两种写法等价：
 
@@ -175,6 +178,14 @@ askx skills sync \
 
 # 自动化环境
 askx skills sync --platform claude --yes --json
+
+# 同步并为符合条件的 Skill 初始化版本管理
+askx skills sync --platform claude --manage-all
+
+# 逐项纳管或迁移旧的 bobo 身份
+askx skills sync --platform claude \
+  --manage-skill my-skill \
+  --migrate-bobo bobo-managed-skill
 ```
 
 默认处理规则：
@@ -184,6 +195,8 @@ askx skills sync --platform claude --yes --json
 - 同名但内容不同：保留现状，不自动覆盖。
 - 无效 Skill、失效链接或无法解析的内容：保留现状并在结果中标记。
 - `sync` 不会顺便建立平台软链。
+- 一键纳入版本管理默认关闭；未选择时 Skill 仍可进入统一源，但不会记录版本、usage 或同步统计。
+- 改造只发生在 AskX staging 或既有统一源，不回写只读扫描来源。
 
 写入前会生成包含扫描指纹、settings revision、manifest revision 和 `planHash` 的计划。交互终端使用 `Y` 确认，`N` 或 `Esc` 取消。
 
@@ -242,7 +255,50 @@ askx skills status
 
 该命令目前没有 `--json` 参数，也不是平台绑定清单。需要查看完整绑定状态时使用 Web 的 Skills X 页面。
 
-### 6.7 尚未开放的 Skills 命令
+### 6.7 `askx skills stats`
+
+读取默认 `askx-skill-manager` 中的本地 Registry，展示受管 Skill 的版本、显式 usage 和同步目标状态。
+
+```bash
+askx skills stats
+askx skills stats --json
+```
+
+该命令只读，不扫描 Agent 行为，也不会上传数据。系统 Skill 缺失或损坏时，统计保持不可用，需先执行修复。
+
+### 6.8 `askx skills usage record`
+
+用户明确记录某个已纳入版本管理 Skill 的一次使用：
+
+```bash
+askx skills usage record my-skill
+askx skills usage record skill_26_805_example --yes --json
+```
+
+写入只增加 Registry 中的 `usage_count` 和 `last_used_at`，不会修改 Skill 内容、版本、业务 Hash 或 manifest。命令会先展示不可变计划，再要求确认。
+
+### 6.9 `askx skills manager repair`
+
+修复缺失、损坏或低于内置版本的默认 `askx-skill-manager`：
+
+```bash
+askx skills manager repair
+askx skills manager repair --yes --json
+```
+
+修复会优先保留当前有效 Registry；当前 Registry 无效时，会从 AskX 自有备份中选择最新有效快照。没有任何有效快照时会明确提示原 usage 与同步统计无法恢复。修复只替换系统指令、脚本和自身元数据，不执行其中的 Python 脚本。
+
+### 6.10 默认 Skill Manager 与 local-only
+
+首次保存 Skills 配置时，AskX 会把内置 `askx-skill-manager` 作为计划中的明确操作安装到：
+
+```text
+~/.askx/skills/askx-skill-manager
+```
+
+系统 Skill 不能通过普通删除或一键清空移除。`local_only: true` 的 Skill 保存在 `~/.askx/local-skills`，不参与平台根目录软链或导出；当前版本通过 Web 的“本地 Skills”页生成计划并迁移到共享统一源。
+
+### 6.11 尚未开放的 Skills 命令
 
 以下命令当前只是占位入口，执行后返回未开放提示和退出码 `2`：
 

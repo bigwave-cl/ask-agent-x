@@ -27,8 +27,12 @@ pnpm askx doctor
 pnpm askx skills scan
 pnpm askx skills scan --platform codex --platform claude --json
 pnpm askx skills sync --platform claude
+pnpm askx skills sync --platform claude --manage-all
 pnpm askx skills link --platform claude
 pnpm askx skills unlink --platform claude
+pnpm askx skills stats
+pnpm askx skills usage record my-skill
+pnpm askx skills manager repair
 pnpm askx settings show
 pnpm askx settings set backup off
 pnpm askx settings set platforms codex cursor
@@ -69,6 +73,8 @@ pnpm dev:web
 
 CLI 提供相同的计划与授权链路：`askx skills sync` 只把平台或 `--directory` 指定目录中的安全版本同步到统一源，内容冲突默认保留；`askx skills link` 只建立或恢复所选平台的整目录软链；`askx skills unlink` 只无损停用软链。交互终端会显示计划并等待确认，自动化脚本必须显式传入 `--yes`，需要稳定机器输出时同时使用 `--json`。首次交互扫描提供 Ink 平台多选；非交互环境通过重复的 `--platform` 明确范围。
 
+AskX 首次保存 Skills 配置时会显式安装内置 `askx-skill-manager`。用户可以在扫描确认阶段选择“一键纳入版本管理”，或通过 CLI 的 `--manage-all`、`--manage-skill`、`--migrate-bobo` 逐项决定；默认不改造普通 Skill。版本管理使用稳定 `skill_id`、`YY.MDD.N` 和排除管理元数据的业务 Hash。usage 只在用户明确执行 `askx skills usage record` 后写入本地 Registry，不监听平台、不后台采集、不上传。Web 的 Skill 资源区域提供“共享 Skills / 本地 Skills / 统计”三个视图，统计页首次打开时才异步读取 Registry。
+
 ```bash
 # 从 Claude Code 和额外目录同步到统一源，不建立软链
 pnpm askx skills sync --platform claude --directory /absolute/path/to/skills
@@ -81,6 +87,9 @@ pnpm askx skills unlink --platform claude
 
 # 自动化环境明确授权并输出纯 JSON
 pnpm askx skills sync --platform claude --yes --json
+
+# 查看本地版本、usage 与同步目标统计
+pnpm askx skills stats
 ```
 
 CLI 和 Web 设置统一写入 `~/.askx/config.json`。配置带 revision 和来源标记，使用原子写入与锁避免两个入口静默覆盖；Web 会自动检测 CLI 产生的新 revision。界面支持简体中文与英文，语言选择同样在两个入口间同步；CLI 可通过 `askx settings set language zh-CN|en` 切换。Web 默认中文路由不带前缀，英文路由统一使用 `/en`，例如 `/settings` 与 `/en/settings`。主题色提供 `cyan` 与 `rose` 两套方案，可通过 Web 主题入口或 `askx settings set theme cyan|rose` 修改。
