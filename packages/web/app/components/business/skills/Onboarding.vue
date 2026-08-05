@@ -609,6 +609,11 @@ onMounted(loadBootstrap)
       />
 
       <template v-if="bootstrap.initialized && report">
+        <BusSkillsSystemSkillRepair
+          v-if="bootstrap.systemSkillHealth !== 'ready'"
+          :health="bootstrap.systemSkillHealth"
+          @repaired="refreshManagedResources"
+        />
         <BusSkillsSkillManagerControl :managed-skills="bootstrap.managedSkills" :local-skills="bootstrap.localSkills ?? []" :health="bootstrap.managedHealth" :platforms="bootstrap.platforms" :platform-health="bootstrap.platformHealth ?? []" :report="report" :busy="busy" @add="openSetup" @updated="refreshManagedResources" />
         <BusSkillsTransactionHistory :receipts="history" :busy="busy" @rollback="rollbackTransaction" />
       </template>
@@ -711,12 +716,6 @@ onMounted(loadBootstrap)
         :plan="customLinkPlan"
         :busy="busy"
         @confirm="applyCustomLinkAction"
-      />
-
-      <BusSkillsSystemSkillRepair
-        v-if="bootstrap.initialized && bootstrap.systemSkillHealth !== 'ready'"
-        :health="bootstrap.systemSkillHealth"
-        @repaired="refreshManagedResources"
       />
 
     </template>

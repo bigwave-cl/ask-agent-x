@@ -10,6 +10,10 @@ const statsFixture = {
   issueTargets: 0,
   versions: { '26.805.1': 1 },
   targetStatuses: { linked: 1 },
+  management: {
+    managed: [{ recordId: '10000000-0000-4000-8000-000000000001', name: 'demo-skill', scope: 'shared', path: '/tmp/.askx/skills/demo-skill', state: 'askx-managed', managed: true, registryRegistered: true, version: '26.805.1', managerSkillId: 'skill_26_805_0123456789', canManage: false, canRemove: true }],
+    unmanaged: [],
+  },
   items: [{
     skillId: 'skill_26_805_0123456789',
     name: 'demo-skill',

@@ -38,11 +38,19 @@ const sharedHealth = computed(() => {
 
 <template>
   <section class="grid gap-4">
-    <Tabs v-model="activeTab" class="rounded-2xl border bg-card p-1.5 shadow-sm">
-      <TabsList variant="line" size="40" scrollable :aria-label="t('skills.resourceTabs')">
-        <TabsTrigger value="shared"><Icon name="askx-objects:skills" />{{ t('skills.sharedSkillsTab') }}<span class="font-mono text-[10px] opacity-60">{{ sharedSkills.length }}</span></TabsTrigger>
-        <TabsTrigger value="local"><Icon name="askx-objects:file" />{{ t('skills.localSkillsTab') }}<span class="font-mono text-[10px] opacity-60">{{ localSkills.length }}</span></TabsTrigger>
-        <TabsTrigger value="stats"><Icon name="askx-objects:layers" />{{ t('skills.statsTab') }}</TabsTrigger>
+    <Tabs v-model="activeTab" class="rounded-[22px] bg-card/80 p-2 shadow-sm ring-1 ring-ds-border-subtle-5 backdrop-blur-sm">
+      <TabsList variant="segment" size="40" shape="regular" scrollable class="gap-1.5 bg-transparent p-0" :aria-label="t('skills.resourceTabs')">
+        <TabsTrigger value="shared" class="px-4 data-active:!border-ds-fill-brand-transparent-20 data-active:!bg-ds-fill-brand-transparent-10 data-active:!text-ds-text-brand data-active:!shadow-none sm:px-5">
+          <Icon name="askx-objects:skills" />{{ t('skills.sharedSkillsTab') }}
+          <span class="rounded-full bg-ds-fill-bw-transparent-5 px-1.5 py-0.5 font-mono text-[10px] leading-none text-ds-text-helper">{{ sharedSkills.length }}</span>
+        </TabsTrigger>
+        <TabsTrigger value="local" class="px-4 data-active:!border-ds-fill-brand-transparent-20 data-active:!bg-ds-fill-brand-transparent-10 data-active:!text-ds-text-brand data-active:!shadow-none sm:px-5">
+          <Icon name="askx-objects:file" />{{ t('skills.localSkillsTab') }}
+          <span class="rounded-full bg-ds-fill-bw-transparent-5 px-1.5 py-0.5 font-mono text-[10px] leading-none text-ds-text-helper">{{ localSkills.length }}</span>
+        </TabsTrigger>
+        <TabsTrigger value="stats" class="px-4 data-active:!border-ds-fill-brand-transparent-20 data-active:!bg-ds-fill-brand-transparent-10 data-active:!text-ds-text-brand data-active:!shadow-none sm:px-5">
+          <Icon name="askx-objects:layers" />{{ t('skills.statsTab') }}
+        </TabsTrigger>
       </TabsList>
     </Tabs>
 
@@ -58,6 +66,6 @@ const sharedHealth = computed(() => {
       @updated="emit('updated')"
     />
     <BusSkillsLocalSkillList v-show="activeTab === 'local'" :skills="localSkills" :busy="busy" @updated="emit('updated')" />
-    <BusSkillsSkillStats v-show="activeTab === 'stats'" :active="activeTab === 'stats'" :shared-total="sharedSkills.length" />
+    <BusSkillsSkillStats v-show="activeTab === 'stats'" :active="activeTab === 'stats'" :shared-total="sharedSkills.length + localSkills.length" @updated="emit('updated')" />
   </section>
 </template>
