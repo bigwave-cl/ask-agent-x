@@ -706,13 +706,26 @@ describe('SkillsManager', () => {
     })
     const receipt = await manager.applyOnboarding(plan, 0, consent(plan))
 
-    const rollback = await manager.rollbackReceipt(receipt.id)
+    const rollbackPlan = await manager.planRollbackReceipt(receipt.id)
+    const rollback = await manager.applyRollbackReceipt(rollbackPlan, consent(rollbackPlan))
 
     expect(rollback.rolledBack).toBe(true)
     expect((await manager.bootstrap()).initialized).toBe(false)
     await expect(access(join(dataDir, 'skills', 'demo'))).rejects.toMatchObject({ code: 'ENOENT' })
     expect((await lstat(join(homeDir, '.codex', 'skills'))).isDirectory()).toBe(true)
     expect(await readFile(join(homeDir, '.codex', 'skills', 'demo', 'SKILL.md'), 'utf8')).toContain('rollback body')
+  })
+
+  it('拒绝与回滚计划不匹配的授权', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-rollback-consent-home-'))
+    const dataDir = join(homeDir, '.askx')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const report = await manager.scan(['codex'])
+    const plan = await manager.planOnboarding({ platforms: ['codex'], detectionFingerprint: report.fingerprint, settingsRevision: 0, decisions: [] })
+    const receipt = await manager.applyOnboarding(plan, 0, consent(plan))
+    const rollbackPlan = await manager.planRollbackReceipt(receipt.id)
+
+    await expect(manager.applyRollbackReceipt(rollbackPlan, { planHash: 'different-plan', confirmedAt: new Date().toISOString() })).rejects.toThrow('授权')
   })
 
   it('统一源被外部修改后拒绝恢复', async () => {

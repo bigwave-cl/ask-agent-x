@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { cp, lstat, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import type { RollbackResult } from '@askx/core'
+import { stableHash, type RollbackResult, type UserConsent } from '@askx/core'
 import { managedDirectoryLinkType } from '@askx/platform-adapters'
 import { installBuiltinSkillManager } from './builtin-skill-manager.js'
 import type { SkillsManifestStore } from './manifest-store.js'
@@ -33,6 +33,7 @@ import type {
   SkillTransactionResult,
   SkillsBatchPlan,
   SkillsBatchReceipt,
+  SkillsRollbackPlan,
   SkillsManifest,
   SkillsScanReport,
 } from './skill-types.js'
@@ -87,6 +88,43 @@ interface StoredBatchReceipt {
   manifestBefore: SkillsManifest | null
   /** 根目录切换的内部恢复信息。 */
   appliedBatch: AppliedBatch
+}
+
+/** 创建一份只读的 Skills 批次回滚计划。 */
+export async function createSkillsRollbackPlan(
+  dataDir: string,
+  manifestStore: SkillsManifestStore,
+  receiptId: string,
+): Promise<SkillsRollbackPlan> {
+  const receipt = (await listSkillsReceipts(dataDir)).find(entry => entry.id === receiptId)
+  if (!receipt) throw new Error(`找不到可回滚的 Skills 回执：${receiptId}`)
+  const manifestRevision = (await manifestStore.read())?.revision ?? 0
+  if (manifestRevision !== receipt.manifestRevision) throw new Error('Skills manifest 已在该事务后发生变化，不能直接回滚。')
+  const unsigned = {
+    id: randomUUID(),
+    createdAt: new Date().toISOString(),
+    receiptId,
+    receiptPlanHash: receipt.planHash,
+    manifestRevision,
+  }
+  return { ...unsigned, hash: stableHash(unsigned) }
+}
+
+/** 应用经过确认且仍与最新状态一致的 Skills 批次回滚计划。 */
+export async function applySkillsRollbackPlan(
+  dataDir: string,
+  manifestStore: SkillsManifestStore,
+  plan: SkillsRollbackPlan,
+  consent: UserConsent,
+): Promise<RollbackResult> {
+  const { hash, ...unsigned } = plan
+  if (stableHash(unsigned) !== hash) throw new Error('Skills 回滚计划内容已经变化。')
+  if (consent.planHash !== hash) throw new Error('用户授权与 Skills 回滚计划不匹配。')
+  const latest = await createSkillsRollbackPlan(dataDir, manifestStore, plan.receiptId)
+  if (latest.manifestRevision !== plan.manifestRevision || latest.receiptPlanHash !== plan.receiptPlanHash) {
+    throw new Error('Skills 回滚目标已经变化，请重新生成计划。')
+  }
+  return rollbackSkillsReceipt(dataDir, manifestStore, plan.receiptId)
 }
 
 /** 判断路径是否存在，失效软链也视为存在。 */

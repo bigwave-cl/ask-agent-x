@@ -976,6 +976,22 @@ export interface SkillsBatchReceipt {
   customLinkResults: CustomLinkBindingResult[]
 }
 
+/** Skills 批次回滚前展示并授权的不可变计划。 */
+export interface SkillsRollbackPlan {
+  /** 计划标识。 */
+  id: string
+  /** 计划创建时间。 */
+  createdAt: string
+  /** 要回滚的事务回执标识。 */
+  receiptId: string
+  /** 原事务的计划指纹。 */
+  receiptPlanHash: string
+  /** 当前 manifest revision。 */
+  manifestRevision: number
+  /** 用户授权绑定的稳定计划指纹。 */
+  hash: string
+}
+
 /** Skills 页面启动信息。 */
 export interface SkillsBootstrap {
   /** 是否已经完成首次初始化。 */

@@ -28,7 +28,13 @@ import {
 } from './canonical-source-manager.js'
 import { applyCustomLinkPlan, createCustomLinkPlan } from './custom-link-manager.js'
 import { applySkillCustomRootRemovalPlan, createSkillCustomRootRemovalPlan } from './custom-root-manager.js'
-import { applySkillsBatchPlan, listSkillsReceipts, rollbackSkillsReceipt } from './skills-executor.js'
+import {
+  applySkillsBatchPlan,
+  applySkillsRollbackPlan,
+  createSkillsRollbackPlan,
+  listSkillsReceipts,
+  rollbackSkillsReceipt,
+} from './skills-executor.js'
 import { applySkillFileUpdatePlan, createSkillFileUpdatePlan, inspectManagedSkillDetail, readManagedSkillFile } from './skill-file-manager.js'
 import { applySkillCopyBatchPlan, createSkillCopyBatchPlan } from './skill-copy-manager.js'
 import {
@@ -82,6 +88,7 @@ import type {
   SkillPlatformId,
   SkillsBatchPlan,
   SkillsBatchReceipt,
+  SkillsRollbackPlan,
   SkillsBootstrap,
   SkillsScanReport,
 } from './skill-types.js'
@@ -468,6 +475,16 @@ export class SkillsManager {
   /** 列出已完成事务。 */
   history(): Promise<SkillsBatchReceipt[]> {
     return listSkillsReceipts(this.context.dataDir)
+  }
+
+  /** 为一个完整 Skills 批次生成回滚确认计划。 */
+  planRollbackReceipt(receiptId: string): Promise<SkillsRollbackPlan> {
+    return createSkillsRollbackPlan(this.context.dataDir, this.manifestStore, receiptId)
+  }
+
+  /** 应用经过确认的 Skills 批次回滚计划。 */
+  applyRollbackReceipt(plan: SkillsRollbackPlan, consent: UserConsent): Promise<RollbackResult> {
+    return applySkillsRollbackPlan(this.context.dataDir, this.manifestStore, plan, consent)
   }
 
   /**
