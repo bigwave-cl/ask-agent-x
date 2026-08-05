@@ -81,10 +81,10 @@ pnpm dev:web
 pnpm package:pack
 ```
 
-默认输出 `./dist/npm/askagent-x-26.805.1.tgz`。本地验证和正式发布都使用这个文件。推荐安装到个人隔离前缀：
+默认输出 `./dist/npm/askagent-x-26.805.2.tgz`。本地验证和正式发布都使用这个文件。推荐安装到个人隔离前缀：
 
 ```bash
-npm install --global --prefix "$HOME/.local/askx-preview" ./dist/npm/askagent-x-26.805.1.tgz
+npm install --global --prefix "$HOME/.local/askx-preview" ./dist/npm/askagent-x-26.805.2.tgz
 ASKX_DATA_DIR="$HOME/.askx-preview-data" "$HOME/.local/askx-preview/bin/askx" --help
 ASKX_DATA_DIR="$HOME/.askx-preview-data" "$HOME/.local/askx-preview/bin/askx" ui status
 ```
@@ -104,7 +104,7 @@ askx uninstall
 本地观察通过后，正式发布同一份已验证产物，不重新打包：
 
 ```bash
-npm publish ./dist/npm/askagent-x-26.805.1.tgz --access public
+npm publish ./dist/npm/askagent-x-26.805.2.tgz --access public
 ```
 
 `askx ui` 只监听 `127.0.0.1`，发布版未指定 `--port` 时会由系统选择一个当前可用的五位端口；本地 `pnpm dev` 仍固定使用 `4242`，方便日常联调。启动时会生成一次性会话 token。打开不带 token 的页面会进入欢迎登录页，可通过 `askx ui token` 获取当前 token；验证成功后使用 HttpOnly Cookie 保存本次会话。共享设置已支持 CLI/Web 双向写入。

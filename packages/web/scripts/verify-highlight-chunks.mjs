@@ -50,7 +50,7 @@ assertBuild(workerFiles.length === 1, `预期一个高亮 Worker，实际为 ${w
 /** Worker 入口源码。 */
 const workerSource = await readFile(resolve(outputDirectory, workerFiles[0]), 'utf8')
 /** Worker 动态依赖的 chunk 文件。 */
-const workerImports = [...workerSource.matchAll(/import\("\.\/([^"?]+\.js)"\)/gu)].map(match => match[1])
+const workerImports = [...workerSource.matchAll(/import\(["'`]\.\/([^"'`?]+\.js)["'`]\)/gu)].map(match => match[1])
 
 for (const language of expectedLanguages) {
   const languageChunks = outputFiles.filter(file => new RegExp(`^${language}-[\\w-]+\\.js$`, 'u').test(file))

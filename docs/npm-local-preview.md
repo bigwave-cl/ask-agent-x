@@ -19,7 +19,7 @@ pnpm package:pack
 当前版本的产物为：
 
 ```text
-./dist/npm/askagent-x-26.805.1.tgz
+./dist/npm/askagent-x-26.805.2.tgz
 ```
 
 每次执行都会清理并重新创建 `dist/npm/`，避免误用旧产物。
@@ -29,7 +29,7 @@ pnpm package:pack
 直接全局安装项目生成的 tarball，不需要额外的 `--prefix`：
 
 ```bash
-npm install --global ./dist/npm/askagent-x-26.805.1.tgz
+npm install --global ./dist/npm/askagent-x-26.805.2.tgz
 ```
 
 安装完成后，npm `postinstall` 会自动启动后台 Web UI。安装命令会正常退出，后台服务继续运行。
@@ -77,7 +77,7 @@ askx ui token
 正式生成新构建前，先更新“年月日次”版本号。同一天的后续构建依次使用：
 
 ```text
-26.805.1
+26.805.2
 26.805.2
 26.805.3
 ```
@@ -146,8 +146,8 @@ pnpm package:pack
 检查 tarball 元数据和内容：
 
 ```bash
-tar -xOf ./dist/npm/askagent-x-26.805.1.tgz package/package.json
-tar -tzf ./dist/npm/askagent-x-26.805.1.tgz
+tar -xOf ./dist/npm/askagent-x-26.805.2.tgz package/package.json
+tar -tzf ./dist/npm/askagent-x-26.805.2.tgz
 ```
 
 发布包至少应包含：
@@ -163,7 +163,7 @@ tar -tzf ./dist/npm/askagent-x-26.805.1.tgz
 
 ```bash
 askx ui stop
-npm install --global ./dist/npm/askagent-x-26.805.1.tgz
+npm install --global ./dist/npm/askagent-x-26.805.2.tgz
 askx --version
 askx ui status
 askx doctor
@@ -174,7 +174,7 @@ askx doctor
 本地观察通过后，不再执行 `npm pack`，直接发布已经安装和验证过的同一个文件：
 
 ```bash
-npm publish ./dist/npm/askagent-x-26.805.1.tgz --access public
+npm publish ./dist/npm/askagent-x-26.805.2.tgz --access public
 ```
 
 完整链路为：

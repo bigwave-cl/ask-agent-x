@@ -68,6 +68,19 @@ export default defineNuxtConfig({
   },
   vite: {
     plugins: [tailwindcss()],
+    build: {
+      // 当前主工作区包 gzip 后约 131 KB，以 600 KB 作为未压缩产物预算。
+      chunkSizeWarningLimit: 600,
+      ...{
+        // Nuxt 4.5 的配置类型仍基于 Vite 7，运行时 Vite 8 已支持此检查项。
+        rolldownOptions: {
+          checks: {
+            // Nuxt 内部 resolveId hook 并行重叠，Rolldown 无法准确归因耗时。
+            pluginTimings: false,
+          },
+        },
+      },
+    },
     worker: {
       format: 'es',
     },
