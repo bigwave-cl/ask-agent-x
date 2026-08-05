@@ -27,7 +27,7 @@ import type { SkillStatsReport, SkillUsagePlan, SkillUsageReceipt } from '@askx/
 import { detectPlatforms, type PlatformDetection } from '@askx/platform-adapters'
 import { readUiSessionToken, startUi } from '@askx/web/server'
 import { Command } from 'commander'
-import { Box, render, Text, useApp, useInput } from 'ink'
+import { Box, render as inkRender, Text, useApp, useInput } from 'ink'
 import { useState, type ReactNode } from 'react'
 import { createKeepDecisions, createSafeSyncDecisions, summarizeSkillsBatchPlan } from './skills-command-helpers.js'
 
@@ -38,11 +38,25 @@ const settingsStore = new SettingsStore(defaultContext().dataDir)
 const skillsManager = new SkillsManager(defaultContext())
 const activeLocale = (await settingsStore.read()).locale
 
+/** 当前终端中尚未卸载的 Ink 实例。 */
+let activeInkInstance: ReturnType<typeof inkRender> | undefined
+
+/**
+ * 渲染一个 Ink 视图，并在切换视图前卸载上一实例。
+ * @param node 要展示的 React 节点。
+ * @returns 当前 Ink 渲染实例。
+ */
+function render(node: ReactNode): ReturnType<typeof inkRender> {
+  activeInkInstance?.unmount()
+  activeInkInstance = inkRender(node)
+  return activeInkInstance
+}
+
 const messages = {
   en: {
     builtInModules: 'built-in modules', doctor: 'doctor', skillsScan: 'skills scan', skillsStatus: 'skills status',
     status: 'Status', ready: 'ready', blocked: 'blocked', notFound: 'not found', ok: 'ok', warning: 'warning',
-    noIssues: 'No topology issues detected.', skills: 'Skills', conflicts: 'conflicts', brokenLinks: 'broken links', fingerprint: 'Fingerprint',
+    noIssues: 'No topology issues detected.', skills: 'Skills', skillsTitle: 'Skills', conflicts: 'conflicts', brokenLinks: 'broken links', fingerprint: 'Fingerprint',
     localUi: 'local ui', serverReady: 'Nuxt server ready', stop: 'Press Ctrl+C to stop.',
     settings: 'settings', settingsUpdated: 'settings updated', revision: 'REVISION', source: 'SOURCE', platforms: 'Platforms', backup: 'Backup', language: 'Language', themeColor: 'Theme', updated: 'Updated',
     writeLocked: 'Write operations are intentionally locked in the foundation release.',
@@ -69,7 +83,7 @@ const messages = {
   'zh-CN': {
     builtInModules: '内置模块', doctor: '环境诊断', skillsScan: 'Skills 扫描', skillsStatus: 'Skills 状态',
     status: '状态', ready: '就绪', blocked: '受阻', notFound: '未发现', ok: '正常', warning: '警告',
-    noIssues: '未检测到拓扑问题。', skills: '个 Skills', conflicts: '个冲突', brokenLinks: '个失效链接', fingerprint: '指纹',
+    noIssues: '未检测到拓扑问题。', skills: '个 Skills', skillsTitle: 'Skills', conflicts: '个冲突', brokenLinks: '个失效链接', fingerprint: '指纹',
     localUi: '本地界面', serverReady: 'Nuxt 服务已就绪', stop: '按 Ctrl+C 停止。',
     settings: '共享设置', settingsUpdated: '设置已更新', revision: '版本', source: '来源', platforms: '平台', backup: '备份', language: '语言', themeColor: '主题色', updated: '更新时间',
     writeLocked: '基础版本暂未开放写入操作。',
@@ -616,7 +630,7 @@ async function executePlatformLinkAction(platform: SkillPlatformId, action: Plat
     const plan = await skillsManager.planPlatformLink(platform, action)
     if (!options.json) render(<PlatformLinkPlanView plan={plan} locale={activeLocale} title={t(activeLocale, action === 'resume' ? 'linkPlan' : 'unlinkPlan')} />)
     if (!await authorizeWrite(options, plan)) {
-      if (!options.json && process.stdin.isTTY) render(<NoticeView title={t(activeLocale, 'skills')} message={t(activeLocale, 'cancelled')} />)
+      if (!options.json && process.stdin.isTTY) render(<NoticeView title={t(activeLocale, 'skillsTitle')} message={t(activeLocale, 'cancelled')} />)
       return { cancelled: true }
     }
     const receipt = await skillsManager.applyPlatformLink(plan, consentFor(plan))
@@ -700,7 +714,7 @@ skills
     })
     if (!options.json) render(<SkillsBatchPlanView plan={plan} report={report} locale={activeLocale} title={t(activeLocale, 'syncPlan')} />)
     if (!await authorizeWrite(options, plan)) {
-      if (!options.json && process.stdin.isTTY) render(<NoticeView title={t(activeLocale, 'skills')} message={t(activeLocale, 'cancelled')} />)
+      if (!options.json && process.stdin.isTTY) render(<NoticeView title={t(activeLocale, 'skillsTitle')} message={t(activeLocale, 'cancelled')} />)
       return
     }
     const latestSettings = await settingsStore.read()
@@ -762,7 +776,7 @@ skills
       })
       if (!options.json) render(<SkillsBatchPlanView plan={plan} report={report} locale={activeLocale} title={t(activeLocale, 'linkPlan')} />)
       if (!await authorizeWrite(options, plan)) {
-        if (!options.json && process.stdin.isTTY) render(<NoticeView title={t(activeLocale, 'skills')} message={t(activeLocale, 'cancelled')} />)
+        if (!options.json && process.stdin.isTTY) render(<NoticeView title={t(activeLocale, 'skillsTitle')} message={t(activeLocale, 'cancelled')} />)
         return
       }
       const latestSettings = await settingsStore.read()
