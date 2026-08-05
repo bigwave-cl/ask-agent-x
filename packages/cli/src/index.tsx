@@ -16,11 +16,14 @@ import type {
   PlatformLinkAction,
   PlatformLinkPlan,
   PlatformLinkReceipt,
+  SkillManagementChoice,
   SkillPlatformId,
   SkillsBatchPlan,
   SkillsBatchReceipt,
   SkillsScanReport,
 } from '@askx/module-skills/skill-types'
+import type { SystemSkillRepairPlan, SystemSkillRepairReceipt } from '@askx/module-skills/builtin-skill-manager'
+import type { SkillStatsReport, SkillUsagePlan, SkillUsageReceipt } from '@askx/module-skills/skill-manager-registry'
 import { detectPlatforms, type PlatformDetection } from '@askx/platform-adapters'
 import { readUiSessionToken, startUi } from '@askx/web/server'
 import { Command } from 'commander'
@@ -61,7 +64,7 @@ const messages = {
     planHash: 'Plan hash', adopt: 'adopt', merge: 'merge', keep: 'keep', customDirectories: 'custom directories', operations: 'operations', applied: 'applied', skipped: 'skipped', failed: 'failed',
     confirmApply: 'Apply this exact plan?', confirmKeys: 'Y confirms · N/Esc cancels', cancelled: 'Operation cancelled.', confirmationRequired: 'A write plan requires confirmation. Re-run with --yes in non-interactive or JSON mode.',
     skillsNotInitialized: 'Skills management is not initialized. Run "askx skills sync" first.', platformWriteRequired: 'Select at least one platform for this link operation.', conflictKept: 'Conflicting Skills are kept unchanged and are not overwritten automatically.',
-    linkTarget: 'link target',
+    linkTarget: 'link target', statsDescription: 'Show managed Skill versions, usage and target health', usageDescription: 'Record explicit local Skill usage', usageRecordDescription: 'Record one use by Skill name or stable ID', managerDescription: 'Manage the built-in AskX Skill Manager', managerRepairDescription: 'Repair a missing, corrupt or outdated built-in Skill Manager', manageAllDescription: 'Initialize version management for every eligible unmanaged Skill', manageSkillDescription: 'Initialize or refresh version management for a named Skill', migrateBoboDescription: 'Migrate a bobo-managed Skill to AskX while preserving its ID and version', statsTitle: 'Skill statistics', totalUsage: 'usage', totalTargets: 'targets', issueTargets: 'target issues', usagePlan: 'Usage record plan', usageResult: 'Usage recorded', managerRepairPlan: 'Skill Manager repair plan', managerRepairResult: 'Skill Manager repaired', skillName: 'Skill', version: 'Version', systemHealth: 'Previous health', preserveRegistry: 'Preserve registry', registryRevision: 'Registry revision', usageCount: 'Usage count', management: 'version management', repairWarnings: 'Warnings',
   },
   'zh-CN': {
     builtInModules: '内置模块', doctor: '环境诊断', skillsScan: 'Skills 扫描', skillsStatus: 'Skills 状态',
@@ -88,7 +91,7 @@ const messages = {
     planHash: '计划指纹', adopt: '接管', merge: '合并', keep: '保留', customDirectories: '自定义目录', operations: '操作', applied: '已应用', skipped: '已跳过', failed: '失败',
     confirmApply: '确认执行这份完整计划？', confirmKeys: 'Y 确认 · N/Esc 取消', cancelled: '操作已取消。', confirmationRequired: '写操作必须明确授权；非交互或 JSON 模式请重新执行并传入 --yes。',
     skillsNotInitialized: 'Skills 管理尚未初始化，请先运行 "askx skills sync"。', platformWriteRequired: '软链操作至少需要选择一个平台。', conflictKept: '内容冲突的 Skills 会保留现状，不会自动覆盖。',
-    linkTarget: '软链目标',
+    linkTarget: '软链目标', statsDescription: '查看受管 Skill 的版本、使用次数和目标状态', usageDescription: '记录明确的本地 Skill 使用', usageRecordDescription: '按 Skill 名称或稳定 ID 记录一次使用', managerDescription: '管理 AskX 内置 Skill Manager', managerRepairDescription: '修复缺失、损坏或过期的内置 Skill Manager', manageAllDescription: '为全部符合条件的未托管 Skill 初始化版本管理', manageSkillDescription: '为指定 Skill 初始化或刷新版本管理', migrateBoboDescription: '保留 ID 和版本，将 bobo 托管 Skill 迁移为 AskX 身份', statsTitle: 'Skill 统计', totalUsage: '累计使用', totalTargets: '同步目标', issueTargets: '异常目标', usagePlan: 'Usage 记录计划', usageResult: 'Usage 已记录', managerRepairPlan: 'Skill Manager 修复计划', managerRepairResult: 'Skill Manager 已修复', skillName: 'Skill', version: '版本', systemHealth: '修复前状态', preserveRegistry: '保留 Registry', registryRevision: 'Registry 版本', usageCount: '累计次数', management: '版本管理', repairWarnings: '提示',
   },
 } as const
 
@@ -401,6 +404,64 @@ function NoticeView({ title, message }: { title: string; message: string }) {
   return <Frame title={title}><Text color="yellow">◆ {message}</Text></Frame>
 }
 
+/** Skill 统计终端视图。 */
+function SkillStatsView({ report, locale }: { report: SkillStatsReport; locale: AskXLocale }) {
+  return (
+    <Frame title={t(locale, 'statsTitle')}>
+      <Box gap={2}>
+        <Text>{t(locale, 'skills')} <Text color={accent}>{report.totalSkills}</Text></Text>
+        <Text>{t(locale, 'totalUsage')} <Text color={accent}>{report.totalUsage}</Text></Text>
+        <Text>{t(locale, 'totalTargets')} <Text color={accent}>{report.totalTargets}</Text></Text>
+        <Text>{t(locale, 'issueTargets')} <Text color={report.issueTargets ? 'yellow' : 'green'}>{report.issueTargets}</Text></Text>
+      </Box>
+      <Text dimColor>{t(locale, 'registryRevision')}  #{report.revision}</Text>
+      <Box flexDirection="column" marginTop={1}>
+        {report.items.map((item) => (
+          <Text key={item.skillId}>· <Text bold>{item.name}</Text>  {item.version || '-'}  {t(locale, 'usageCount')} {item.usageCount}  {t(locale, 'totalTargets')} {item.targetCount}</Text>
+        ))}
+      </Box>
+    </Frame>
+  )
+}
+
+/** usage 计划终端视图。 */
+function SkillUsagePlanView({ plan, locale }: { plan: SkillUsagePlan; locale: AskXLocale }) {
+  return (
+    <Frame title={t(locale, 'usagePlan')}>
+      <Text>{t(locale, 'skillName')}  <Text color={accent}>{plan.skillName}</Text></Text>
+      <Text>{t(locale, 'registryRevision')}  #{plan.registryRevision}</Text>
+      <Text dimColor>{t(locale, 'planHash')}  {plan.hash}</Text>
+    </Frame>
+  )
+}
+
+/** usage 写入回执终端视图。 */
+function SkillUsageReceiptView({ receipt, locale }: { receipt: SkillUsageReceipt; locale: AskXLocale }) {
+  return <Frame title={t(locale, 'usageResult')}><Text>{t(locale, 'usageCount')}  <Text color="green">{receipt.usageCount}</Text></Text><Text>{t(locale, 'registryRevision')}  #{receipt.registryRevision}</Text></Frame>
+}
+
+/** 系统 Skill 修复计划终端视图。 */
+function SystemSkillRepairPlanView({ plan, locale }: { plan: SystemSkillRepairPlan; locale: AskXLocale }) {
+  return (
+    <Frame title={t(locale, 'managerRepairPlan')}>
+      <Text>{t(locale, 'systemHealth')}  <Text color="yellow">{plan.health}</Text></Text>
+      <Text>{t(locale, 'preserveRegistry')}  <Text color={plan.preserveRegistry ? 'green' : 'yellow'}>{plan.preserveRegistry ? 'YES' : 'NO'}</Text></Text>
+      <Text dimColor>{t(locale, 'planHash')}  {plan.hash}</Text>
+    </Frame>
+  )
+}
+
+/** 系统 Skill 修复回执终端视图。 */
+function SystemSkillRepairReceiptView({ receipt, locale }: { receipt: SystemSkillRepairReceipt; locale: AskXLocale }) {
+  return (
+    <Frame title={t(locale, 'managerRepairResult')}>
+      <Text color="green">✓ {receipt.previousHealth}</Text>
+      <Text>{t(locale, 'registryRevision')}  #{receipt.manifestRevision}</Text>
+      {receipt.warnings.map((warning) => <Text key={warning} color="yellow">! {warning}</Text>)}
+    </Frame>
+  )
+}
+
 function UiView({ url, locale }: { url: string; locale: AskXLocale }) {
   return (
     <Frame title={t(locale, 'localUi')}>
@@ -458,6 +519,46 @@ function collectPlatform(value: string, previous: string[]): string[] {
 /** 收集重复传入的目录参数。 */
 function collectDirectory(value: string, previous: string[]): string[] {
   return [...previous, value]
+}
+
+/** 收集重复传入的 Skill 名称。 */
+function collectSkillName(value: string, previous: string[]): string[] {
+  return [...previous, value]
+}
+
+/**
+ * 将 CLI 版本管理参数解析为与扫描分组绑定的选择。
+ * @param report 当前只读扫描报告。
+ * @param manageAll 是否纳管全部符合条件的 Skill。
+ * @param managedNames 用户逐项选择的 Skill 名称。
+ * @param migratedNames 用户逐项选择迁移旧身份的 Skill 名称。
+ * @returns 进入计划 hash 的完整版本管理选择。
+ */
+function createManagementChoices(
+  report: SkillsScanReport,
+  manageAll: boolean,
+  managedNames: string[],
+  migratedNames: string[],
+): SkillManagementChoice[] {
+  const selected = new Set(managedNames)
+  const migrated = new Set(migratedNames)
+  const knownNames = new Set(report.groups.map((group) => group.name))
+  const unknown = [...selected, ...migrated].filter((name) => !knownNames.has(name))
+  if (unknown.length) throw new Error(`找不到扫描到的 Skill：${[...new Set(unknown)].join(', ')}`)
+  const choices: SkillManagementChoice[] = []
+  for (const group of report.groups) {
+    const source = group.locations.find(location => location.metadata.valid && !location.broken)
+    const state = source?.managerState
+    if (migrated.has(group.name)) {
+      if (state !== 'bobo-managed') throw new Error(`Skill ${group.name} 不是 bobo-skill-manager 托管项。`)
+      choices.push({ groupId: group.id, action: 'migrate-bobo' })
+      continue
+    }
+    if (!manageAll && !selected.has(group.name)) continue
+    if (state === 'unmanaged') choices.push({ groupId: group.id, action: 'initialize' })
+    else if (state === 'metadata-stale') choices.push({ groupId: group.id, action: 'refresh' })
+  }
+  return choices
 }
 
 /** 校验 CLI 平台参数。 */
@@ -560,6 +661,12 @@ interface SkillsSyncOptions extends SkillsWriteOptions {
   platform: string[]
   /** 额外的只读 Skill 来源目录。 */
   directory: string[]
+  /** 是否纳管全部符合条件的 Skill。 */
+  manageAll?: boolean
+  /** 要纳入或刷新版本管理的 Skill 名称。 */
+  manageSkill: string[]
+  /** 要从个人 manager 迁移身份的 Skill 名称。 */
+  migrateBobo: string[]
 }
 
 skills
@@ -569,6 +676,9 @@ skills
   .option('-y, --yes', t(activeLocale, 'yesDescription'))
   .option('-p, --platform <platform>', t(activeLocale, 'platformsArgument'), collectPlatform, [])
   .option('-d, --directory <path>', t(activeLocale, 'directoryDescription'), collectDirectory, [])
+  .option('--manage-all', t(activeLocale, 'manageAllDescription'))
+  .option('--manage-skill <name>', t(activeLocale, 'manageSkillDescription'), collectSkillName, [])
+  .option('--migrate-bobo <name>', t(activeLocale, 'migrateBoboDescription'), collectSkillName, [])
   .action(async (options: SkillsSyncOptions) => {
     const bootstrap = await skillsManager.bootstrap()
     const platforms = await resolveSourcePlatforms(options.platform, bootstrap.initialized, options.json)
@@ -584,6 +694,7 @@ skills
       detectionFingerprint: report.fingerprint,
       settingsRevision: settings.revision,
       decisions: createSafeSyncDecisions(report),
+      managementChoices: createManagementChoices(report, Boolean(options.manageAll), options.manageSkill, options.migrateBobo),
       mode: 'sync',
       linkPlatforms: [],
     })
@@ -704,6 +815,47 @@ skills.command('status').description(t(activeLocale, 'statusDescription')).actio
   const issues = scanIssues(report)
   render(<StatusView status={issues.length ? 'warning' : 'ok'} issues={issues} fingerprint={report.fingerprint} locale={activeLocale} />)
 })
+
+skills
+  .command('stats')
+  .description(t(activeLocale, 'statsDescription'))
+  .option('--json', t(activeLocale, 'jsonDescription'))
+  .action(async ({ json }: { json?: boolean }) => {
+    const report = await skillsManager.stats()
+    if (json) console.log(JSON.stringify(report, null, 2))
+    else render(<SkillStatsView report={report} locale={activeLocale} />)
+  })
+
+const usage = skills.command('usage').description(t(activeLocale, 'usageDescription'))
+usage
+  .command('record')
+  .argument('<name-or-id>')
+  .description(t(activeLocale, 'usageRecordDescription'))
+  .option('--json', t(activeLocale, 'jsonDescription'))
+  .option('-y, --yes', t(activeLocale, 'yesDescription'))
+  .action(async (nameOrId: string, options: SkillsWriteOptions) => {
+    const plan = await skillsManager.planUsage(nameOrId)
+    if (!options.json) render(<SkillUsagePlanView plan={plan} locale={activeLocale} />)
+    if (!await authorizeWrite(options, plan)) return
+    const receipt = await skillsManager.applyUsage(plan, consentFor(plan))
+    if (options.json) console.log(JSON.stringify(receipt, null, 2))
+    else render(<SkillUsageReceiptView receipt={receipt} locale={activeLocale} />)
+  })
+
+const manager = skills.command('manager').description(t(activeLocale, 'managerDescription'))
+manager
+  .command('repair')
+  .description(t(activeLocale, 'managerRepairDescription'))
+  .option('--json', t(activeLocale, 'jsonDescription'))
+  .option('-y, --yes', t(activeLocale, 'yesDescription'))
+  .action(async (options: SkillsWriteOptions) => {
+    const plan = await skillsManager.planSystemSkillRepair()
+    if (!options.json) render(<SystemSkillRepairPlanView plan={plan} locale={activeLocale} />)
+    if (!await authorizeWrite(options, plan)) return
+    const receipt = await skillsManager.applySystemSkillRepair(plan, consentFor(plan))
+    if (options.json) console.log(JSON.stringify(receipt, null, 2))
+    else render(<SystemSkillRepairReceiptView receipt={receipt} locale={activeLocale} />)
+  })
 
 function unavailable(command: Command): void {
   command.action(() => {

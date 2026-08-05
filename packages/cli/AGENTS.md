@@ -15,6 +15,7 @@
 - 新增用户可见命令、帮助和错误时同时维护简体中文与英文。
 - 终端组件必须适用于无颜色、较窄宽度和非交互环境；颜色不能成为唯一状态信号。
 - 写命令必须明确展示影响范围并经过 Core 授权；未完成安全链路的命令应保持显式锁定。
+- `skills usage record`、`skills manager repair` 和版本管理同步参数必须调用 Skills 模块的计划与授权接口；CLI 不直接读写系统 Skill registry 或 manager 元数据。
 - `askx ui` 继续只绑定 loopback；token 可以输出到当前终端，但不得写入日志或普通配置文件。
 - 不直接编辑 Nuxt 数据或页面状态；CLI/Web 通过 Core 的共享设置存储同步。
 

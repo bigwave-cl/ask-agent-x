@@ -19,7 +19,7 @@ function createReport(): SkillsScanReport {
         hashes: ['one'],
         status: 'unique',
         recommendedAction: 'adopt',
-        locations: [{ id: 'unique-source', platform: 'claude', name: 'unique', path: '/tmp/unique', kind: 'directory', contentHash: 'one', metadata: validMetadata, broken: false }],
+        locations: [{ id: 'unique-source', platform: 'claude', name: 'unique', path: '/tmp/unique', kind: 'directory', contentHash: 'one', managerState: 'unmanaged', metadata: validMetadata, broken: false }],
       },
       {
         id: 'identical',
@@ -27,7 +27,7 @@ function createReport(): SkillsScanReport {
         hashes: ['two'],
         status: 'identical',
         recommendedAction: 'merge',
-        locations: [{ id: 'identical-source', platform: 'claude', name: 'identical', path: '/tmp/identical', kind: 'directory', contentHash: 'two', metadata: validMetadata, broken: false }],
+        locations: [{ id: 'identical-source', platform: 'claude', name: 'identical', path: '/tmp/identical', kind: 'directory', contentHash: 'two', managerState: 'unmanaged', metadata: validMetadata, broken: false }],
       },
       {
         id: 'conflict',
@@ -35,7 +35,7 @@ function createReport(): SkillsScanReport {
         hashes: ['three', 'four'],
         status: 'conflict',
         recommendedAction: 'keep',
-        locations: [{ id: 'conflict-source', platform: 'claude', name: 'conflict', path: '/tmp/conflict', kind: 'directory', contentHash: 'three', metadata: validMetadata, broken: false }],
+        locations: [{ id: 'conflict-source', platform: 'claude', name: 'conflict', path: '/tmp/conflict', kind: 'directory', contentHash: 'three', managerState: 'unmanaged', metadata: validMetadata, broken: false }],
       },
     ],
   }
