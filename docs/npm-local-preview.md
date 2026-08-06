@@ -1,6 +1,6 @@
-# npm 本地安装、验证与发布
+# 本地安装、验证与 npm 发布
 
-AskAgent X 在发布到 npm Registry 前，先作为普通全局 npm 包在本机安装和使用。构建、安装验证与正式发布必须使用项目内生成的同一个 tarball，发布前不再重新打包。
+AskAgent X 在发布到 npm Registry 前，先把生成的 tarball 当作普通全局包在本机安装和使用。npm、pnpm、Yarn Classic 和 Bun 都可以安装这个 npm tarball；构建、安装验证与正式发布必须使用项目内生成的同一个文件，发布前不再重新打包。
 
 ## 1. 构建发布包
 
@@ -19,20 +19,29 @@ pnpm package:pack
 当前版本的产物为：
 
 ```text
-./dist/npm/askagent-x-26.805.2.tgz
+./dist/npm/askagent-x-26.806.1.tgz
 ```
 
 每次执行都会清理并重新创建 `dist/npm/`，避免误用旧产物。
 
-## 2. 像普通 npm 包一样安装
+## 2. 像普通包一样安装
 
-直接全局安装项目生成的 tarball，不需要额外的 `--prefix`：
+直接使用所选包管理器全局安装项目生成的 tarball，不需要额外的 `--prefix`：
 
 ```bash
-npm install --global ./dist/npm/askagent-x-26.805.2.tgz
+npm install --global ./dist/npm/askagent-x-26.806.1.tgz
+pnpm add --global ./dist/npm/askagent-x-26.806.1.tgz
+yarn global add ./dist/npm/askagent-x-26.806.1.tgz
+bun add --global ./dist/npm/askagent-x-26.806.1.tgz
 ```
 
-安装完成后，npm `postinstall` 会自动启动后台 Web UI。安装命令会正常退出，后台服务继续运行。
+四条命令选择一条执行即可。`yarn global` 仅适用于 Yarn Classic（1.x）；Yarn Modern 已移除全局安装。无论使用哪个包管理器，AskAgent X 运行时仍要求 Node.js 22+。
+
+npm、pnpm 或 Yarn Classic 允许生命周期脚本时，安装完成后 `postinstall` 会自动启动后台 Web UI。安装命令会正常退出，后台服务继续运行。Bun 默认不执行不受信任依赖的生命周期脚本，因此用 Bun 安装后通常需要手动启动：
+
+```bash
+askx ui start
+```
 
 检查安装和服务状态：
 
@@ -45,7 +54,7 @@ askx doctor
 
 服务只监听 `127.0.0.1`，未指定端口时自动选择一个可用的五位端口。`askx ui status` 会显示当前地址、端口和 PID。
 
-如果安装时显式使用 `--ignore-scripts`，npm 会跳过 `postinstall`，此时需要手动运行：
+如果安装时显式禁用脚本，包管理器也会跳过 `postinstall`，此时同样需要手动运行：
 
 ```bash
 askx ui start
@@ -77,9 +86,9 @@ askx ui token
 正式生成新构建前，先更新“年月日次”版本号。同一天的后续构建依次使用：
 
 ```text
-26.805.2
-26.805.2
-26.805.3
+26.806.1
+26.806.2
+26.806.3
 ```
 
 停止当前服务，重新构建并安装新 tarball：
@@ -87,10 +96,10 @@ askx ui token
 ```bash
 askx ui stop
 pnpm package:pack
-npm install --global ./dist/npm/askagent-x-26.805.2.tgz
+npm install --global ./dist/npm/askagent-x-26.806.1.tgz
 ```
 
-新包安装完成后会自动启动后台服务。随后检查：
+生命周期脚本获准执行时，新包安装完成后会自动启动后台服务；否则先执行 `askx ui start`。随后检查：
 
 ```bash
 askx --version
@@ -111,19 +120,23 @@ askx uninstall
 执行顺序为：
 
 ```text
-停止后台 UI → 确认进程退出 → 调用 npm 全局卸载 askagent-x
+停止后台 UI → 确认进程退出 → 调用安装时使用的包管理器全局卸载 askagent-x
 ```
 
-现代 npm 不执行可靠的卸载生命周期钩子，因此直接运行下面的命令不能保证后台服务停止：
+包管理器没有为这个场景提供一致、可靠的卸载前钩子，因此直接运行卸载命令不能保证后台服务停止：
 
 ```bash
 npm uninstall --global askagent-x
 ```
 
-如果必须直接使用 npm，请执行：
+如果必须直接使用包管理器，请先执行 `askx ui stop`，再选择安装时对应的命令：
 
 ```bash
-askx ui stop && npm uninstall --global askagent-x
+askx ui stop
+npm uninstall --global askagent-x
+pnpm remove --global askagent-x
+yarn global remove askagent-x
+bun remove --global askagent-x
 ```
 
 若包文件已经被直接卸载，但后台进程仍在运行，可以查看：
@@ -146,8 +159,8 @@ pnpm package:pack
 检查 tarball 元数据和内容：
 
 ```bash
-tar -xOf ./dist/npm/askagent-x-26.805.2.tgz package/package.json
-tar -tzf ./dist/npm/askagent-x-26.805.2.tgz
+tar -xOf ./dist/npm/askagent-x-26.806.1.tgz package/package.json
+tar -tzf ./dist/npm/askagent-x-26.806.1.tgz
 ```
 
 发布包至少应包含：
@@ -163,7 +176,7 @@ tar -tzf ./dist/npm/askagent-x-26.805.2.tgz
 
 ```bash
 askx ui stop
-npm install --global ./dist/npm/askagent-x-26.805.2.tgz
+npm install --global ./dist/npm/askagent-x-26.806.1.tgz
 askx --version
 askx ui status
 askx doctor
@@ -174,7 +187,7 @@ askx doctor
 本地观察通过后，不再执行 `npm pack`，直接发布已经安装和验证过的同一个文件：
 
 ```bash
-npm publish ./dist/npm/askagent-x-26.805.2.tgz --access public
+npm publish ./dist/npm/askagent-x-26.806.1.tgz --access public
 ```
 
 完整链路为：
@@ -183,7 +196,7 @@ npm publish ./dist/npm/askagent-x-26.805.2.tgz --access public
 更新版本号
 → pnpm check
 → pnpm package:pack
-→ npm install -g ./dist/npm/<tarball>
+→ 使用 npm / pnpm / Yarn Classic / Bun 安装 ./dist/npm/<tarball>
 → 本地持续使用和验证
 → npm publish ./dist/npm/<同一个 tarball> --access public
 ```
