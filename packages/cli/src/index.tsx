@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { dirname, basename, resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   defaultContext,
@@ -41,6 +41,7 @@ import { Command } from 'commander'
 import { Box, render as inkRender, Text, useApp, useInput } from 'ink'
 import { useState, type ReactNode } from 'react'
 import { createKeepDecisions, createSafeSyncDecisions, summarizeSkillsBatchPlan } from './skills-command-helpers.js'
+import { createUninstallInvocation, packageManagerFromInstallPath, readInstallRecord } from './install-manager.js'
 
 const accent = '#d7ff3f'
 const registry = new ModuleRegistry()
@@ -79,7 +80,7 @@ const messages = {
     platformsArgument: 'codex, claude and/or cursor', platformsDescription: 'Set enabled Agent platforms', platformsError: 'Platforms must contain codex, claude and/or cursor',
     languageArgument: 'zh-CN or en', languageDescription: 'Set the shared CLI/Web language', languageError: 'Language must be "zh-CN" or "en"',
     themeArgument: 'cyan or rose', themeDescription: 'Set the shared CLI/Web theme color', themeError: 'Theme color must be "cyan" or "rose"',
-    uiDescription: 'Start or manage the local Nuxt management interface', portDescription: 'Local port; defaults to an available five-digit port', invalidPort: 'Invalid port', tokenDescription: 'Print a quick-login URL and the active local UI token', tokenUrl: 'Quick login URL', tokenValue: 'Token', noToken: 'No active UI session. Start "pnpm dev" or "askx ui start" first.', uiStartDescription: 'Start the local UI as a background service', uiStopDescription: 'Stop the background UI service', uiStatusDescription: 'Show background UI service status', uiRestartDescription: 'Restart the background UI service', uiAlreadyRunning: 'The local UI is already running', uiStarted: 'The local UI started in the background', uiStopped: 'The local UI service stopped', uiNotRunning: 'The local UI is not running', uiRunning: 'The local UI is running', uninstallDescription: 'Stop the local UI and uninstall AskAgent X globally', uninstallSourceOnly: 'Run this command from a globally installed AskAgent X package', uninstallFailed: 'npm uninstall failed',
+    uiDescription: 'Start or manage the local Nuxt management interface', portDescription: 'Local port; defaults to an available five-digit port', invalidPort: 'Invalid port', tokenDescription: 'Print a quick-login URL and the active local UI token', tokenUrl: 'Quick login URL', tokenValue: 'Token', noToken: 'No active UI session. Run "askx ui start" first.', uiStartDescription: 'Start the local UI as a background service', uiStopDescription: 'Stop the background UI service', uiStatusDescription: 'Show background UI service status', uiRestartDescription: 'Restart the background UI service', uiAlreadyRunning: 'The local UI is already running', uiStarted: 'The local UI started in the background', uiStopped: 'The local UI service stopped', uiNotRunning: 'The local UI is not running', uiRunning: 'The local UI is running', uninstallDescription: 'Stop the local UI and uninstall AskAgent X with its package manager', uninstallSourceOnly: 'Cannot identify the global package manager. Stop the UI, then uninstall AskAgent X with the package manager used for installation.', uninstallFailed: 'Package manager uninstall failed',
     manageBackups: 'Manage canonical Skills source backups', clearDescription: 'Clear the current Skill list and create a restorable backup', clearPlan: 'Skill list cleanup plan', clearResult: 'Skill list cleared', historyDescription: 'List completed Skills transactions', rollbackDescription: 'Roll back the latest unchanged Skills transaction', backupListDescription: 'List canonical source backups', backupRestoreDescription: 'Restore the canonical source from a backup', backupRemoveDescription: 'Permanently remove a canonical source backup', receiptArgument: 'transaction receipt ID', backupVersionArgument: 'backup version', historyTitle: 'Skills transaction history', rollbackPlan: 'Skills rollback plan', rollbackResult: 'Skills rollback result', backupRestorePlan: 'Backup restore plan', backupRestoreResult: 'Backup restored', backupRemovePlan: 'Backup removal plan', backupRemoveResult: 'Backup removed', noTransactions: 'No completed Skills transactions.', noBackups: 'No canonical source backups.', restored: 'restored', rollbackRejected: 'rollback rejected', valid: 'valid', invalid: 'invalid',
     choosePlatforms: 'Choose platforms containing Skills', chooseLinkPlatforms: 'Choose platforms to connect with directory links', scanOnlySelected: 'Space toggles · Enter confirms', linkOnlySelected: 'Selected platforms will use the AskX Skill list · Space toggles · Enter continues', platformRequired: 'Select at least one platform.', platformSelectionRequired: 'First scan requires --platform in non-interactive mode.',
     skillConflict: 'Skill {name} has conflicting content.', skillBroken: 'Skill {name} has a broken link.', skillInvalid: 'Skill {name} has invalid metadata.',
@@ -106,7 +107,7 @@ const messages = {
     platformsArgument: 'codex、claude 和/或 cursor', platformsDescription: '设置启用的 Agent 平台', platformsError: '平台必须包含 codex、claude 和/或 cursor',
     languageArgument: 'zh-CN 或 en', languageDescription: '设置 CLI/Web 共享语言', languageError: '语言必须是 "zh-CN" 或 "en"',
     themeArgument: 'cyan 或 rose', themeDescription: '设置 CLI/Web 共享主题色', themeError: '主题色必须是 "cyan" 或 "rose"',
-    uiDescription: '启动或管理本地 Nuxt 管理界面', portDescription: '本地端口，默认自动选择可用的五位端口', invalidPort: '无效端口', tokenDescription: '输出本地 UI 快速登录地址和 token', tokenUrl: '快速登录地址', tokenValue: 'Token', noToken: '没有活动的 UI 会话，请先运行 "pnpm dev" 或 "askx ui start"。', uiStartDescription: '以后台服务方式启动本地 UI', uiStopDescription: '停止后台 UI 服务', uiStatusDescription: '查看后台 UI 服务状态', uiRestartDescription: '重启后台 UI 服务', uiAlreadyRunning: '本地 UI 已在运行', uiStarted: '本地 UI 已在后台启动', uiStopped: '本地 UI 服务已停止', uiNotRunning: '本地 UI 未运行', uiRunning: '本地 UI 正在运行', uninstallDescription: '停止本地 UI 并全局卸载 AskAgent X', uninstallSourceOnly: '请从全局安装的 AskAgent X 包运行此命令', uninstallFailed: 'npm 卸载失败',
+    uiDescription: '启动或管理本地 Nuxt 管理界面', portDescription: '本地端口，默认自动选择可用的五位端口', invalidPort: '无效端口', tokenDescription: '输出本地 UI 快速登录地址和 token', tokenUrl: '快速登录地址', tokenValue: 'Token', noToken: '没有活动的 UI 会话，请先运行 "askx ui start"。', uiStartDescription: '以后台服务方式启动本地 UI', uiStopDescription: '停止后台 UI 服务', uiStatusDescription: '查看后台 UI 服务状态', uiRestartDescription: '重启后台 UI 服务', uiAlreadyRunning: '本地 UI 已在运行', uiStarted: '本地 UI 已在后台启动', uiStopped: '本地 UI 服务已停止', uiNotRunning: '本地 UI 未运行', uiRunning: '本地 UI 正在运行', uninstallDescription: '停止本地 UI，并使用原包管理器全局卸载 AskAgent X', uninstallSourceOnly: '无法识别全局安装使用的包管理器，请先停止 UI，再使用安装时的包管理器卸载 AskAgent X', uninstallFailed: '包管理器卸载失败',
     manageBackups: '管理统一 Skills 来源备份', clearDescription: '清空当前 Skill 列表，并创建可恢复备份', clearPlan: 'Skill 列表清理计划', clearResult: 'Skill 列表已清空', historyDescription: '列出已完成的 Skills 事务', rollbackDescription: '回滚最新且状态未变化的 Skills 事务', backupListDescription: '列出统一源备份', backupRestoreDescription: '从指定备份恢复统一源', backupRemoveDescription: '永久删除指定统一源备份', receiptArgument: '事务回执 ID', backupVersionArgument: '备份版本', historyTitle: 'Skills 事务历史', rollbackPlan: 'Skills 回滚计划', rollbackResult: 'Skills 回滚结果', backupRestorePlan: '备份恢复计划', backupRestoreResult: '备份恢复完成', backupRemovePlan: '备份删除计划', backupRemoveResult: '备份删除完成', noTransactions: '没有已完成的 Skills 事务。', noBackups: '没有统一源备份。', restored: '已恢复', rollbackRejected: '拒绝回滚', valid: '有效', invalid: '无效',
     choosePlatforms: '选择存放 Skill 的平台', chooseLinkPlatforms: '选择需要设置目录软链的平台', scanOnlySelected: '空格切换 · 回车确认', linkOnlySelected: '选中平台将使用 AskX Skill 列表 · 空格切换 · 回车进入下一步', platformRequired: '至少选择一个平台。', platformSelectionRequired: '非交互模式首次扫描必须传入 --platform。',
     skillConflict: 'Skill {name} 在不同平台的内容不一致。', skillBroken: 'Skill {name} 包含失效软链。', skillInvalid: 'Skill {name} 的元数据无效。',
@@ -578,7 +579,7 @@ function SettingsView({ settings, changed = false }: { settings: AskXConfig; cha
 
 const program = new Command()
 /** 当前 AskAgent X 发布版本，格式为“年.月日.当日次数”。 */
-const askxVersion = '26.805.2'
+const askxVersion = '26.806.1'
 program.name('askx').description(t(activeLocale, 'appDescription')).version(askxVersion)
 
 const modules = program.command('modules').description(t(activeLocale, 'modulesDescription'))
@@ -1240,24 +1241,20 @@ ui
     throw new Error(t(activeLocale, 'noToken'))
   })
 
-/** @returns 当前全局 npm 安装对应的 prefix；源码构建运行时返回 null。 */
-function resolveGlobalInstallPrefix(): string | null {
-  const packageDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-  const nodeModulesDirectory = dirname(packageDirectory)
-  if (basename(nodeModulesDirectory) !== 'node_modules') return null
-  const parentDirectory = dirname(nodeModulesDirectory)
-  return basename(parentDirectory) === 'lib' ? dirname(parentDirectory) : parentDirectory
-}
-
 program
   .command('uninstall')
   .description(t(activeLocale, 'uninstallDescription'))
   .action(async () => {
-    const prefix = resolveGlobalInstallPrefix()
-    if (!prefix) throw new Error(t(activeLocale, 'uninstallSourceOnly'))
+    const packageDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+    const installRecord = await readInstallRecord(defaultContext().dataDir)
+    const recordedPackageManager = installRecord && resolve(installRecord.packageDirectory) === packageDirectory
+      ? installRecord.packageManager
+      : undefined
+    const packageManager = recordedPackageManager ?? packageManagerFromInstallPath(packageDirectory)
+    if (!packageManager) throw new Error(t(activeLocale, 'uninstallSourceOnly'))
     await stopUi()
-    const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-    const child = spawn(npmExecutable, ['uninstall', '--global', '--prefix', prefix, 'askagent-x'], {
+    const invocation = createUninstallInvocation(packageManager)
+    const child = spawn(invocation.command, invocation.args, {
       stdio: 'inherit',
       windowsHide: true,
     })

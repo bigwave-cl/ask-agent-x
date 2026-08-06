@@ -1,7 +1,7 @@
 {
   "name": "askagent-x-workspace",
   "private": true,
-  "version": "26.805.2",
+  "version": "26.806.1",
   "description": "Extend every agent. Keep control.",
   "packageManager": "pnpm@11.1.0",
   "engines": {
