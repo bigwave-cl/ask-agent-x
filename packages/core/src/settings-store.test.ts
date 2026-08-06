@@ -14,7 +14,7 @@ describe('SettingsStore', () => {
     expect(settings.locale).toBe('zh-CN')
     expect(settings.themeColor).toBe('cyan')
     expect(settings.skills.backupBeforeLink).toBe(true)
-    expect(settings.skills.platforms).toEqual(['codex', 'claude', 'cursor'])
+    expect(settings.skills.platforms).toEqual([])
   })
 
   it('persists an atomic revisioned update', async () => {
@@ -68,7 +68,7 @@ describe('SettingsStore', () => {
       updatedBy: 'cli',
       locale: 'zh-CN',
       themeColor: 'cyan',
-      skills: { backupBeforeLink: true, platforms: ['codex', 'claude', 'cursor'] },
+      skills: { backupBeforeLink: true, platforms: [] },
     })
   })
 

@@ -11,6 +11,19 @@ async function writeSkill(path: string, body: string): Promise<void> {
 }
 
 describe('scanSkills', () => {
+  it('未选择平台时只扫描 AskX 统一源', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'askx-home-'))
+    const data = join(home, '.askx')
+    await writeSkill(join(data, 'skills', 'managed'), 'managed')
+    await writeSkill(join(home, '.codex', 'skills', 'ignored'), 'ignored')
+
+    const result = await scanSkills(home, data, [])
+
+    expect(result.platforms).toEqual([])
+    expect(result.locations.map((location) => location.name)).toEqual(['managed'])
+    expect(result.locations[0]?.platform).toBe('askx')
+  })
+
   it('按同名 Skill 检测内容冲突', async () => {
     const home = await mkdtemp(join(tmpdir(), 'askx-home-'))
     const data = join(home, '.askx')

@@ -33,6 +33,21 @@ export function createSafeSyncDecisions(report: SkillsScanReport): SkillDecision
 }
 
 /**
+ * 按用户在交互向导中勾选的分组生成安全同步决策。
+ * @param report 最新只读扫描报告。
+ * @param selectedGroupIds 用户明确选择同步的扫描分组 ID。
+ * @returns 完整覆盖所有扫描分组的决策；未选择或不安全的分组保持现状。
+ */
+export function createSelectedSyncDecisions(report: SkillsScanReport, selectedGroupIds: readonly string[]): SkillDecision[] {
+  const selected = new Set(selectedGroupIds)
+  return createSafeSyncDecisions(report).map((decision, index) => {
+    const group = report.groups[index]!
+    if (!selected.has(group.id)) return { kind: 'keep', groupId: group.id }
+    return decision
+  })
+}
+
+/**
  * 为只建立软链的流程生成不改动 Skill 内容的决策。
  * @param report 最新只读扫描报告。
  * @returns 全部保留现状的决策。

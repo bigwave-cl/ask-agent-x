@@ -48,7 +48,7 @@ const authError = ref('')
 const commandCopied = ref(false)
 const draft = reactive<{ backupBeforeLink: boolean; platforms: ManagedPlatformId[]; locale: AskXLocale; themeColor: AskXThemeColor }>({
   backupBeforeLink: true,
-  platforms: ['codex', 'claude', 'cursor'],
+  platforms: [],
   locale: 'zh-CN',
   themeColor: 'cyan',
 })

@@ -1,6 +1,6 @@
 # AskAgent X CLI 文档总览
 
-本文档对应 AskAgent X `26.806.1`。CLI 文档按基础运行能力和 Skills 管理两个模块拆分，每份文档都可以独立阅读。
+本文档对应 AskAgent X `26.806.3`。CLI 文档按基础运行能力和 Skills 管理两个模块拆分，每份文档都可以独立阅读。
 
 - [返回项目 README](../README.md)
 
@@ -8,7 +8,7 @@
 
 | 模块 | 文档 | 适合解决的问题 |
 | --- | --- | --- |
-| Base | [CLI 基础使用](./cli-base.md) | 如何安装、诊断平台、修改共享设置、管理 Web 服务和安全卸载 |
+| Base | [CLI 基础使用](./cli-base.md) | 如何安装、诊断平台、管理 Web 服务和安全卸载 |
 | Skills | [Skills 管理](./cli-skills.md) | 如何查看、扫描、验证、保存、关联、清理、恢复和统计 Skill |
 
 ## 2. 首次使用顺序
@@ -19,8 +19,6 @@
 askx --version
 askx doctor
 ```
-
-如果需要修改默认平台、语言或主题，参考 [CLI 基础使用](./cli-base.md)。
 
 ### 第二步：完成 Skill 扫描和关联
 
@@ -58,7 +56,6 @@ askx ui token
 ```bash
 # 基础诊断
 askx doctor
-askx settings show
 
 # Skills
 askx skills
@@ -79,7 +76,7 @@ askx uninstall
 
 | 命令范围 | 是否扫描 Skill | 是否修改 Skill | 是否修改软链 | 是否管理进程 |
 | --- | --- | --- | --- | --- |
-| `askx doctor/settings` | 否 | 否 | 否 | 否 |
+| `askx doctor` | 否 | 否 | 否 | 否 |
 | `askx skills scan/status/stats` | `scan` 会只读扫描 | 否 | 否 | 否 |
 | `askx skills sync/clear/backups` | `sync` 会扫描 | 是 | 否 | 否 |
 | `askx skills link/unlink` | 否 | 否 | 是 | 否 |

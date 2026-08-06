@@ -1,6 +1,6 @@
 import type { SkillsBatchPlan, SkillsScanReport } from '@askx/module-skills/skill-types'
 import { describe, expect, it } from 'vitest'
-import { createKeepDecisions, createSafeSyncDecisions, summarizeSkillsBatchPlan } from './skills-command-helpers.js'
+import { createKeepDecisions, createSafeSyncDecisions, createSelectedSyncDecisions, summarizeSkillsBatchPlan } from './skills-command-helpers.js'
 
 /** 创建 CLI 决策测试所需的最小扫描报告。 */
 function createReport(): SkillsScanReport {
@@ -50,6 +50,15 @@ describe('Skills CLI helpers', () => {
       { kind: 'keep', groupId: 'conflict' },
     ])
     expect(createKeepDecisions(report)).toEqual(report.groups.map((group) => ({ kind: 'keep', groupId: group.id })))
+  })
+
+  it('只同步用户勾选且可以安全处理的 Skill', () => {
+    const report = createReport()
+    expect(createSelectedSyncDecisions(report, ['identical', 'conflict'])).toEqual([
+      { kind: 'keep', groupId: 'unique' },
+      { kind: 'merge', sourceLocationId: 'identical-source' },
+      { kind: 'keep', groupId: 'conflict' },
+    ])
   })
 
   it('按计划和扫描状态输出确认摘要', () => {

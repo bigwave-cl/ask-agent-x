@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { skillsManager, throwSkillsApiError } from '../../utils/skills.js'
 
 const requestSchema = z.object({
-  platforms: z.array(skillPlatformIdSchema).min(1),
+  platforms: z.array(skillPlatformIdSchema),
   customRoots: z.array(z.string().min(1)).max(MAX_CUSTOM_SKILL_DIRECTORIES).default([]),
 })
 

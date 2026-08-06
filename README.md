@@ -14,7 +14,7 @@ AskAgent X 是一个面向本地 Agent 的体验增强与扩展平台。当前�
 | 文档 | 内容 |
 | --- | --- |
 | [CLI 文档总览](./docs/cli.md) | CLI 模块关系、首次使用顺序和常用命令入口 |
-| [CLI 基础使用](./docs/cli-base.md) | 安装、诊断、共享设置、Web 服务、Token 和安全卸载 |
+| [CLI 基础使用](./docs/cli-base.md) | 安装、诊断、Web 服务、Token 和安全卸载 |
 | [Skills 管理](./docs/cli-skills.md) | Skill 查看、扫描、验证、软链、管理、统计和完整 API |
 | [本地安装验证](./docs/npm-local-preview.md) | 使用不同包管理器验证 tarball、持续观察、升级与卸载 |
 | [产品规划](./PLAN.md) | 产品边界、阶段目标和未来能力 |
@@ -25,7 +25,6 @@ AskAgent X 是一个面向本地 Agent 的体验增强与扩展平台。当前�
 ```bash
 pnpm install
 pnpm check
-pnpm askx modules list
 pnpm askx doctor
 pnpm askx skills scan
 pnpm askx skills scan --platform codex --platform claude --json
@@ -41,11 +40,6 @@ pnpm askx skills backups remove <backup-version>
 pnpm askx skills stats
 pnpm askx skills usage record my-skill
 pnpm askx skills manager repair
-pnpm askx settings show
-pnpm askx settings set backup off
-pnpm askx settings set platforms codex cursor
-pnpm askx settings set language en
-pnpm askx settings set theme rose
 pnpm askx ui
 pnpm askx ui token
 ```
@@ -63,7 +57,6 @@ pnpm dev
 Nuxt 开发页面：`http://127.0.0.1:4242/?token=askx-local-dev`。在另一个终端中直接验证 CLI：
 
 ```bash
-pnpm askx modules list
 pnpm askx doctor
 pnpm askx skills scan
 ```
@@ -83,13 +76,13 @@ pnpm dev:web
 pnpm package:pack
 ```
 
-默认输出 `./dist/npm/askagent-x-26.806.1.tgz`。本地验证和正式发布都使用这个文件。可直接选择一种包管理器全局安装：
+默认输出 `./dist/npm/askagent-x-26.806.3.tgz`。本地验证和正式发布都使用这个文件。可直接选择一种包管理器全局安装：
 
 ```bash
-npm install --global ./dist/npm/askagent-x-26.806.1.tgz
-pnpm add --global ./dist/npm/askagent-x-26.806.1.tgz
-yarn global add ./dist/npm/askagent-x-26.806.1.tgz
-bun add --global ./dist/npm/askagent-x-26.806.1.tgz
+npm install --global ./dist/npm/askagent-x-26.806.3.tgz
+pnpm add --global ./dist/npm/askagent-x-26.806.3.tgz
+yarn global add ./dist/npm/askagent-x-26.806.3.tgz
+bun add --global ./dist/npm/askagent-x-26.806.3.tgz
 ```
 
 Yarn 命令仅适用于 Yarn Classic。npm、pnpm 或 Yarn Classic 允许生命周期脚本时会通过 `postinstall` 自动启动后台 UI；Bun 默认拦截不受信任依赖的生命周期脚本，需执行 `askx ui start`。使用 `askx ui start|status|stop|restart` 管理服务。
@@ -107,10 +100,10 @@ askx uninstall
 本地观察通过后，正式发布同一份已验证产物，不重新打包：
 
 ```bash
-npm publish ./dist/npm/askagent-x-26.806.1.tgz --access public
+npm publish ./dist/npm/askagent-x-26.806.3.tgz --access public
 ```
 
-`askx ui` 只监听 `127.0.0.1`，发布版未指定 `--port` 时会由系统选择一个当前可用的五位端口；本地 `pnpm dev` 仍固定使用 `4242`，方便日常联调。启动时会生成一次性会话 token。打开不带 token 的页面会进入欢迎登录页，可通过 `askx ui token` 获取当前 token；验证成功后使用 HttpOnly Cookie 保存本次会话。共享设置已支持 CLI/Web 双向写入。
+`askx ui` 只监听 `127.0.0.1`，发布版未指定 `--port` 时会由系统选择一个当前可用的五位端口；本地 `pnpm dev` 仍固定使用 `4242`，方便日常联调。启动时会生成一次性会话 token。打开不带 token 的页面会进入欢迎登录页，可通过 `askx ui token` 获取当前 token；验证成功后使用 HttpOnly Cookie 保存本次会话。
 
 首次进入 `/skills-x` 会先选择 Codex、Claude Code、Cursor 管理范围，再执行只读目录扫描。平台只是 AskX 根据当前操作系统预设的 Skills 目录，自选文件夹与平台目录复用同一套枚举、读取、内容指纹和去重规则。用户确认后，AskX 先生成 `~/.askx/skills` 统一源，再逐个平台备份原 Skills 目录并接入统一源；单个平台失败只恢复并标记该平台。已接入平台可以随时无损取消或恢复软链：取消时隐藏 AskX 创建的根目录软链并原样放回接入前的平台目录，恢复时将该目录原样收回原备份位并放回软链；两种操作都不会扫描、同步或改写任何 Skill，任一步失败都会逆序恢复已经完成的路径移动。任何相关路径被占用时都会安全停止，不覆盖现有内容。macOS/Linux 使用目录软链，原生 Windows 使用目录 junction。
 
@@ -135,7 +128,7 @@ pnpm askx skills sync --platform claude --yes --json
 pnpm askx skills stats
 ```
 
-CLI 和 Web 设置统一写入 `~/.askx/config.json`。配置带 revision 和来源标记，使用原子写入与锁避免两个入口静默覆盖；Web 会自动检测 CLI 产生的新 revision。界面支持简体中文与英文，语言选择同样在两个入口间同步；CLI 可通过 `askx settings set language zh-CN|en` 切换。Web 默认中文路由不带前缀，英文路由统一使用 `/en`，例如 `/settings` 与 `/en/settings`。主题色提供 `cyan` 与 `rose` 两套方案，可通过 Web 主题入口或 `askx settings set theme cyan|rose` 修改。
+AskX 内部状态写入 `~/.askx/config.json`，并使用 revision、原子写入和文件锁避免并发覆盖。语言和主题属于 Web 界面设置，只通过 Web 修改；CLI 不提供通用设置命令。
 
 ## Workspace
 

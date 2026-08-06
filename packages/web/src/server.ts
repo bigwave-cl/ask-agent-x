@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { access, mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
+import { access, mkdir, open, readFile, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defaultContext } from '@askx/core'
@@ -29,6 +29,8 @@ export interface UiSessionRecord {
 }
 
 const sessionPath = join(defaultContext().dataDir, 'ui-session.json')
+/** 后台 UI 服务输出日志。 */
+const uiLogPath = join(defaultContext().dataDir, 'ui.log')
 
 /** 解析源码构建或 npm 包内的 Nuxt 生产入口。 */
 async function resolveUiEntry(currentDir: string): Promise<string> {
@@ -110,6 +112,12 @@ export async function startUi(options: UiServerOptions = {}): Promise<{ url: str
   const token = nanoid()
   const currentDir = dirname(fileURLToPath(import.meta.url))
   const entry = await resolveUiEntry(currentDir)
+  const detached = options.detached ?? false
+  let logHandle: Awaited<ReturnType<typeof open>> | undefined
+  if (detached) {
+    await mkdir(dirname(uiLogPath), { recursive: true, mode: 0o700 })
+    logHandle = await open(uiLogPath, 'w', 0o600)
+  }
   const child = spawn(process.execPath, [entry], {
     env: {
       ...process.env,
@@ -119,16 +127,20 @@ export async function startUi(options: UiServerOptions = {}): Promise<{ url: str
       NITRO_PORT: String(port),
       NUXT_ASKX_SESSION_TOKEN: token,
     },
-    detached: options.detached ?? false,
-    stdio: options.detached ? 'ignore' : ['ignore', 'pipe', 'pipe'],
+    detached,
+    stdio: detached ? ['ignore', logHandle!.fd, logHandle!.fd] : ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   })
-  if (!options.detached) child.stderr?.pipe(process.stderr)
+  await logHandle?.close()
+  if (!detached) child.stderr?.pipe(process.stderr)
 
   const url = `http://${host}:${port}/?token=${token}`
   const healthUrl = `http://${host}:${port}/api/health?token=${token}`
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (child.exitCode !== null) throw new Error(`Nuxt UI exited before becoming ready (${child.exitCode})`)
+    if (child.exitCode !== null) {
+      const logHint = detached ? `，日志：${uiLogPath}` : ''
+      throw new Error(`Nuxt UI exited before becoming ready (${child.exitCode})${logHint}`)
+    }
     try {
       const response = await fetch(healthUrl)
       if (response.ok) break
@@ -143,7 +155,7 @@ export async function startUi(options: UiServerOptions = {}): Promise<{ url: str
 
   await writeSession({ token, pid: child.pid ?? process.pid, port, createdAt: new Date().toISOString() })
   child.once('exit', () => void clearSession(token))
-  if (options.detached) child.unref()
+  if (detached) child.unref()
 
   return {
     url,

@@ -41,7 +41,7 @@ const state = ref<SkillsViewState>('loading')
 /** 当前引导是接入平台还是只同步单个平台内容。 */
 const flowMode = ref<SkillsBatchMode>('connect')
 const bootstrap = ref<SkillsBootstrap | null>(null)
-const selectedPlatforms = ref<SkillPlatformId[]>(['codex', 'claude', 'cursor'])
+const selectedPlatforms = ref<SkillPlatformId[]>([])
 /** 用户在独立步骤明确选择建立根目录软链的平台。 */
 const selectedLinkPlatforms = ref<SkillPlatformId[]>([])
 /** 用户通过系统窗口额外选择的扫描目录。 */
@@ -125,7 +125,7 @@ async function loadBootstrap(): Promise<void> {
     selectedLinkPlatforms.value = []
     selectedLinkDirectories.value = []
     linkSelectionInitialized.value = false
-    selectedPlatforms.value = [...(props.settings?.skills.platforms ?? ['codex', 'claude', 'cursor'])]
+    selectedPlatforms.value = [...(props.settings?.skills.platforms ?? [])]
     if (bootstrap.value.initialized) {
       await Promise.all([scan(false), loadHistory()])
       state.value = 'dashboard'
@@ -372,7 +372,7 @@ async function rescanForManagement(): Promise<void> {
 /** 从列表页打开初始化或重新扫描流程。 */
 function openSetup(): void {
   flowMode.value = 'connect'
-  selectedPlatforms.value = [...(props.settings?.skills.platforms ?? ['codex', 'claude', 'cursor'])]
+  selectedPlatforms.value = [...(props.settings?.skills.platforms ?? [])]
   selectedDirectories.value = [...(bootstrap.value?.customRoots ?? [])]
   selectedLinkPlatforms.value = []
   selectedLinkDirectories.value = []
@@ -436,7 +436,7 @@ async function openPlatformSync(platform: SkillPlatformId): Promise<void> {
 /** 从决策页返回平台选择，并切换回平台接入流程。 */
 function backToPlatformSelection(): void {
   flowMode.value = 'connect'
-  selectedPlatforms.value = [...(props.settings?.skills.platforms ?? ['codex', 'claude', 'cursor'])]
+  selectedPlatforms.value = [...(props.settings?.skills.platforms ?? [])]
   selectedDirectories.value = [...(bootstrap.value?.customRoots ?? [])]
   selectedLinkPlatforms.value = []
   selectedLinkDirectories.value = []
@@ -584,7 +584,7 @@ function handleSetupClose(): void {
 }
 
 watch(() => props.settings?.skills.platforms, (platforms) => {
-  if (platforms?.length && state.value !== 'scan' && state.value !== 'confirm') selectedPlatforms.value = [...platforms]
+  if (platforms && state.value !== 'scan' && state.value !== 'confirm') selectedPlatforms.value = [...platforms]
 }, { deep: true })
 
 onMounted(loadBootstrap)

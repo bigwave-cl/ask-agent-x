@@ -19,7 +19,7 @@ pnpm package:pack
 当前版本的产物为：
 
 ```text
-./dist/npm/askagent-x-26.806.1.tgz
+./dist/npm/askagent-x-26.806.3.tgz
 ```
 
 每次执行都会清理并重新创建 `dist/npm/`，避免误用旧产物。
@@ -29,10 +29,10 @@ pnpm package:pack
 直接使用所选包管理器全局安装项目生成的 tarball，不需要额外的 `--prefix`：
 
 ```bash
-npm install --global ./dist/npm/askagent-x-26.806.1.tgz
-pnpm add --global ./dist/npm/askagent-x-26.806.1.tgz
-yarn global add ./dist/npm/askagent-x-26.806.1.tgz
-bun add --global ./dist/npm/askagent-x-26.806.1.tgz
+npm install --global ./dist/npm/askagent-x-26.806.3.tgz
+pnpm add --global ./dist/npm/askagent-x-26.806.3.tgz
+yarn global add ./dist/npm/askagent-x-26.806.3.tgz
+bun add --global ./dist/npm/askagent-x-26.806.3.tgz
 ```
 
 四条命令选择一条执行即可。`yarn global` 仅适用于 Yarn Classic（1.x）；Yarn Modern 已移除全局安装。无论使用哪个包管理器，AskAgent X 运行时仍要求 Node.js 22+。
@@ -96,7 +96,7 @@ askx ui token
 ```bash
 askx ui stop
 pnpm package:pack
-npm install --global ./dist/npm/askagent-x-26.806.1.tgz
+npm install --global ./dist/npm/askagent-x-26.806.3.tgz
 ```
 
 生命周期脚本获准执行时，新包安装完成后会自动启动后台服务；否则先执行 `askx ui start`。随后检查：
@@ -159,8 +159,8 @@ pnpm package:pack
 检查 tarball 元数据和内容：
 
 ```bash
-tar -xOf ./dist/npm/askagent-x-26.806.1.tgz package/package.json
-tar -tzf ./dist/npm/askagent-x-26.806.1.tgz
+tar -xOf ./dist/npm/askagent-x-26.806.3.tgz package/package.json
+tar -tzf ./dist/npm/askagent-x-26.806.3.tgz
 ```
 
 发布包至少应包含：
@@ -176,7 +176,7 @@ tar -tzf ./dist/npm/askagent-x-26.806.1.tgz
 
 ```bash
 askx ui stop
-npm install --global ./dist/npm/askagent-x-26.806.1.tgz
+npm install --global ./dist/npm/askagent-x-26.806.3.tgz
 askx --version
 askx ui status
 askx doctor
@@ -187,7 +187,7 @@ askx doctor
 本地观察通过后，不再执行 `npm pack`，直接发布已经安装和验证过的同一个文件：
 
 ```bash
-npm publish ./dist/npm/askagent-x-26.806.1.tgz --access public
+npm publish ./dist/npm/askagent-x-26.806.3.tgz --access public
 ```
 
 完整链路为：

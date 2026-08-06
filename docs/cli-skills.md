@@ -1,6 +1,6 @@
 # AskAgent X CLI Skills 管理
 
-本文档对应 AskAgent X `26.806.1`，按照用户实际操作顺序说明如何查看、扫描、验证、关联、管理和统计 Skill，并提供完整的 Skills CLI API 参考。
+本文档对应 AskAgent X `26.806.3`，按照用户实际操作顺序说明如何查看、扫描、验证、关联、管理和统计 Skill，并提供完整的 Skills CLI API 参考。
 
 - [CLI 文档总览](./cli.md)
 - [CLI 基础使用](./cli-base.md)

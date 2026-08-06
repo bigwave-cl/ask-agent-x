@@ -237,7 +237,6 @@ export async function scanSkills(
   customRootPaths: string[] = [],
 ): Promise<SkillsScanReport> {
   const uniquePlatforms = supportedSkillPlatforms.filter((platform) => platforms.includes(platform))
-  if (!uniquePlatforms.length) throw new Error('至少选择一个 Skill 平台。')
   const descriptors = platformDescriptors(homeDir)
   if (customRootPaths.length > MAX_CUSTOM_SKILL_DIRECTORIES) {
     throw new Error(`一次最多选择 ${MAX_CUSTOM_SKILL_DIRECTORIES} 个额外扫描目录。`)

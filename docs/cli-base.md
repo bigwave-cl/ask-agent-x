@@ -1,6 +1,6 @@
 # AskAgent X CLI 基础使用
 
-本文档对应 AskAgent X `26.806.1`，说明安装后的基础命令、环境诊断、共享设置和自动化调用规则。
+本文档对应 AskAgent X `26.806.3`，说明安装后的基础命令、环境诊断、Web 服务和自动化调用规则。
 
 - [CLI 文档总览](./cli.md)
 - [Skills 管理](./cli-skills.md)
@@ -27,10 +27,8 @@ askx --help
 
 | 命令 | 作用 |
 | --- | --- |
-| `askx modules` | 查看 AskAgent X 内置模块 |
 | `askx doctor` | 检测平台、Skills 路径和软链条件 |
 | `askx skills` | 查看和管理 Skill |
-| `askx settings` | 查看或修改 CLI/Web 共享设置 |
 | `askx ui` | 管理本地 Web 服务 |
 | `askx uninstall` | 停止 Web 服务并卸载 AskAgent X |
 
@@ -41,17 +39,7 @@ askx <command> --help
 askx skills <command> --help
 ```
 
-## 2. 查看内置模块
-
-```bash
-askx modules list
-```
-
-作用：读取 Core 模块注册表并显示当前内置模块。
-
-影响：只读，不扫描平台，不修改设置、Skill 或软链。
-
-## 3. 环境诊断
+## 2. 环境诊断
 
 ```bash
 askx doctor
@@ -76,79 +64,7 @@ askx doctor --json
 
 `doctor` 只做检测，不会扫描 Skill 内容、创建统一源或修改平台目录。
 
-## 4. 共享设置
-
-CLI 和 Web 共用：
-
-```text
-~/.askx/config.json
-```
-
-配置带 revision 和最近修改来源。CLI 与 Web 同时修改时会进行版本冲突校验，不会静默覆盖。
-
-### 4.1 查看设置
-
-```bash
-askx settings show
-askx settings show --json
-```
-
-显示语言、主题色、默认平台、关联前备份开关、revision 和最近修改来源。
-
-### 4.2 恢复默认设置
-
-```bash
-askx settings reset
-askx settings reset --yes
-askx settings reset --yes --json
-```
-
-重置内容：
-
-- 语言。
-- 主题色。
-- 默认平台选择。
-- 关联前备份开关。
-
-不会删除 Skill、统一源、备份、软链、Registry 或事务历史。
-
-### 4.3 设置关联前备份
-
-```bash
-askx settings set backup on
-askx settings set backup off
-```
-
-控制建立平台软链前是否保护平台原 Skills 文件夹。
-
-### 4.4 设置默认平台
-
-```bash
-askx settings set platforms codex claude
-askx settings set platforms codex,cursor
-```
-
-只支持 `codex`、`claude`、`cursor`，至少选择一个平台。
-
-### 4.5 设置语言
-
-```bash
-askx settings set language zh-CN
-askx settings set language en
-```
-
-语言设置同时影响 CLI 与 Web。
-
-### 4.6 设置主题色
-
-```bash
-askx settings set theme cyan
-askx settings set theme rose
-```
-
-主题色主要用于 Web，配置仍由 CLI 与 Web 共享。
-
-## 5. 通用参数与写入规则
+## 3. 通用参数与写入规则
 
 | 参数 | 作用 |
 | --- | --- |
@@ -167,12 +83,11 @@ detect → plan → resolve → consent → apply → verify → rollback
 
 ```bash
 askx doctor --json
-askx settings show --json
 askx skills status --json
 askx skills sync --platform codex --yes --json
 ```
 
-## 6. 数据范围
+## 4. 数据范围
 
 AskAgent X 默认只操作当前设备中的本地数据，不上传 Skill 内容，不采集后台 usage，不执行 Skill 附带脚本。
 
@@ -180,16 +95,17 @@ AskAgent X 默认只操作当前设备中的本地数据，不上传 Skill 内�
 
 | 路径 | 内容 |
 | --- | --- |
-| `~/.askx/config.json` | CLI/Web 共享设置 |
+| `~/.askx/config.json` | AskX 内部状态与 Web 偏好 |
 | `~/.askx/skills` | AskX 统一 Skill 源 |
 | `~/.askx/install.json` | 全局安装使用的包管理器和包目录 |
 | `~/.askx/ui-session.json` | 本地 Web 后台会话信息 |
+| `~/.askx/ui.log` | 最近一次后台 Web 启动和运行日志 |
 
 Skills、备份和事务的详细规则见 [Skills 管理文档](./cli-skills.md)。
 
-## 7. Web 服务管理
+## 5. Web 服务管理
 
-### 7.1 安装后自动启动
+### 5.1 安装后自动启动
 
 包内提供 `postinstall` 启动入口。npm、pnpm 或 Yarn Classic 允许依赖生命周期脚本时，正常全局安装后会自动在后台启动 Web 服务，安装命令本身会正常退出。
 
@@ -217,7 +133,7 @@ npm install --global --ignore-scripts askagent-x
 askx ui start
 ```
 
-### 7.2 服务边界
+### 5.2 服务边界
 
 - 只监听 `127.0.0.1`，不对局域网或公网开放。
 - 发布版未指定端口时自动选择可用的五位端口。
@@ -225,7 +141,7 @@ askx ui start
 - Token 不写入普通配置文件或业务日志。
 - 浏览器验证成功后使用 HttpOnly Cookie 保存会话。
 
-### 7.3 前台运行
+### 5.3 前台运行
 
 ```bash
 askx ui
@@ -236,7 +152,7 @@ askx ui --port 4300
 
 效果：终端持续占用，按 `Ctrl+C` 停止。前台模式不由后台服务命令接管。
 
-### 7.4 后台启动
+### 5.4 后台启动
 
 ```bash
 askx ui start
@@ -250,7 +166,7 @@ askx ui start --json
 
 不指定端口时由系统选择可用端口；指定端口被占用时启动失败，不会停止占用该端口的其他进程。
 
-### 7.5 查看状态
+### 5.5 查看状态
 
 ```bash
 askx ui status
@@ -259,7 +175,7 @@ askx ui status --json
 
 显示后台服务是否运行、PID、监听端口和本地访问地址。该命令只读，不启动或停止服务。
 
-### 7.6 获取登录地址和 Token
+### 5.6 获取登录地址和 Token
 
 ```bash
 askx ui token
@@ -281,7 +197,9 @@ Token: <token>
 
 如果登录页已经打开，可以复制第二行 Token 到页面完成验证。不要把 Token 写入仓库、截图、远程脚本或共享日志。
 
-### 7.7 停止服务
+支持 OSC 8 的终端会把第一行完整地址显示为可点击超链接；重定向输出或不支持超链接的终端仍显示可复制的普通 URL。
+
+### 5.7 停止服务
 
 ```bash
 askx ui stop
@@ -290,7 +208,7 @@ askx ui stop --json
 
 作用：停止 AskX 后台进程并等待退出，释放监听端口并清理有效会话状态。服务未运行时不会影响其他进程。
 
-### 7.8 重启服务
+### 5.8 重启服务
 
 ```bash
 askx ui restart
@@ -304,7 +222,7 @@ askx ui restart --json
 askx ui token
 ```
 
-### 7.9 常见问题
+### 5.9 常见问题
 
 安装后无法打开页面：
 
@@ -313,6 +231,8 @@ askx ui status
 askx ui start
 askx ui token
 ```
+
+后台服务启动失败时，CLI 会提示 `~/.askx/ui.log`，其中保存最近一次后台启动的真实服务错误；每次重新启动会覆盖旧日志。
 
 Token 失效时获取当前服务的新 Token：
 
@@ -327,7 +247,7 @@ askx ui restart --port 4301
 askx ui restart
 ```
 
-### 7.10 安全卸载
+### 5.10 安全卸载
 
 推荐命令：
 
@@ -355,7 +275,7 @@ bun remove --global askagent-x
 
 如果包已被直接删除但进程仍在运行，可读取 `~/.askx/ui-session.json` 中记录的 PID，核对进程身份后手动停止。
 
-### 7.11 Web 服务 API 速查
+### 5.11 Web 服务 API 速查
 
 | 命令 | 作用效果 | JSON |
 | --- | --- | --- |

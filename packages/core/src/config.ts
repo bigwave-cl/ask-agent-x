@@ -15,7 +15,7 @@ export const configSchema = z.object({
   themeColor: themeColorSchema.default('cyan'),
   skills: z.object({
     backupBeforeLink: z.boolean(),
-    platforms: z.array(z.enum(['codex', 'claude', 'cursor'])).min(1),
+    platforms: z.array(z.enum(['codex', 'claude', 'cursor'])),
   }),
 })
 
@@ -50,7 +50,7 @@ export function defaultConfig(): AskXConfig {
     themeColor: 'cyan',
     skills: {
       backupBeforeLink: true,
-      platforms: ['codex', 'claude', 'cursor'],
+      platforms: [],
     },
   }
 }

@@ -14,7 +14,7 @@ askx --help
 
 以上安装命令任选其一；Yarn 仅支持 Yarn Classic（1.x），运行时要求 Node.js 22+。npm、pnpm 或 Yarn Classic 允许生命周期脚本时会通过 `postinstall` 自动启动后台 UI；Bun 默认阻止不受信任依赖的生命周期脚本，安装后需执行 `askx ui start`。使用 `askx ui start|status|stop|restart` 管理服务，使用 `askx ui token` 获取快速登录地址和当前会话 token。
 
-使用 `askx settings reset` 恢复全部共享设置默认值；该命令不会删除 Skills、备份或受管链接。
+支持 OSC 8 的终端会将 `askx ui token` 输出的快速登录地址显示为可点击超链接，同时保留完整 URL 便于复制。
 
 运行 `askx skills` 可直接查看当前 Skill 列表；首次运行会依次选择扫描平台、展示文件夹与待处理 Skill、选择软链平台并确认保存。使用 `askx skills stats` 查看版本、使用次数和关联目标统计。
 
@@ -22,7 +22,7 @@ askx --help
 
 ## 使用文档
 
-- [CLI 基础使用](https://github.com/bigwave-cl/ask-agent-x/blob/main/docs/cli-base.md)：安装、诊断、共享设置、Web 服务、Token 和安全卸载
+- [CLI 基础使用](https://github.com/bigwave-cl/ask-agent-x/blob/main/docs/cli-base.md)：安装、诊断、Web 服务、Token 和安全卸载
 - [Skills 管理](https://github.com/bigwave-cl/ask-agent-x/blob/main/docs/cli-skills.md)：查看、扫描、验证、软链、管理、统计和完整 API
 
 ## 卸载
