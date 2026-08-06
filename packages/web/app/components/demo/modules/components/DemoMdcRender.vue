@@ -12,6 +12,8 @@ defineOptions({ name: 'DemoMdcRender' })
 const isOpen = defineModel<boolean>({ default: false })
 /** 是否按纯文本模式渲染。 */
 const isPlainText = ref(false)
+/** 是否启用 MDC 节点级打字机。 */
+const isTypewriter = ref(false)
 /** MDC 完成渲染的累计次数。 */
 const resolveCount = ref(0)
 /** 用于验证原始 HTML 不执行的示例。 */
@@ -78,6 +80,8 @@ pnpm --filter @askx/web build
 危险协议只保留 alt 文本：![Blocked image](data:image/png;base64,test)`)
 /** 防止连续输入同步触发大段 Markdown 解析的预览快照。 */
 const previewMarkdownValue = shallowRef(markdownValue.value)
+/** 根据展示模式切换文档标识，使打字机效果可以重复播放。 */
+const renderCacheKey = computed(() => `demo-mdc-render-${isTypewriter.value ? 'typewriter' : 'static'}`)
 /** 预览快照更新计时器。 */
 let previewTimer: ReturnType<typeof setTimeout> | null = null
 /** MDC 渲染器的标准调用代码。 */
@@ -85,6 +89,7 @@ const usageCode = `<BusMdcRender
   :value="markdown"
   cache-key="message-id"
   :plain-text="false"
+  :typewriter="true"
   @resolve="handleResolve"
 />`
 /** MDC 安全边界说明项。 */
@@ -133,7 +138,10 @@ onScopeDispose(() => {
           <section class="grid min-w-0 content-start gap-3 rounded-xl border bg-background p-4">
             <div class="flex min-h-12 flex-wrap items-center justify-between gap-3">
               <div><h4 class="text-sm font-semibold">Markdown 输入</h4><span class="mt-1 block font-mono text-[10px] text-muted-foreground">{{ markdownValue.length }} characters</span></div>
-              <label class="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground"><Checkbox v-model="isPlainText" />纯文本模式</label>
+              <div class="flex flex-wrap items-center gap-4">
+                <label class="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground"><Checkbox v-model="isTypewriter" />打字机模式</label>
+                <label class="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground"><Checkbox v-model="isPlainText" />纯文本模式</label>
+              </div>
             </div>
             <CsCodeEditor
               v-model="markdownValue"
@@ -148,11 +156,11 @@ onScopeDispose(() => {
           <section class="grid min-w-0 content-start gap-3 rounded-xl border bg-background p-4">
             <div class="flex min-h-12 flex-wrap items-center justify-between gap-3">
               <h4 class="text-sm font-semibold">实时预览</h4>
-              <div class="flex items-center gap-2"><span class="rounded-lg bg-primary/10 px-2.5 py-1 font-mono text-[10px] text-primary">{{ isPlainText ? 'PLAIN TEXT' : 'MARKDOWN' }}</span><span class="font-mono text-[10px] text-muted-foreground">resolved {{ resolveCount }}</span></div>
+              <div class="flex items-center gap-2"><span class="rounded-lg bg-primary/10 px-2.5 py-1 font-mono text-[10px] text-primary">{{ isPlainText ? 'PLAIN TEXT' : isTypewriter ? 'TYPEWRITER' : 'MARKDOWN' }}</span><span class="font-mono text-[10px] text-muted-foreground">resolved {{ resolveCount }}</span></div>
             </div>
             <ScrollArea class="h-[480px] min-w-0 rounded-lg border bg-muted/35" type="always" aria-label="MDC 实时预览">
               <div class="min-w-0 p-4 pr-5">
-                <BusMdcRender :value="previewMarkdownValue" cache-key="demo-mdc-render" :plain-text="isPlainText" @resolve="handleResolve" />
+                <BusMdcRender :value="previewMarkdownValue" :cache-key="renderCacheKey" :plain-text="isPlainText" :typewriter="isTypewriter" @resolve="handleResolve" />
               </div>
             </ScrollArea>
           </section>
