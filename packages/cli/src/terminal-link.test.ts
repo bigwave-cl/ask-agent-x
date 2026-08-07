@@ -4,7 +4,7 @@ import { terminalUrl } from './terminal-link.js'
 describe('终端 URL', () => {
   it('在交互终端中生成可点击的 OSC 8 链接', () => {
     const url = 'http://127.0.0.1:50835/?token=example'
-    expect(terminalUrl(url, true)).toBe(`\u001B]8;;${url}\u001B\\${url}\u001B]8;;\u001B\\`)
+    expect(terminalUrl(url, true)).toBe(`\u001B]8;;${url}\u001B\\\u001B[36m\u001B[4m${url}\u001B[0m\u001B]8;;\u001B\\`)
   })
 
   it('在非交互输出中保留普通 URL', () => {

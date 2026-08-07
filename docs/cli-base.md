@@ -1,6 +1,6 @@
 # AskAgent X CLI 基础使用
 
-本文档对应 AskAgent X `26.806.3`，说明安装后的基础命令、环境诊断、Web 服务和自动化调用规则。
+本文档对应 AskAgent X `26.807.3`，说明安装后的基础命令、环境诊断、Web 服务和自动化调用规则。
 
 - [CLI 文档总览](./cli.md)
 - [Skills 管理](./cli-skills.md)
@@ -17,6 +17,13 @@ bun add --global askagent-x
 ```
 
 其中 `yarn global` 仅适用于 Yarn Classic（1.x）；Yarn Modern 不再提供全局安装，建议改用 npm、pnpm 或 Bun。安装后确认：
+
+首次在交互终端运行 `askx` 时，会先要求选择界面语言：
+
+- 简体中文
+- English
+
+确认后语言以独立的 `cliLocale` 写入共享配置文件，当前命令会立即使用所选语言继续执行。它不会修改 Web 的 `locale`，浏览器界面继续使用自己的语言设置。`--json`、安装生命周期和其他非交互调用不会弹出选择界面，也不会污染机器输出。
 
 ```bash
 askx --version
@@ -107,7 +114,7 @@ Skills、备份和事务的详细规则见 [Skills 管理文档](./cli-skills.md
 
 ### 5.1 安装后自动启动
 
-包内提供 `postinstall` 启动入口。npm、pnpm 或 Yarn Classic 允许依赖生命周期脚本时，正常全局安装后会自动在后台启动 Web 服务，安装命令本身会正常退出。
+包内提供 `postinstall` 启动入口。npm、pnpm 或 Yarn Classic 允许依赖生命周期脚本时，正常全局安装后会自动在后台启动 Web 服务，安装命令本身会正常退出。覆盖安装或升级时会先停止遗留服务，再使用当前安装包重新启动，避免旧进程继续加载已经替换的 Web 分块。
 
 ```bash
 npm install --global askagent-x
