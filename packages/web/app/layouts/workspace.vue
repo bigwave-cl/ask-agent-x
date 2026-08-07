@@ -31,7 +31,7 @@ watch(
 
         <footer v-if="route.path !== localePath('/')" data-testid="workspace-footer" class="border-t bg-card/50">
           <CsWorkspaceContent class="flex flex-col gap-2 pb-28 pt-5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:py-5 sm:pr-64">
-            <span class="font-medium text-foreground">AskAgent X <span class="font-normal text-muted-foreground">/ 26.806.3</span></span>
+            <span class="font-medium text-foreground">AskAgent X <span class="font-normal text-muted-foreground">/ 26.807.3</span></span>
             <span class="flex items-center gap-1.5"><Icon name="askx-status:lock" class="size-3" />{{ copy.footer }}</span>
           </CsWorkspaceContent>
         </footer>
