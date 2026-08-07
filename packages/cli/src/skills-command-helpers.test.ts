@@ -1,6 +1,6 @@
 import type { SkillsBatchPlan, SkillsScanReport } from '@askx/module-skills/skill-types'
 import { describe, expect, it } from 'vitest'
-import { createKeepDecisions, createSafeSyncDecisions, createSelectedSyncDecisions, summarizeSkillsBatchPlan } from './skills-command-helpers.js'
+import { createKeepDecisions, createSafeSyncDecisions, createSelectedSyncDecisions, platformLinkResultMessage, summarizeSkillsBatchPlan } from './skills-command-helpers.js'
 
 /** 创建 CLI 决策测试所需的最小扫描报告。 */
 function createReport(): SkillsScanReport {
@@ -45,6 +45,12 @@ function createReport(): SkillsScanReport {
 }
 
 describe('Skills CLI helpers', () => {
+  it('按用户动作区分已关联和取消软链结果', () => {
+    expect(platformLinkResultMessage('skipped', 'link')).toBe('already-linked-no-action')
+    expect(platformLinkResultMessage('applied', 'unlink')).toBe('unlink-applied')
+    expect(platformLinkResultMessage('failed', 'unlink')).toBe('failed')
+  })
+
   it('只自动接管安全来源并保留冲突', () => {
     const report = createReport()
     expect(createSafeSyncDecisions(report)).toEqual([

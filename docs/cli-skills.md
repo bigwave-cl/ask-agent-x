@@ -105,7 +105,7 @@ askx skills sync --platform codex,claude
 askx skills sync --directory /absolute/path/to/skills
 ```
 
-CLI 会再次扫描，展示将接管、合并、保留和跳过的 Skill，并显示不可变计划 Hash。按 `Y` 确认后才会保存到 `~/.askx/skills`；按 `N` 或 `Esc` 取消。
+CLI 会再次扫描，展示将接管、合并、保留和跳过的 Skill，并显示不可变计划 Hash。按回车确认后才会保存到 `~/.askx/skills`；按 `Esc` 或 `Q` 取消。
 
 ### 1.3 设置和管理软链
 
@@ -127,13 +127,15 @@ askx skills link --platform claude,cursor
 
 确认后，平台通过软链读取 AskX 统一 Skill 列表。
 
+如果平台已经存在有效关联，结果会显示“已存在关联，本次不处理”，不会使用容易误解的“已跳过”，也不会重新创建软链。
+
 #### 取消平台绑定
 
 ```bash
 askx skills unlink --platform codex
 ```
 
-取消绑定会恢复关联前的平台目录，不删除 AskX 统一源，也不会把统一源内容复制回平台。
+命令会以“取消软链配置”展示计划，并询问“确定要取消吗？”。确认后恢复关联前的平台目录，结果显示“已取消软链设置”；不会删除 AskX 统一源，也不会把统一源内容复制回平台。
 
 #### 恢复平台绑定
 
@@ -371,6 +373,8 @@ askx skills link --platform codex --yes --json
 
 作用：把平台或自定义 Skills 根目录绑定到 AskX 统一源，或恢复之前停用的平台绑定。
 
+已存在有效关联的平台只显示“已存在关联，本次不处理”。
+
 写入：受管目录软链、平台绑定记录、必要的原目录保护数据。
 
 不会：扫描或同步新的 Skill。
@@ -383,6 +387,8 @@ askx skills unlink --platform claude,cursor --yes --json
 ```
 
 作用：无损停用平台软链，并恢复关联前的平台目录。
+
+交互确认使用“确定要取消吗？”，成功结果显示“已取消软链设置”。
 
 写入：平台绑定状态和平台 Skills 根目录。
 

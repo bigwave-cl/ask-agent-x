@@ -18,6 +18,21 @@ export interface SkillsBatchPlanSummary {
   customLinks: number
 }
 
+/** CLI 软链结果对应的用户语义。 */
+export type PlatformLinkResultMessage = 'applied' | 'already-linked-no-action' | 'failed' | 'skipped' | 'unlink-applied'
+
+/**
+ * 把模块执行状态转换成符合当前软链动作的用户语义。
+ * @param status Core 返回的稳定执行状态。
+ * @param action 用户执行的是关联还是取消软链。
+ * @returns 供中英文文案层映射的结果语义。
+ */
+export function platformLinkResultMessage(status: 'applied' | 'skipped' | 'failed', action: 'link' | 'unlink'): PlatformLinkResultMessage {
+  if (status === 'skipped' && action === 'link') return 'already-linked-no-action'
+  if (status === 'applied' && action === 'unlink') return 'unlink-applied'
+  return status
+}
+
 /**
  * 为 CLI 同步流程生成与 Web 一致的安全默认决策。
  * @param report 最新只读扫描报告。
