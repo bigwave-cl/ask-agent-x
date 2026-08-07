@@ -38,10 +38,18 @@ export function createSafeSyncDecisions(report: SkillsScanReport): SkillDecision
  * @param selectedGroupIds 用户明确选择同步的扫描分组 ID。
  * @returns 完整覆盖所有扫描分组的决策；未选择或不安全的分组保持现状。
  */
-export function createSelectedSyncDecisions(report: SkillsScanReport, selectedGroupIds: readonly string[]): SkillDecision[] {
+export function createSelectedSyncDecisions(report: SkillsScanReport, selectedGroupIds: readonly string[], conflictDecisions: readonly SkillDecision[] = []): SkillDecision[] {
   const selected = new Set(selectedGroupIds)
+  const conflicts = new Map(conflictDecisions.map((decision) => {
+    const group = decision.kind === 'keep'
+      ? report.groups.find((entry) => entry.id === decision.groupId)
+      : report.groups.find((entry) => entry.locations.some((location) => location.id === ('sourceLocationId' in decision ? decision.sourceLocationId : decision.locationIds[0])))
+    return [group?.id, decision] as const
+  }).filter((entry): entry is readonly [string, SkillDecision] => Boolean(entry[0])))
   return createSafeSyncDecisions(report).map((decision, index) => {
     const group = report.groups[index]!
+    const conflictDecision = conflicts.get(group.id)
+    if (conflictDecision) return conflictDecision
     if (!selected.has(group.id)) return { kind: 'keep', groupId: group.id }
     return decision
   })

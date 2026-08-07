@@ -35,7 +35,10 @@ function createReport(): SkillsScanReport {
         hashes: ['three', 'four'],
         status: 'conflict',
         recommendedAction: 'keep',
-        locations: [{ id: 'conflict-source', platform: 'claude', name: 'conflict', path: '/tmp/conflict', kind: 'directory', contentHash: 'three', managerState: 'unmanaged', metadata: validMetadata, broken: false }],
+        locations: [
+          { id: 'conflict-source', platform: 'claude', name: 'conflict', path: '/tmp/conflict', kind: 'directory', contentHash: 'three', managerState: 'unmanaged', metadata: validMetadata, broken: false },
+          { id: 'conflict-target', platform: 'codex', name: 'conflict', path: '/tmp/conflict-target', kind: 'directory', contentHash: 'four', managerState: 'unmanaged', metadata: validMetadata, broken: false },
+        ],
       },
     ],
   }
@@ -58,6 +61,19 @@ describe('Skills CLI helpers', () => {
       { kind: 'keep', groupId: 'unique' },
       { kind: 'merge', sourceLocationId: 'identical-source' },
       { kind: 'keep', groupId: 'conflict' },
+    ])
+  })
+
+  it('使用用户明确提交的冲突决策替换默认保留决策', () => {
+    const report = createReport()
+    expect(createSelectedSyncDecisions(report, ['unique'], [{
+      kind: 'replace',
+      sourceLocationId: 'conflict-source',
+      targetLocationIds: ['conflict-target'],
+    }])).toEqual([
+      { kind: 'adopt', sourceLocationId: 'unique-source' },
+      { kind: 'keep', groupId: 'identical' },
+      { kind: 'replace', sourceLocationId: 'conflict-source', targetLocationIds: ['conflict-target'] },
     ])
   })
 

@@ -1,5 +1,7 @@
 import { lstat, readdir, readlink } from 'node:fs/promises'
 import { basename, isAbsolute, join, resolve } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
+import type { Dirent } from 'node:fs'
 import { stableHash } from '@askx/core'
 import { detectPlatforms, platformDescriptors } from '@askx/platform-adapters'
 import { readSkillMetadata } from './skill-metadata.js'
@@ -17,6 +19,47 @@ import { MAX_CUSTOM_SKILL_DIRECTORIES } from './skill-types.js'
 
 /** Skill 扫描默认支持的平台顺序。 */
 export const supportedSkillPlatforms: SkillPlatformId[] = ['codex', 'claude', 'cursor']
+
+/** macOS 文件提供器偶发 EPERM 时的目录读取尝试次数。 */
+const DIRECTORY_READ_ATTEMPTS = 3
+
+/** Skill 目录访问失败，并保留供入口层判断的系统错误码。 */
+export class SkillDirectoryAccessError extends Error {
+  /** 无法访问的绝对目录。 */
+  readonly path: string
+  /** 文件系统返回的原始错误码。 */
+  readonly causeCode: 'EACCES' | 'EPERM'
+
+  /**
+   * 创建一个可供 CLI/Web 分类处理的目录访问错误。
+   * @param path 无法访问的绝对目录。
+   * @param causeCode 文件系统返回的权限错误码。
+   */
+  constructor(path: string, causeCode: 'EACCES' | 'EPERM') {
+    super(`无法读取 Skill 目录：${path} / Unable to read Skill directory: ${path}`)
+    this.name = 'SkillDirectoryAccessError'
+    this.path = path
+    this.causeCode = causeCode
+  }
+}
+
+/**
+ * 读取 Skill 根目录，并容忍 macOS 对已授权目录偶发返回的瞬时 EPERM。
+ * @param path 要读取的目录路径。
+ * @returns 目录中的文件项。
+ */
+async function readSkillDirectory(path: string): Promise<Dirent[]> {
+  for (let attempt = 1; attempt <= DIRECTORY_READ_ATTEMPTS; attempt += 1) {
+    try {
+      return await readdir(path, { withFileTypes: true })
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code !== 'EPERM' || attempt === DIRECTORY_READ_ATTEMPTS) throw error
+      await delay(attempt * 80)
+    }
+  }
+  return []
+}
 
 /** 一个进入统一目录扫描器的根目录来源。 */
 interface SkillScanDirectory {
@@ -164,11 +207,12 @@ export function groupSkillLocations(locations: SkillLocation[]): SkillGroup[] {
 async function scanSkillDirectory(root: SkillScanDirectory, scannedPaths: Set<string>): Promise<SkillLocation[]> {
   let entries
   try {
-    entries = await readdir(root.path, { withFileTypes: true })
+    entries = await readSkillDirectory(root.path)
   } catch (error) {
     if (['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) return []
-    if (['EACCES', 'EPERM'].includes((error as NodeJS.ErrnoException).code ?? '')) {
-      throw new Error(`没有权限读取 Skill 目录：${root.path} / Permission denied reading Skill directory: ${root.path}`)
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === 'EACCES' || code === 'EPERM') {
+      throw new SkillDirectoryAccessError(root.path, code)
     }
     throw error
   }
@@ -273,7 +317,7 @@ export async function scanSkills(
   for (const path of normalizedCustomPaths) {
     const stat = await lstat(path).catch((error: NodeJS.ErrnoException) => {
       if (error.code === 'ENOENT') throw new Error(`额外扫描目录不存在：${path} / Custom Skill directory does not exist: ${path}`)
-      if (['EACCES', 'EPERM'].includes(error.code ?? '')) throw new Error(`没有权限读取额外扫描目录：${path} / Permission denied reading custom Skill directory: ${path}`)
+      if (error.code === 'EACCES' || error.code === 'EPERM') throw new SkillDirectoryAccessError(path, error.code)
       throw error
     })
     if (!stat.isDirectory()) throw new Error(`额外扫描路径不是目录：${path} / Custom Skill path is not a directory: ${path}`)
