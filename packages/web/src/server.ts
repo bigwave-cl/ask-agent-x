@@ -5,10 +5,10 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defaultContext } from '@askx/core'
 import { nanoid } from 'nanoid'
-import { selectAvailableUiPort } from './ui-port.js'
+import { assertUiPortAvailable, selectAvailableUiPort } from './ui-port.js'
 
 export interface UiServerOptions {
-  /** 指定监听端口；缺省时自动选择可用端口。 */
+  /** 指定生产服务端口；缺省时复用上次端口，首次启动时自动选择。 */
   port?: number
   /** 本地服务固定只允许监听回环地址。 */
   host?: '127.0.0.1'
@@ -29,6 +29,8 @@ export interface UiSessionRecord {
 }
 
 const sessionPath = join(defaultContext().dataDir, 'ui-session.json')
+/** 生产 UI 上次成功使用的端口，停止服务后继续保留。 */
+const uiPortPath = join(defaultContext().dataDir, 'ui-port.json')
 /** 后台 UI 服务输出日志。 */
 const uiLogPath = join(defaultContext().dataDir, 'ui.log')
 
@@ -52,6 +54,22 @@ async function resolveUiEntry(currentDir: string): Promise<string> {
 async function writeSession(record: UiSessionRecord): Promise<void> {
   await mkdir(dirname(sessionPath), { recursive: true, mode: 0o700 })
   await writeFile(sessionPath, `${JSON.stringify(record, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
+}
+
+/** @returns 上次成功启动的生产 UI 端口，不存在或无效时返回 null。 */
+async function readRememberedUiPort(): Promise<number | null> {
+  try {
+    const record = JSON.parse(await readFile(uiPortPath, 'utf8')) as { port?: number }
+    return Number.isInteger(record.port) && record.port! >= 1 && record.port! <= 65_535 ? record.port! : null
+  } catch {
+    return null
+  }
+}
+
+/** 记住生产 UI 成功启动时使用的端口。 */
+async function writeRememberedUiPort(port: number): Promise<void> {
+  await mkdir(dirname(uiPortPath), { recursive: true, mode: 0o700 })
+  await writeFile(uiPortPath, `${JSON.stringify({ port }, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
 }
 
 async function clearSession(token: string): Promise<void> {
@@ -108,7 +126,9 @@ export async function stopUi(): Promise<boolean> {
 
 export async function startUi(options: UiServerOptions = {}): Promise<{ url: string; close: () => Promise<void> }> {
   const host = options.host ?? '127.0.0.1'
-  const port = options.port ?? await selectAvailableUiPort(host)
+  const rememberedPort = options.port === undefined ? await readRememberedUiPort() : null
+  const port = options.port ?? rememberedPort ?? await selectAvailableUiPort(host)
+  await assertUiPortAvailable(port, host)
   const token = nanoid()
   const currentDir = dirname(fileURLToPath(import.meta.url))
   const entry = await resolveUiEntry(currentDir)
@@ -153,6 +173,7 @@ export async function startUi(options: UiServerOptions = {}): Promise<{ url: str
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
 
+  await writeRememberedUiPort(port)
   await writeSession({ token, pid: child.pid ?? process.pid, port, createdAt: new Date().toISOString() })
   child.once('exit', () => void clearSession(token))
   if (detached) child.unref()

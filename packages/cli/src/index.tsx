@@ -127,7 +127,7 @@ const messages = {
     platformsArgument: 'codex, claude and/or cursor', platformsDescription: 'Set enabled Agent platforms', platformsError: 'Platforms must contain codex, claude and/or cursor',
     languageArgument: 'zh-CN or en', languageDescription: 'Set the shared CLI/Web language', languageError: 'Language must be "zh-CN" or "en"',
     themeArgument: 'cyan or rose', themeDescription: 'Set the shared CLI/Web theme color', themeError: 'Theme color must be "cyan" or "rose"',
-    uiDescription: 'Start or manage the local Nuxt management interface', portDescription: 'Local port; defaults to an available five-digit port', invalidPort: 'Invalid port', tokenDescription: 'Print a quick-login URL and the active local UI token', tokenUrl: 'Quick login URL', tokenValue: 'Token', noToken: 'No active UI session. Run "askx ui start" first.', uiStartDescription: 'Start the local UI as a background service', uiStopDescription: 'Stop the background UI service', uiStatusDescription: 'Show background UI service status', uiRestartDescription: 'Restart the background UI service', uiAlreadyRunning: 'The local UI is already running', uiStarted: 'The local UI started in the background', uiStopped: 'The local UI service stopped', uiNotRunning: 'The local UI is not running', uiRunning: 'The local UI is running', uninstallDescription: 'Stop the local UI and uninstall AskAgent X with its package manager', uninstallSourceOnly: 'Cannot identify the global package manager. Stop the UI, then uninstall AskAgent X with the package manager used for installation.', uninstallFailed: 'Package manager uninstall failed',
+    uiDescription: 'Start or manage the local Nuxt management interface', portDescription: 'Production UI port; reuses the last successful port by default', invalidPort: 'Invalid port', tokenDescription: 'Print a quick-login URL and the active local UI token', tokenUrl: 'Quick login URL', tokenValue: 'Token', noToken: 'No active UI session. Run "askx ui start" first.', uiStartDescription: 'Start the local UI as a background service', uiStopDescription: 'Stop the background UI service', uiStatusDescription: 'Show background UI service status', uiRestartDescription: 'Restart the background UI service on the same port', uiAlreadyRunning: 'The local UI is already running', uiStarted: 'The local UI started in the background', uiStopped: 'The local UI service stopped', uiNotRunning: 'The local UI is not running', uiRunning: 'The local UI is running', uninstallDescription: 'Stop the local UI and uninstall AskAgent X with its package manager', uninstallSourceOnly: 'Cannot identify the global package manager. Stop the UI, then uninstall AskAgent X with the package manager used for installation.', uninstallFailed: 'Package manager uninstall failed',
     manageBackups: 'Manage canonical Skills source backups', clearDescription: 'Clear the current Skill list and create a restorable backup', clearPlan: 'Skill list cleanup plan', clearResult: 'Skill list cleared', historyDescription: 'List completed Skills transactions', rollbackDescription: 'Roll back the latest unchanged Skills transaction', backupListDescription: 'List canonical source backups', backupRestoreDescription: 'Restore the canonical source from a backup', backupRemoveDescription: 'Permanently remove a canonical source backup', receiptArgument: 'transaction receipt ID', backupVersionArgument: 'backup version', historyTitle: 'Skills transaction history', rollbackPlan: 'Skills rollback plan', rollbackResult: 'Skills rollback result', backupRestorePlan: 'Backup restore plan', backupRestoreResult: 'Backup restored', backupRemovePlan: 'Backup removal plan', backupRemoveResult: 'Backup removed', noTransactions: 'No completed Skills transactions.', noBackups: 'No canonical source backups.', restored: 'restored', rollbackRejected: 'rollback rejected', valid: 'valid', invalid: 'invalid',
     choosePlatforms: 'Choose platforms containing Skills', chooseLinkPlatforms: 'Choose platforms to connect with directory links', chooseSkills: 'Choose Skills to synchronize', chooseSkillsHint: 'Checked Skills will be synchronized · conflicts are resolved next · Space toggles · Enter continues · Esc/Q cancels', scanOnlySelected: 'Space toggles · Enter confirms · Esc/Q cancels', linkOnlySelected: 'Selected platforms will use the AskX Skill list · Space toggles · Enter continues · Esc/Q cancels', platformRequired: 'Select at least one platform.', sourceRequired: 'Select a platform or enter at least one custom folder.', platformSelectionRequired: 'First scan requires --platform in non-interactive mode.', platformActionBind: 'connect', platformActionResume: 'restore connection', platformActionSkip: 'already connected, skip', customScanPrompt: 'Custom scan folder (leave empty to start scanning, Ctrl+C cancels): ', customLinkPrompt: 'Add another custom link folder (leave empty to review defaults, Ctrl+C cancels): ', customLinkDirectorySelection: 'Keep linked folders by number (Enter keeps all defaults; 0 selects none):', customDirectoryLimit: 'Custom scan folders are limited to 3. Enter up to 3 numbers to keep (comma-separated):', customDirectorySelectionInvalid: 'Select up to 3 valid, non-duplicate numbers.', unsafeSkill: 'conflict · resolve in the next step', conflictResolution: 'Resolve Skill conflicts', conflictProgress: 'Conflict {current}/{total}', conflictActionHint: 'Choose an action · Enter continues · Esc/Q cancels the entire command', conflictKeep: 'Keep unchanged (recommended)', conflictReplace: 'Choose one source as the canonical version', conflictRename: 'Import one source with a new name', conflictChooseSource: 'Choose source', conflictSourceHint: 'Enter selects · B goes back · Esc/Q cancels the entire command', conflictRenamePrompt: 'New Skill name (lowercase letters, numbers and hyphens)', conflictRenameInvalid: 'Use lowercase letters, numbers and single hyphens; the name must not already exist.', conflictSummary: 'Conflict decisions', conflictDecisionKeep: 'keep unchanged', conflictDecisionReplace: 'use {source} as canonical version', conflictDecisionRename: 'import {source} as {name}',
     skillConflict: 'Skill {name} has conflicting content.', skillBroken: 'Skill {name} has a broken link.', skillInvalid: 'Skill {name} has invalid metadata.',
@@ -154,7 +154,7 @@ const messages = {
     platformsArgument: 'codex、claude 和/或 cursor', platformsDescription: '设置启用的 Agent 平台', platformsError: '平台必须包含 codex、claude 和/或 cursor',
     languageArgument: 'zh-CN 或 en', languageDescription: '设置 CLI/Web 共享语言', languageError: '语言必须是 "zh-CN" 或 "en"',
     themeArgument: 'cyan 或 rose', themeDescription: '设置 CLI/Web 共享主题色', themeError: '主题色必须是 "cyan" 或 "rose"',
-    uiDescription: '启动或管理本地 Nuxt 管理界面', portDescription: '本地端口，默认自动选择可用的五位端口', invalidPort: '无效端口', tokenDescription: '输出本地 UI 快速登录地址和 token', tokenUrl: '快速登录地址', tokenValue: 'Token', noToken: '没有活动的 UI 会话，请先运行 "askx ui start"。', uiStartDescription: '以后台服务方式启动本地 UI', uiStopDescription: '停止后台 UI 服务', uiStatusDescription: '查看后台 UI 服务状态', uiRestartDescription: '重启后台 UI 服务', uiAlreadyRunning: '本地 UI 已在运行', uiStarted: '本地 UI 已在后台启动', uiStopped: '本地 UI 服务已停止', uiNotRunning: '本地 UI 未运行', uiRunning: '本地 UI 正在运行', uninstallDescription: '停止本地 UI，并使用原包管理器全局卸载 AskAgent X', uninstallSourceOnly: '无法识别全局安装使用的包管理器，请先停止 UI，再使用安装时的包管理器卸载 AskAgent X', uninstallFailed: '包管理器卸载失败',
+    uiDescription: '启动或管理本地 Nuxt 管理界面', portDescription: '生产 UI 端口，默认复用上次成功启动的端口', invalidPort: '无效端口', tokenDescription: '输出本地 UI 快速登录地址和 token', tokenUrl: '快速登录地址', tokenValue: 'Token', noToken: '没有活动的 UI 会话，请先运行 "askx ui start"。', uiStartDescription: '以后台服务方式启动本地 UI', uiStopDescription: '停止后台 UI 服务', uiStatusDescription: '查看后台 UI 服务状态', uiRestartDescription: '使用同一端口重启后台 UI 服务', uiAlreadyRunning: '本地 UI 已在运行', uiStarted: '本地 UI 已在后台启动', uiStopped: '本地 UI 服务已停止', uiNotRunning: '本地 UI 未运行', uiRunning: '本地 UI 正在运行', uninstallDescription: '停止本地 UI，并使用原包管理器全局卸载 AskAgent X', uninstallSourceOnly: '无法识别全局安装使用的包管理器，请先停止 UI，再使用安装时的包管理器卸载 AskAgent X', uninstallFailed: '包管理器卸载失败',
     manageBackups: '管理统一 Skills 来源备份', clearDescription: '清空当前 Skill 列表，并创建可恢复备份', clearPlan: 'Skill 列表清理计划', clearResult: 'Skill 列表已清空', historyDescription: '列出已完成的 Skills 事务', rollbackDescription: '回滚最新且状态未变化的 Skills 事务', backupListDescription: '列出统一源备份', backupRestoreDescription: '从指定备份恢复统一源', backupRemoveDescription: '永久删除指定统一源备份', receiptArgument: '事务回执 ID', backupVersionArgument: '备份版本', historyTitle: 'Skills 事务历史', rollbackPlan: 'Skills 回滚计划', rollbackResult: 'Skills 回滚结果', backupRestorePlan: '备份恢复计划', backupRestoreResult: '备份恢复完成', backupRemovePlan: '备份删除计划', backupRemoveResult: '备份删除完成', noTransactions: '没有已完成的 Skills 事务。', noBackups: '没有统一源备份。', restored: '已恢复', rollbackRejected: '拒绝回滚', valid: '有效', invalid: '无效',
     choosePlatforms: '选择存放 Skill 的平台', chooseLinkPlatforms: '选择需要设置目录软链的平台', chooseSkills: '选择需要同步的 Skills', chooseSkillsHint: '勾选项将同步到 AskX · 冲突将在下一步处理 · 空格切换 · 回车进入下一步 · Esc/Q 放弃', scanOnlySelected: '空格切换 · 回车确认 · Esc/Q 放弃', linkOnlySelected: '选中平台将使用 AskX Skill 列表 · 空格切换 · 回车进入下一步 · Esc/Q 放弃', platformRequired: '至少选择一个平台。', sourceRequired: '请选择平台，或至少输入一个自定义文件夹。', platformSelectionRequired: '非交互模式首次扫描必须传入 --platform。', platformActionBind: '新建关联', platformActionResume: '恢复关联', platformActionSkip: '已关联，跳过', customScanPrompt: '输入需要扫描的自定义文件夹（直接回车开始扫描，Ctrl+C 放弃）：', customLinkPrompt: '添加其他软链文件夹（直接回车查看第一步默认项，Ctrl+C 放弃）：', customLinkDirectorySelection: '输入要保留软链的文件夹编号（回车保留全部默认项，输入 0 全不选）：', customDirectoryLimit: '自定义扫描文件夹最多保留 3 个，请输入要保留的编号（最多 3 个，逗号分隔）：', customDirectorySelectionInvalid: '请输入最多 3 个有效且不重复的编号。', unsafeSkill: '存在冲突 · 下一步处理', conflictResolution: '解决 Skill 冲突', conflictProgress: '冲突 {current}/{total}', conflictActionHint: '选择处理方式 · 回车继续 · Esc/Q 放弃整次命令', conflictKeep: '保持现状，本次跳过（推荐）', conflictReplace: '选择一个来源作为统一版本', conflictRename: '选择一个来源并以新名称导入', conflictChooseSource: '选择来源', conflictSourceHint: '回车选择 · B 返回 · Esc/Q 放弃整次命令', conflictRenamePrompt: '输入新的 Skill 名称（小写字母、数字和连字符）', conflictRenameInvalid: '名称只能包含小写字母、数字和单个连字符，并且不能与已有 Skill 重名。', conflictSummary: '冲突处理结果', conflictDecisionKeep: '保持现状', conflictDecisionReplace: '使用 {source} 作为统一版本', conflictDecisionRename: '将 {source} 导入为 {name}',
     skillConflict: 'Skill {name} 在不同平台的内容不一致。', skillBroken: 'Skill {name} 包含失效软链。', skillInvalid: 'Skill {name} 的元数据无效。',
@@ -1604,6 +1604,21 @@ function parseUiPort(port?: string): number | undefined {
   return parsedPort
 }
 
+/** 启动 UI 服务，并把端口占用转换为稳定的人类或 JSON 输出。 */
+async function startUiWithPortFeedback(options: Parameters<typeof startUi>[0], json = false): Promise<Awaited<ReturnType<typeof startUi>> | null> {
+  try {
+    return await startUi(options)
+  } catch (error) {
+    const portError = error as { name?: string; message?: string; port?: number }
+    if (portError.name !== 'UiPortInUseError') throw error
+    const payload = { error: { code: 'UI_PORT_IN_USE', message: portError.message, port: portError.port } }
+    if (json) console.log(JSON.stringify(payload, null, 2))
+    else render(<NoticeView title={t(activeLocale, 'localUi')} message={portError.message ?? ''} />)
+    process.exitCode = 1
+    return null
+  }
+}
+
 const ui = program
   .command('ui')
   .description(t(activeLocale, 'uiDescription'))
@@ -1612,9 +1627,13 @@ const ui = program
 ui
   .action(async ({ port }: { port?: string }) => {
     const activeSession = await readUiSession()
-    if (activeSession) throw new Error(`${t(activeLocale, 'uiAlreadyRunning')}: http://127.0.0.1:${activeSession.port}`)
+    if (activeSession) {
+      render(<NoticeView title={t(activeLocale, 'localUi')} message={`${t(activeLocale, 'uiAlreadyRunning')}: http://127.0.0.1:${activeSession.port}`} />)
+      return
+    }
     const parsedPort = parseUiPort(port)
-    const server = await startUi(parsedPort === undefined ? {} : { port: parsedPort })
+    const server = await startUiWithPortFeedback(parsedPort === undefined ? {} : { port: parsedPort })
+    if (!server) return
     const ink = render(<UiView url={server.url} locale={activeLocale} />)
     const close = async () => {
       ink.unmount()
@@ -1628,9 +1647,10 @@ ui
 ui
   .command('start')
   .description(t(activeLocale, 'uiStartDescription'))
-  .option('-p, --port <port>', t(activeLocale, 'portDescription'))
   .option('--json', t(activeLocale, 'jsonDescription'))
-  .action(async ({ port, json }: { port?: string; json?: boolean }) => {
+  .addHelpText('after', `\n  -p, --port <port>  ${t(activeLocale, 'portDescription')}`)
+  .action(async ({ json }: { json?: boolean }, command: Command) => {
+    const { port } = command.parent?.opts() as { port?: string }
     const activeSession = await readUiSession()
     if (activeSession) {
       const result = { running: true, pid: activeSession.pid, port: activeSession.port, url: `http://127.0.0.1:${activeSession.port}` }
@@ -1638,7 +1658,8 @@ ui
       return
     }
     const parsedPort = parseUiPort(port)
-    const server = await startUi({ ...(parsedPort === undefined ? {} : { port: parsedPort }), detached: true })
+    const server = await startUiWithPortFeedback({ ...(parsedPort === undefined ? {} : { port: parsedPort }), detached: true }, Boolean(json))
+    if (!server) return
     const session = await readUiSession()
     const result = { running: true, pid: session?.pid, port: session?.port, url: server.url }
     console.log(json ? JSON.stringify(result, null, 2) : `${t(activeLocale, 'uiStarted')}: ${terminalUrl(server.url)}`)
@@ -1668,12 +1689,16 @@ ui
 ui
   .command('restart')
   .description(t(activeLocale, 'uiRestartDescription'))
-  .option('-p, --port <port>', t(activeLocale, 'portDescription'))
   .option('--json', t(activeLocale, 'jsonDescription'))
-  .action(async ({ port, json }: { port?: string; json?: boolean }) => {
+  .addHelpText('after', `\n  -p, --port <port>  ${t(activeLocale, 'portDescription')}`)
+  .action(async ({ json }: { json?: boolean }, command: Command) => {
+    const { port } = command.parent?.opts() as { port?: string }
+    const activeSession = await readUiSession()
     await stopUi()
     const parsedPort = parseUiPort(port)
-    const server = await startUi({ ...(parsedPort === undefined ? {} : { port: parsedPort }), detached: true })
+    const restartPort = parsedPort ?? activeSession?.port
+    const server = await startUiWithPortFeedback({ ...(restartPort === undefined ? {} : { port: restartPort }), detached: true }, Boolean(json))
+    if (!server) return
     const session = await readUiSession()
     const result = { running: true, pid: session?.pid, port: session?.port, url: server.url }
     console.log(json ? JSON.stringify(result, null, 2) : `${t(activeLocale, 'uiStarted')}: ${terminalUrl(server.url)}`)
