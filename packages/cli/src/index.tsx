@@ -948,7 +948,7 @@ function UiView({ url, locale }: { url: string; locale: AskXLocale }) {
 
 const program = new Command()
 /** 当前 AskAgent X 发布版本，格式为“年.月日.当日次数”。 */
-const askxVersion = '26.807.3'
+const askxVersion = '26.807.10'
 program.name('askx').description(t(activeLocale, 'appDescription')).version(askxVersion)
 
 program

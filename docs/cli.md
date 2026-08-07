@@ -1,6 +1,6 @@
 # AskAgent X CLI 文档总览
 
-本文档对应 AskAgent X `26.807.3`。CLI 文档按基础运行能力和 Skills 管理两个模块拆分，每份文档都可以独立阅读。
+本文档对应 AskAgent X `26.807.10`。CLI 文档按基础运行能力和 Skills 管理两个模块拆分，每份文档都可以独立阅读。
 
 - [返回项目 README](../README.md)
 
