@@ -14,6 +14,7 @@ import type {
   SkillPlatformId,
   SkillsBatchMode,
   SkillsBatchPlan,
+  SkillsConfigurationStrategy,
   SkillsBatchReceipt,
   SkillsRollbackPlan,
   SkillsBootstrap,
@@ -40,6 +41,8 @@ type SkillsViewState = 'loading' | 'platforms' | 'scan' | 'links' | 'confirm' | 
 const state = ref<SkillsViewState>('loading')
 /** 当前引导是接入平台还是只同步单个平台内容。 */
 const flowMode = ref<SkillsBatchMode>('connect')
+/** 当前流程更新现有配置的策略。 */
+const configurationStrategy = ref<SkillsConfigurationStrategy>('replace')
 const bootstrap = ref<SkillsBootstrap | null>(null)
 const selectedPlatforms = ref<SkillPlatformId[]>([])
 /** 用户在独立步骤明确选择建立根目录软链的平台。 */
@@ -69,6 +72,11 @@ const platformLinkActionOpen = ref(false)
 const customLinkPlan = ref<CustomLinkPlan | null>(null)
 /** 自定义目录软链确认弹层是否打开。 */
 const customLinkActionOpen = ref(false)
+/** 历史软链与本次选择去重后的目录总数。 */
+const selectedCustomLinkTotal = computed(() => new Set([
+  ...(configurationStrategy.value === 'replace' ? [] : (bootstrap.value?.customLinkBindings ?? []).map((binding) => binding.path)),
+  ...selectedLinkDirectories.value.map((directory) => directory.path),
+]).size)
 
 /** 当前向导步骤位置。 */
 const activeStep = computed(() => {
@@ -155,13 +163,13 @@ async function selectDirectories(): Promise<boolean> {
     const previousPaths = selectedDirectories.value.map((directory) => directory.path).join('\0')
     const result = await $fetch<{ directories: Array<{ name: string; path: string }> }>('/api/skills/folders/select', { method: 'POST' })
     const merged = new Map(selectedDirectories.value.map((directory) => [directory.path, directory]))
-    for (const directory of result.directories) {
-      if (merged.size >= MAX_CUSTOM_SKILL_DIRECTORIES && !merged.has(directory.path)) break
-      merged.set(directory.path, directory)
+    for (const directory of result.directories) merged.set(directory.path, directory)
+    if (merged.size > MAX_CUSTOM_SKILL_DIRECTORIES) {
+      toast.warning(t('skills.folderLimitExceeded', { max: MAX_CUSTOM_SKILL_DIRECTORIES }))
+      return false
     }
     selectedDirectories.value = [...merged.values()]
       .sort((left, right) => left.path.localeCompare(right.path))
-      .slice(0, MAX_CUSTOM_SKILL_DIRECTORIES)
     changed = selectedDirectories.value.map((directory) => directory.path).join('\0') !== previousPaths
   } catch (error) {
     notifyRequestError(error, 'folderSelectionFailed')
@@ -172,10 +180,14 @@ async function selectDirectories(): Promise<boolean> {
 }
 
 /** 将当前平台扫描范围保存到 CLI/Web 共享设置。 */
-async function persistSelectedPlatforms(): Promise<void> {
+async function persistSelectedPlatforms(strategy: SkillsConfigurationStrategy): Promise<void> {
   if (!props.settings) throw new Error('共享设置尚未加载。')
   const current = props.settings
-  if (current.skills.platforms.join(',') === selectedPlatforms.value.join(',')) return
+  if (strategy === 'preserve') return
+  const nextPlatforms = strategy === 'merge'
+    ? [...new Set([...current.skills.platforms, ...selectedPlatforms.value])]
+    : selectedPlatforms.value
+  if (current.skills.platforms.join(',') === nextPlatforms.join(',')) return
   const updated = await $fetch<AskXConfig>('/api/settings', {
     method: 'PUT',
     body: {
@@ -183,7 +195,7 @@ async function persistSelectedPlatforms(): Promise<void> {
       patch: {
         locale: current.locale,
         themeColor: current.themeColor,
-        skills: { backupBeforeLink: current.skills.backupBeforeLink, platforms: selectedPlatforms.value },
+        skills: { backupBeforeLink: current.skills.backupBeforeLink, platforms: nextPlatforms },
       },
     },
   })
@@ -220,7 +232,7 @@ async function startFirstScan(): Promise<void> {
   clearRequestError()
   try {
     flowMode.value = 'connect'
-    await persistSelectedPlatforms()
+    configurationStrategy.value = 'replace'
     await scan(true)
   } catch (error) {
     notifyRequestError(error)
@@ -293,6 +305,7 @@ async function preparePlan(): Promise<void> {
         decisions: decisions.value,
         managementChoices: managementChoices.value,
         mode: flowMode.value,
+        configurationStrategy: configurationStrategy.value,
         linkPlatforms: selectedLinkPlatforms.value,
         linkCustomRoots: selectedLinkDirectories.value.map((directory) => directory.path),
       },
@@ -317,6 +330,7 @@ async function applyPlan(): Promise<void> {
       method: 'POST',
       body: { plan: plan.value, consent: { planHash: plan.value.hash, confirmedAt: new Date().toISOString() } },
     })
+    await persistSelectedPlatforms(configurationStrategy.value)
     bootstrap.value = await $fetch<SkillsBootstrap>('/api/skills/bootstrap')
     await Promise.all([scan(false), loadHistory()])
     state.value = 'result'
@@ -372,6 +386,7 @@ async function rescanForManagement(): Promise<void> {
 /** 从列表页打开初始化或重新扫描流程。 */
 function openSetup(): void {
   flowMode.value = 'connect'
+  configurationStrategy.value = 'replace'
   selectedPlatforms.value = [...(props.settings?.skills.platforms ?? [])]
   selectedDirectories.value = [...(bootstrap.value?.customRoots ?? [])]
   selectedLinkPlatforms.value = []
@@ -398,6 +413,7 @@ async function openPlatformImport(platform: SkillPlatformId): Promise<void> {
   selectedLinkDirectories.value = []
   linkSelectionInitialized.value = false
   flowMode.value = 'connect'
+  configurationStrategy.value = 'merge'
   try {
     await scan(true)
     setupOpen.value = true
@@ -421,6 +437,7 @@ async function openPlatformSync(platform: SkillPlatformId): Promise<void> {
   selectedLinkDirectories.value = []
   linkSelectionInitialized.value = false
   flowMode.value = 'sync'
+  configurationStrategy.value = 'preserve'
   plan.value = null
   receipt.value = null
   try {
@@ -436,6 +453,7 @@ async function openPlatformSync(platform: SkillPlatformId): Promise<void> {
 /** 从决策页返回平台选择，并切换回平台接入流程。 */
 function backToPlatformSelection(): void {
   flowMode.value = 'connect'
+  configurationStrategy.value = 'replace'
   selectedPlatforms.value = [...(props.settings?.skills.platforms ?? [])]
   selectedDirectories.value = [...(bootstrap.value?.customRoots ?? [])]
   selectedLinkPlatforms.value = []
@@ -466,13 +484,17 @@ async function selectLinkDirectories(): Promise<void> {
   try {
     const result = await $fetch<{ directories: Array<{ name: string; path: string }> }>('/api/skills/folders/select', { method: 'POST' })
     const merged = new Map(selectedLinkDirectories.value.map((directory) => [directory.path, directory]))
-    for (const directory of result.directories) {
-      if (merged.size >= MAX_CUSTOM_SKILL_DIRECTORIES && !merged.has(directory.path)) break
-      merged.set(directory.path, directory)
+    for (const directory of result.directories) merged.set(directory.path, directory)
+    const combinedPaths = new Set([
+      ...(bootstrap.value?.customLinkBindings ?? []).map((binding) => binding.path),
+      ...merged.keys(),
+    ])
+    if (combinedPaths.size > MAX_CUSTOM_SKILL_DIRECTORIES) {
+      toast.warning(t('skills.linkFolderLimitExceeded', { max: MAX_CUSTOM_SKILL_DIRECTORIES }))
+      return
     }
     selectedLinkDirectories.value = [...merged.values()]
       .sort((left, right) => left.path.localeCompare(right.path))
-      .slice(0, MAX_CUSTOM_SKILL_DIRECTORIES)
   } catch (error) {
     notifyRequestError(error, 'folderSelectionFailed')
   } finally {
@@ -670,6 +692,7 @@ onMounted(loadBootstrap)
           :platforms="bootstrap.platforms"
           :source-platforms="report.platforms"
           :source-directories="selectedDirectories"
+          :total-directory-count="selectedCustomLinkTotal"
           :busy="busy"
           :picking-directories="pickingDirectories"
           @select-directories="selectLinkDirectories"
@@ -694,7 +717,10 @@ onMounted(loadBootstrap)
 
           <template v-else-if="state === 'links'">
             <Button variant="ghost" size="48" @click="state = 'scan'"><Icon name="askx-navigation:arrow-left" />{{ t('skills.back') }}</Button>
-            <Button size="48" :disabled="busy" @click="preparePlan"><Icon name="askx-navigation:arrow-right" />{{ busy ? t('skills.preparing') : t('skills.preparePlan') }}</Button>
+            <div class="flex items-center gap-3">
+              <p v-if="selectedCustomLinkTotal > MAX_CUSTOM_SKILL_DIRECTORIES" class="text-xs text-destructive">{{ t('skills.linkFolderLimitExceeded', { max: MAX_CUSTOM_SKILL_DIRECTORIES }) }}</p>
+              <Button size="48" :disabled="busy || selectedCustomLinkTotal > MAX_CUSTOM_SKILL_DIRECTORIES" @click="preparePlan"><Icon name="askx-navigation:arrow-right" />{{ busy ? t('skills.preparing') : t('skills.preparePlan') }}</Button>
+            </div>
           </template>
 
           <template v-else-if="state === 'confirm'">

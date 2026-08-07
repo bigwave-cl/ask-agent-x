@@ -15,6 +15,8 @@ interface Props {
   sourceDirectories: Array<{ name: string; path: string }>
   /** 当前明确选择建立软链的自定义使用目录。 */
   directories: Array<{ name: string; path: string }>
+  /** 历史绑定与本次选择去重后的软链目录总数。 */
+  totalDirectoryCount: number
   /** 是否正在保存或重新扫描。 */
   busy?: boolean
   /** 是否正在等待系统目录选择器。 */
@@ -105,7 +107,7 @@ function isSourceDirectory(path: string): boolean {
           <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2">
               <h3 class="text-sm font-semibold sm:text-base">{{ t('skills.linkCustomFolderTitle') }}</h3>
-              <Badge variant="outline">{{ directories.length }}/{{ MAX_CUSTOM_SKILL_DIRECTORIES }}</Badge>
+              <Badge variant="outline" :class="{ 'border-destructive text-destructive': totalDirectoryCount > MAX_CUSTOM_SKILL_DIRECTORIES }">{{ totalDirectoryCount }}/{{ MAX_CUSTOM_SKILL_DIRECTORIES }}</Badge>
             </div>
             <p class="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">{{ t('skills.linkCustomFolderDescription', { max: MAX_CUSTOM_SKILL_DIRECTORIES }) }}</p>
           </div>
@@ -113,7 +115,7 @@ function isSourceDirectory(path: string): boolean {
         <Button
           variant="outline"
           size="40"
-          :disabled="busy || pickingDirectories || directories.length >= MAX_CUSTOM_SKILL_DIRECTORIES"
+          :disabled="busy || pickingDirectories || totalDirectoryCount >= MAX_CUSTOM_SKILL_DIRECTORIES"
           @click="emit('select-directories')"
         >
           <Icon name="askx-actions:upload" :class="['size-4', { 'animate-pulse': pickingDirectories }]" />
