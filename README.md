@@ -76,13 +76,13 @@ pnpm dev:web
 pnpm package:pack
 ```
 
-默认输出 `./dist/npm/askagent-x-26.807.10.tgz`。本地验证和正式发布都使用这个文件。可直接选择一种包管理器全局安装：
+默认输出 `./dist/npm/askagent-x-26.807.11.tgz`。本地验证和正式发布都使用这个文件。可直接选择一种包管理器全局安装：
 
 ```bash
-npm install --global ./dist/npm/askagent-x-26.807.10.tgz
-pnpm add --global ./dist/npm/askagent-x-26.807.10.tgz
-yarn global add ./dist/npm/askagent-x-26.807.10.tgz
-bun add --global ./dist/npm/askagent-x-26.807.10.tgz
+npm install --global ./dist/npm/askagent-x-26.807.11.tgz
+pnpm add --global ./dist/npm/askagent-x-26.807.11.tgz
+yarn global add ./dist/npm/askagent-x-26.807.11.tgz
+bun add --global ./dist/npm/askagent-x-26.807.11.tgz
 ```
 
 Yarn 命令仅适用于 Yarn Classic。npm、pnpm 或 Yarn Classic 允许生命周期脚本时会通过 `postinstall` 自动启动后台 UI；Bun 默认拦截不受信任依赖的生命周期脚本，需执行 `askx ui start`。使用 `askx ui start|status|stop|restart` 管理服务。
@@ -100,7 +100,7 @@ askx uninstall
 本地观察通过后，正式发布同一份已验证产物，不重新打包：
 
 ```bash
-npm publish ./dist/npm/askagent-x-26.807.10.tgz --access public
+npm publish ./dist/npm/askagent-x-26.807.11.tgz --access public
 ```
 
 `askx ui` 只监听 `127.0.0.1`。开发环境固定使用 `4242`；发布版首次启动会选择可用的五位端口并记住，后续 `start/restart` 默认复用该生产端口。记住的端口被占用时会明确提示先停止占用服务，不会静默切换端口。启动时会生成一次性会话 token。打开不带 token 的页面会进入欢迎登录页，可通过 `askx ui token` 获取当前 token；验证成功后使用 HttpOnly Cookie 保存本次会话。
