@@ -1,6 +1,6 @@
 # AskAgent X CLI 文档总览
 
-本文档对应 AskAgent X `26.806.3`。CLI 文档按基础运行能力和 Skills 管理两个模块拆分，每份文档都可以独立阅读。
+本文档对应 AskAgent X `26.807.3`。CLI 文档按基础运行能力和 Skills 管理两个模块拆分，每份文档都可以独立阅读。
 
 - [返回项目 README](../README.md)
 
@@ -77,12 +77,12 @@ askx uninstall
 | 命令范围 | 是否扫描 Skill | 是否修改 Skill | 是否修改软链 | 是否管理进程 |
 | --- | --- | --- | --- | --- |
 | `askx doctor` | 否 | 否 | 否 | 否 |
-| `askx skills scan/status/stats` | `scan` 会只读扫描 | 否 | 否 | 否 |
+| `askx skills scan/status/stats` | `scan` 先只读扫描 | `scan` 最终确认后会 | `scan` 最终确认后会 | 否 |
 | `askx skills sync/clear/backups` | `sync` 会扫描 | 是 | 否 | 否 |
 | `askx skills link/unlink` | 否 | 否 | 是 | 否 |
 | `askx ui/uninstall` | 否 | 否 | 否 | 是 |
 
-软链管理与 Skill 扫描严格分离：`link/unlink` 不会隐式扫描或同步；`scan/sync` 不会隐式建立或取消软链。
+独立软链管理命令 `link/unlink` 不会隐式扫描或同步。交互式 `scan` 会在扫描和验证后进入软链选择，并且只在最终确认后统一写入；`scan --json` 始终只读。
 
 ## 5. 获取帮助
 

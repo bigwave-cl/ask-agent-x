@@ -795,6 +795,8 @@ export interface SkillCopyCanonicalOperation {
 export interface SkillBindPlatformOperation {
   /** 操作类型。 */
   kind: 'bind-platform'
+  /** 保存时针对当前平台执行的幂等动作。 */
+  action: 'bind' | 'resume' | 'suspend' | 'skip'
   /** 目标平台。 */
   platform: SkillPlatformId
   /** 将被替换的平台 Skills 根路径。 */
@@ -807,6 +809,8 @@ export interface SkillBindPlatformOperation {
 export interface SkillBindCustomRootOperation {
   /** 操作类型。 */
   kind: 'bind-custom-root'
+  /** 保存时针对当前目录执行的幂等动作。 */
+  action: 'bind' | 'resume' | 'suspend' | 'skip'
   /** 基于目标路径生成的稳定标识。 */
   id: string
   /** 用于界面展示的目录名称。 */
@@ -882,6 +886,8 @@ export interface SkillsBatchPlan {
   manifestRevision: number
   /** connect 会接入平台根目录，sync 只更新 AskX 统一源。 */
   mode: SkillsBatchMode
+  /** 本批次如何更新扫描来源与绑定配置。 */
+  configurationStrategy: SkillsConfigurationStrategy
   /** 本次管理平台。 */
   platforms: SkillPlatformId[]
   /** 本次只读扫描使用的额外来源目录。 */
@@ -899,6 +905,9 @@ export interface SkillsBatchPlan {
   /** 整个批次的稳定授权指纹。 */
   hash: string
 }
+
+/** Skills 批次对现有配置的处理策略。 */
+export type SkillsConfigurationStrategy = 'replace' | 'merge' | 'preserve'
 
 /** 一个已移动到备份区的路径。 */
 export interface SkillBackupMove {
@@ -1227,7 +1236,7 @@ export const skillsManifestSchema = z.object({
   lastScan: z.object({
     scannedAt: z.string().datetime(),
     fingerprint: z.string().min(1),
-    platforms: z.array(skillPlatformIdSchema).min(1),
+    platforms: z.array(skillPlatformIdSchema),
   }),
   skills: z.array(managedSkillRecordSchema),
   localSkills: z.array(managedLocalSkillRecordSchema).default([]),
@@ -1252,8 +1261,8 @@ export const skillPlanOperationSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('keep') }),
   z.object({ kind: z.literal('archive'), path: z.string().min(1) }),
   z.object({ kind: z.literal('copy-canonical'), sourcePath: z.string().min(1), targetPath: z.string().min(1) }),
-  z.object({ kind: z.literal('bind-platform'), platform: skillPlatformIdSchema, path: z.string().min(1), target: z.string().min(1) }),
-  z.object({ kind: z.literal('bind-custom-root'), id: z.string().min(1), name: z.string().min(1), path: z.string().min(1), target: z.string().min(1) }),
+  z.object({ kind: z.literal('bind-platform'), action: z.enum(['bind', 'resume', 'suspend', 'skip']), platform: skillPlatformIdSchema, path: z.string().min(1), target: z.string().min(1) }),
+  z.object({ kind: z.literal('bind-custom-root'), action: z.enum(['bind', 'resume', 'suspend', 'skip']), id: z.string().min(1), name: z.string().min(1), path: z.string().min(1), target: z.string().min(1) }),
   z.object({ kind: z.literal('select-source'), sourcePath: z.string().min(1) }),
   z.object({ kind: z.literal('replace'), path: z.string().min(1) }),
   z.object({ kind: z.literal('write-renamed'), name: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/) }),
@@ -1267,7 +1276,8 @@ export const skillsBatchPlanSchema = z.object({
   settingsRevision: z.number().int().nonnegative(),
   manifestRevision: z.number().int().nonnegative(),
   mode: skillsBatchModeSchema,
-  platforms: z.array(skillPlatformIdSchema).min(1),
+  configurationStrategy: z.enum(['replace', 'merge', 'preserve']),
+  platforms: z.array(skillPlatformIdSchema),
   customRoots: z.array(z.string().min(1)).max(MAX_CUSTOM_SKILL_DIRECTORIES),
   units: z.array(z.object({
     id: z.string().uuid(),
@@ -1281,12 +1291,14 @@ export const skillsBatchPlanSchema = z.object({
   systemSkillAction: z.enum(['install', 'none']).default('none'),
   platformOperations: z.array(z.object({
     kind: z.literal('bind-platform'),
+    action: z.enum(['bind', 'resume', 'suspend', 'skip']),
     platform: skillPlatformIdSchema,
     path: z.string().min(1),
     target: z.string().min(1),
   })),
   customLinkOperations: z.array(z.object({
     kind: z.literal('bind-custom-root'),
+    action: z.enum(['bind', 'resume', 'suspend', 'skip']),
     id: z.string().min(1),
     name: z.string().min(1),
     path: z.string().min(1),

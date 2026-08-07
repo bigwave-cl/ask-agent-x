@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { scanSkills } from './scanner.js'
+import { createSkillsScanFingerprint, scanSkills } from './scanner.js'
 
 /** 写入测试 Skill。 */
 async function writeSkill(path: string, body: string): Promise<void> {
@@ -11,6 +11,25 @@ async function writeSkill(path: string, body: string): Promise<void> {
 }
 
 describe('scanSkills', () => {
+  it('平台版本探测波动不会改变 Skill 安全指纹', () => {
+    const base = {
+      platforms: ['claude' as const],
+      customRoots: [],
+      locations: [],
+      groups: [],
+    }
+    const first = createSkillsScanFingerprint({
+      ...base,
+      platformStatuses: [{ id: 'claude', name: 'Claude Code', skillsDir: '/tmp/.claude/skills', installed: true, skillsDirExists: true, version: '1.0.0', linkSupported: true, notes: ['CLI'] }],
+    })
+    const second = createSkillsScanFingerprint({
+      ...base,
+      platformStatuses: [{ id: 'claude', name: 'Claude Code', skillsDir: '/tmp/.claude/skills', installed: true, skillsDirExists: true, version: '2.0.0', linkSupported: true, notes: ['Desktop'] }],
+    })
+
+    expect(second).toBe(first)
+  })
+
   it('未选择平台时只扫描 AskX 统一源', async () => {
     const home = await mkdtemp(join(tmpdir(), 'askx-home-'))
     const data = join(home, '.askx')

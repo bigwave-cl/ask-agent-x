@@ -11,6 +11,7 @@ describe('SettingsStore', () => {
     const settings = await store.read()
 
     expect(settings.revision).toBe(0)
+    expect(settings.cliLocale).toBeUndefined()
     expect(settings.locale).toBe('zh-CN')
     expect(settings.themeColor).toBe('cyan')
     expect(settings.skills.backupBeforeLink).toBe(true)
@@ -29,13 +30,14 @@ describe('SettingsStore', () => {
     expect(JSON.parse(await readFile(store.path, 'utf8'))).toEqual(updated)
   })
 
-  it('shares the selected locale across clients', async () => {
+  it('分别保存 CLI 语言和 Web 语言', async () => {
     const store = new SettingsStore(await mkdtemp(join(tmpdir(), 'askx-settings-')))
 
-    const updated = await store.update({ locale: 'en' }, { source: 'web' })
+    const updated = await store.update({ cliLocale: 'en' }, { source: 'cli' })
 
-    expect(updated.locale).toBe('en')
-    expect((await store.read()).locale).toBe('en')
+    expect(updated.cliLocale).toBe('en')
+    expect(updated.locale).toBe('zh-CN')
+    expect(await store.read()).toMatchObject({ cliLocale: 'en', locale: 'zh-CN' })
   })
 
   it('persists one of the supported shared theme colors', async () => {

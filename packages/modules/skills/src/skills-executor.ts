@@ -37,7 +37,6 @@ import type {
   SkillsManifest,
   SkillsScanReport,
 } from './skill-types.js'
-import { MAX_CUSTOM_SKILL_DIRECTORIES } from './skill-types.js'
 import { verifyCanonicalSkill, verifyManagedLink } from './skills-verifier.js'
 
 /** 批量执行输入。 */
@@ -60,6 +59,14 @@ interface AppliedBatch {
   createdLinks: string[]
   /** 被整体移动的平台根目录。 */
   platformBackups: SkillBackupMove[]
+  /** 本批次恢复的既有平台绑定。 */
+  resumedBindings: ManagedPlatformBinding[]
+  /** 本批次停用的既有平台绑定。 */
+  suspendedBindings: ManagedPlatformBinding[]
+  /** 本批次恢复的既有自定义绑定。 */
+  resumedCustomBindings: ManagedCustomLinkBinding[]
+  /** 本批次停用的既有自定义绑定。 */
+  suspendedCustomBindings: ManagedCustomLinkBinding[]
   /** 原 AskX 统一目录备份。 */
   canonicalBackup?: SkillBackupMove
   /** 本次是否从空状态创建统一目录。 */
@@ -397,12 +404,18 @@ async function switchPlatformRoots(
   records: ManagedSkillRecord[],
   localRecords: ManagedLocalSkillRecord[],
   dataDir: string,
+  previousBindings: ManagedPlatformBinding[],
+  previousCustomBindings: ManagedCustomLinkBinding[],
 ): Promise<AppliedBatch> {
   const canonicalRoot = join(dataDir, 'skills')
   const localRoot = join(dataDir, 'local-skills')
   const applied: AppliedBatch = {
     createdLinks: [],
     platformBackups: [],
+    resumedBindings: [],
+    suspendedBindings: [],
+    resumedCustomBindings: [],
+    suspendedCustomBindings: [],
     createdCanonical: !await pathExists(canonicalRoot),
     createdLocal: !await pathExists(localRoot),
     localApplied: false,
@@ -423,16 +436,22 @@ async function switchPlatformRoots(
     applied.localApplied = true
 
     for (const operation of plan.platformOperations) {
-      const { result, createdLink, backup } = await applyPlatformRoot(operation, dataDir, plan.id)
+      const previousBinding = previousBindings.find((binding) => binding.platform === operation.platform)
+      const { result, createdLink, backup, resumedBinding } = await applyPlatformRoot(operation, dataDir, plan.id, previousBinding)
       applied.platformResults.push(result)
       if (createdLink) applied.createdLinks.push(createdLink)
       if (backup) applied.platformBackups.push(backup)
+      if (resumedBinding) applied.resumedBindings.push(resumedBinding)
+      if (operation.action === 'suspend' && previousBinding) applied.suspendedBindings.push(previousBinding)
     }
     for (const operation of plan.customLinkOperations) {
-      const { result, createdLink, backup } = await applyCustomLinkRoot(operation, dataDir, plan.id)
+      const previousBinding = previousCustomBindings.find((binding) => binding.id === operation.id)
+      const { result, createdLink, backup } = await applyCustomLinkRoot(operation, dataDir, plan.id, previousBinding)
       applied.customLinkResults.push(result)
       if (createdLink) applied.createdLinks.push(createdLink)
       if (backup) applied.platformBackups.push(backup)
+      if (operation.action === 'resume' && previousBinding) applied.resumedCustomBindings.push(previousBinding)
+      if (operation.action === 'suspend' && previousBinding) applied.suspendedCustomBindings.push(previousBinding)
     }
     for (const record of records) await verifyCanonicalSkill(record.canonicalPath, record.contentHash)
     for (const record of localRecords) await verifyCanonicalSkill(record.localPath, record.contentHash)
@@ -451,6 +470,8 @@ interface AppliedPlatformRoot {
   createdLink?: string
   /** 接入前的平台根目录备份。 */
   backup?: SkillBackupMove
+  /** 本次从停用状态恢复的原绑定。 */
+  resumedBinding?: ManagedPlatformBinding
 }
 
 /**
@@ -500,6 +521,7 @@ async function applyCustomLinkRoot(
   operation: SkillBindCustomRootOperation,
   dataDir: string,
   transactionId: string,
+  previousBinding?: ManagedCustomLinkBinding,
 ): Promise<AppliedCustomLinkRoot> {
   const result: CustomLinkBindingResult = {
     id: operation.id,
@@ -512,6 +534,32 @@ async function applyCustomLinkRoot(
   let backup: SkillBackupMove | undefined
   let createdLink = false
   try {
+    if (operation.action === 'skip') {
+      if (!previousBinding || previousBinding.suspendedAt) throw new Error(`自定义目录 ${operation.path} 的已绑定状态已经变化。`)
+      await verifyManagedLink(operation.path, operation.target)
+      result.status = 'skipped'
+      return { result }
+    }
+    if (operation.action === 'suspend') {
+      if (!previousBinding || previousBinding.suspendedAt) throw new Error(`自定义目录 ${operation.path} 的已绑定状态已经变化。`)
+      await verifyManagedLink(operation.path, operation.target)
+      const suspendedPath = previousBinding.suspendedPath ?? join(dirname(operation.path), `.askx-${operation.id}-skills-link`)
+      if (await pathExists(suspendedPath)) throw new Error(`自定义软链隐藏路径已被占用：${suspendedPath}`)
+      await rename(operation.path, suspendedPath)
+      if (previousBinding.originalRootBackup && await pathExists(previousBinding.originalRootBackup.backupPath)) {
+        await rename(previousBinding.originalRootBackup.backupPath, operation.path)
+      }
+      return { result }
+    }
+    if (operation.action === 'resume') {
+      if (!previousBinding?.suspendedAt || !previousBinding.suspendedPath) throw new Error(`自定义目录 ${operation.path} 的停用状态已经变化。`)
+      if (previousBinding.originalRootBackup && await pathExists(operation.path)) {
+        await rename(operation.path, previousBinding.originalRootBackup.backupPath)
+      } else if (await pathExists(operation.path)) throw new Error(`自定义目录在停用期间已被占用：${operation.path}`)
+      await rename(previousBinding.suspendedPath, operation.path)
+      await verifyManagedLink(operation.path, operation.target)
+      return { result }
+    }
     if (await pathExists(operation.path)) {
       const stat = await lstat(operation.path)
       if (stat.isSymbolicLink()) {
@@ -556,6 +604,7 @@ async function applyPlatformRoot(
   operation: SkillBindPlatformOperation,
   dataDir: string,
   transactionId: string,
+  previousBinding?: ManagedPlatformBinding,
 ): Promise<AppliedPlatformRoot> {
   const result: PlatformBindingResult = {
     platform: operation.platform,
@@ -567,6 +616,53 @@ async function applyPlatformRoot(
   let backup: SkillBackupMove | undefined
   let createdLink = false
   try {
+    if (operation.action === 'suspend') {
+      if (!previousBinding || previousBinding.suspendedAt) throw new Error(`平台 ${operation.platform} 的已绑定状态已经变化。`)
+      await verifyManagedLink(operation.path, operation.target)
+      const suspendedPath = previousBinding.suspendedPath ?? join(dirname(operation.path), `.askx-${operation.platform}-skills-link`)
+      if (await pathExists(suspendedPath)) throw new Error(`平台软链隐藏路径已被占用：${suspendedPath}`)
+      await rename(operation.path, suspendedPath)
+      if (previousBinding.originalRootBackup && await pathExists(previousBinding.originalRootBackup.backupPath)) {
+        await rename(previousBinding.originalRootBackup.backupPath, operation.path)
+      }
+      return { result }
+    }
+    if (operation.action === 'skip') {
+      if (!previousBinding || previousBinding.suspendedAt) throw new Error(`平台 ${operation.platform} 的已绑定状态已经变化。`)
+      await verifyManagedLink(operation.path, operation.target)
+      result.status = 'skipped'
+      return { result }
+    }
+    if (operation.action === 'resume') {
+      if (!previousBinding?.suspendedAt || !previousBinding.suspendedPath) throw new Error(`平台 ${operation.platform} 的停用状态已经变化。`)
+      await verifyManagedLink(previousBinding.suspendedPath, operation.target)
+      if (previousBinding.originalRootBackup) {
+        if (!await pathExists(operation.path)) throw new Error(`平台原目录不存在：${operation.path}`)
+        if (await pathExists(previousBinding.originalRootBackup.backupPath)) throw new Error(`平台原目录备份位置已被占用：${previousBinding.originalRootBackup.backupPath}`)
+        await mkdir(dirname(previousBinding.originalRootBackup.backupPath), { recursive: true, mode: 0o700 })
+        await rename(operation.path, previousBinding.originalRootBackup.backupPath)
+      } else if (await pathExists(operation.path)) {
+        throw new Error(`平台 Skills 路径在停用期间已被占用：${operation.path}`)
+      }
+      try {
+        await rename(previousBinding.suspendedPath, operation.path)
+        await verifyManagedLink(operation.path, operation.target)
+      } catch (error) {
+        if (await pathExists(operation.path)) {
+          try {
+            await verifyManagedLink(operation.path, operation.target)
+            if (!await pathExists(previousBinding.suspendedPath)) await rename(operation.path, previousBinding.suspendedPath)
+          } catch {
+            // 非受管占用项保留原位，交由错误回执提示人工处理。
+          }
+        }
+        if (previousBinding.originalRootBackup && await pathExists(previousBinding.originalRootBackup.backupPath) && !await pathExists(operation.path)) {
+          await rename(previousBinding.originalRootBackup.backupPath, operation.path)
+        }
+        throw error
+      }
+      return { result, resumedBinding: previousBinding }
+    }
     if (await pathExists(operation.path)) {
       const stat = await lstat(operation.path)
       if (stat.isSymbolicLink()) {
@@ -606,6 +702,31 @@ async function applyPlatformRoot(
  * @param canonicalRoot AskX 统一目录路径。
  */
 async function rollbackAppliedBatch(applied: AppliedBatch, canonicalRoot: string): Promise<void> {
+  for (const binding of [...applied.suspendedCustomBindings].reverse()) {
+    const suspendedPath = binding.suspendedPath ?? join(dirname(binding.path), `.askx-${binding.id}-skills-link`)
+    if (binding.originalRootBackup && await pathExists(binding.path)) await rename(binding.path, binding.originalRootBackup.backupPath)
+    await rename(suspendedPath, binding.path)
+  }
+  for (const binding of [...applied.suspendedBindings].reverse()) {
+    const suspendedPath = binding.suspendedPath ?? join(dirname(binding.path), `.askx-${binding.platform}-skills-link`)
+    if (binding.originalRootBackup && await pathExists(binding.path)) await rename(binding.path, binding.originalRootBackup.backupPath)
+    await rename(suspendedPath, binding.path)
+  }
+  for (const binding of [...(applied.resumedBindings ?? [])].reverse()) {
+    if (!binding.suspendedPath) throw new Error(`平台恢复回滚缺少隐藏软链路径：${binding.platform}`)
+    await verifyManagedLink(binding.path, binding.target)
+    if (await pathExists(binding.suspendedPath)) throw new Error(`平台恢复回滚目标已被占用：${binding.suspendedPath}`)
+    await rename(binding.path, binding.suspendedPath)
+    if (binding.originalRootBackup && await pathExists(binding.originalRootBackup.backupPath)) {
+      if (await pathExists(binding.originalRootBackup.originalPath)) throw new Error(`平台原目录恢复目标已被占用：${binding.originalRootBackup.originalPath}`)
+      await rename(binding.originalRootBackup.backupPath, binding.originalRootBackup.originalPath)
+    }
+  }
+  for (const binding of [...applied.resumedCustomBindings].reverse()) {
+    if (!binding.suspendedPath) throw new Error(`自定义目录恢复回滚缺少隐藏软链路径：${binding.path}`)
+    await rename(binding.path, binding.suspendedPath)
+    if (binding.originalRootBackup && await pathExists(binding.originalRootBackup.backupPath)) await rename(binding.originalRootBackup.backupPath, binding.path)
+  }
   for (const linkPath of [...applied.createdLinks].reverse()) {
     if (!await pathExists(linkPath)) continue
     const stat = await lstat(linkPath)
@@ -673,10 +794,17 @@ async function assertRollbackSafe(applied: AppliedBatch, canonicalRoot: string):
 function createPlatformBindings(
   results: PlatformBindingResult[],
   previousBindings: ManagedPlatformBinding[],
+  operations: SkillBindPlatformOperation[],
 ): ManagedPlatformBinding[] {
   const updatedAt = new Date().toISOString()
   const bindings = new Map(previousBindings.map((binding) => [binding.platform, binding]))
   for (const result of results) {
+    const operation = operations.find((entry) => entry.platform === result.platform)
+    if (operation?.action === 'suspend' && result.status === 'applied') {
+      const previous = bindings.get(result.platform)
+      if (previous) bindings.set(result.platform, { ...previous, updatedAt, suspendedAt: updatedAt, suspendedPath: previous.suspendedPath ?? join(dirname(previous.path), `.askx-${previous.platform}-skills-link`) })
+      continue
+    }
     if (result.status === 'applied') {
       const previous = bindings.get(result.platform)
       bindings.set(result.platform, {
@@ -702,10 +830,17 @@ function createPlatformBindings(
 function createCustomLinkBindings(
   results: CustomLinkBindingResult[],
   previousBindings: ManagedCustomLinkBinding[],
+  operations: SkillBindCustomRootOperation[],
 ): ManagedCustomLinkBinding[] {
   const updatedAt = new Date().toISOString()
   const bindings = new Map(previousBindings.map((binding) => [binding.id, binding]))
   for (const result of results) {
+    const operation = operations.find((entry) => entry.id === result.id)
+    if (operation?.action === 'suspend' && result.status === 'applied') {
+      const previous = bindings.get(result.id)
+      if (previous) bindings.set(result.id, { ...previous, updatedAt, suspendedAt: updatedAt, suspendedPath: previous.suspendedPath ?? join(dirname(previous.path), `.askx-${previous.id}-skills-link`) })
+      continue
+    }
     if (result.status !== 'applied') continue
     const previous = bindings.get(result.id)
     bindings.set(result.id, {
@@ -734,10 +869,6 @@ export async function applySkillsBatchPlan(input: ApplySkillsPlanInput): Promise
   if ((manifestBefore?.revision ?? 0) !== input.plan.manifestRevision) throw new Error('Skills manifest 已经变化，请重新扫描。')
   const registry = await new SkillManagerRegistryStore(input.dataDir).read()
   if ((registry?.revision ?? 0) !== input.plan.registryRevision) throw new Error('Skill registry 已经变化，请重新扫描。')
-  const suspendedPlatforms = (manifestBefore?.platformBindings ?? [])
-    .filter((binding) => binding.suspendedAt && input.plan.platformOperations.some((operation) => operation.platform === binding.platform))
-    .map((binding) => binding.platform)
-  if (suspendedPlatforms.length) throw new Error(`平台软链处于停用状态，请先恢复后再重新导入：${suspendedPlatforms.join(', ')}`)
   const report = await scanSkills(input.homeDir, input.dataDir, input.plan.platforms, input.plan.customRoots)
   if (report.fingerprint !== input.plan.detectionFingerprint) throw new Error('本地 Skill 已经变化，请重新扫描。')
   assertSkillsPlanScope(input.plan, report, input.dataDir, await detectSkillPlatforms(input.homeDir))
@@ -745,17 +876,18 @@ export async function applySkillsBatchPlan(input: ApplySkillsPlanInput): Promise
   const journalPath = join(input.dataDir, 'transactions', `${input.plan.id}.json`)
   await writeInternalJson(journalPath, { status: 'applying', plan: input.plan, startedAt: new Date().toISOString() })
   const { stagingRoot, localStagingRoot, results, records, localRecords } = await buildCanonicalStaging(input.plan, report, input.dataDir, manifestBefore)
-  const appliedBatch = await switchPlatformRoots(input.plan, stagingRoot, localStagingRoot, records, localRecords, input.dataDir)
+  const appliedBatch = await switchPlatformRoots(input.plan, stagingRoot, localStagingRoot, records, localRecords, input.dataDir, manifestBefore?.platformBindings ?? [], manifestBefore?.customLinkBindings ?? [])
   const now = new Date().toISOString()
   let manifestRevision = input.plan.manifestRevision
   try {
-    /** 已保存来源只能通过独立移除计划删除，单平台导入不会意外清空它们。 */
+    /** connect 计划保存用户本次确认的完整扫描来源列表；sync 不修改来源设置。 */
     const linkedCustomPaths = new Set(input.plan.customLinkOperations.map((operation) => operation.path))
-    const persistedCustomRoots = input.plan.mode === 'sync'
-      ? manifestBefore?.customRoots ?? []
-      : [...new Map([...(manifestBefore?.customRoots ?? []), ...report.customRoots].map((root) => [root.path, root])).values()]
-          .filter((root) => !linkedCustomPaths.has(root.path))
-          .slice(0, MAX_CUSTOM_SKILL_DIRECTORIES)
+    const scannedCustomRoots = report.customRoots.filter((root) => !linkedCustomPaths.has(root.path))
+    const persistedCustomRoots = input.plan.configurationStrategy === 'replace'
+      ? scannedCustomRoots
+      : input.plan.configurationStrategy === 'merge'
+        ? [...new Map([...(manifestBefore?.customRoots ?? []), ...scannedCustomRoots].map((root) => [root.path, root])).values()].sort((left, right) => left.path.localeCompare(right.path))
+        : manifestBefore?.customRoots ?? []
     const saved = await input.manifestStore.write({
       version: 3,
       revision: input.plan.manifestRevision,
@@ -764,8 +896,8 @@ export async function applySkillsBatchPlan(input: ApplySkillsPlanInput): Promise
       skills: records,
       localSkills: localRecords,
       customRoots: persistedCustomRoots,
-      platformBindings: createPlatformBindings(appliedBatch.platformResults, manifestBefore?.platformBindings ?? []),
-      customLinkBindings: createCustomLinkBindings(appliedBatch.customLinkResults, manifestBefore?.customLinkBindings ?? []),
+      platformBindings: createPlatformBindings(appliedBatch.platformResults, manifestBefore?.platformBindings ?? [], input.plan.platformOperations),
+      customLinkBindings: createCustomLinkBindings(appliedBatch.customLinkResults, manifestBefore?.customLinkBindings ?? [], input.plan.customLinkOperations),
     }, input.plan.manifestRevision)
     manifestRevision = saved.revision
   } catch (error) {

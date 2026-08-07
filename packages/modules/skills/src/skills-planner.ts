@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 import { stableHash } from '@askx/core'
-import { MAX_CUSTOM_SKILL_DIRECTORIES, skillDecisionSchema, skillsBatchPlanSchema, type SkillDecision, type SkillManagementChoice, type SkillPlanOperation, type SkillPlanUnit, type SkillPlatformId, type SkillPlatformStatus, type SkillsBatchMode, type SkillsBatchPlan, type SkillsScanReport } from './skill-types.js'
+import { MAX_CUSTOM_SKILL_DIRECTORIES, skillDecisionSchema, skillsBatchPlanSchema, type ManagedCustomLinkBinding, type ManagedPlatformBinding, type SkillDecision, type SkillManagementChoice, type SkillPlanOperation, type SkillPlanUnit, type SkillPlatformId, type SkillPlatformStatus, type SkillsBatchMode, type SkillsBatchPlan, type SkillsConfigurationStrategy, type SkillsScanReport } from './skill-types.js'
 
 /** 计划输入。 */
 export interface CreateSkillsPlanInput {
@@ -15,10 +15,16 @@ export interface CreateSkillsPlanInput {
   registryRevision: number
   /** 批量计划模式。 */
   mode: SkillsBatchMode
+  /** 本批次如何更新已有配置。 */
+  configurationStrategy: SkillsConfigurationStrategy
   /** 用户明确选择接入软链的平台；为空时只同步统一源。 */
   linkPlatforms?: SkillPlatformId[]
   /** AskX 支持的全部平台状态，不受本次扫描来源限制。 */
   linkPlatformStatuses: SkillPlatformStatus[]
+  /** manifest 中已有的平台绑定，用于生成跳过或恢复动作。 */
+  platformBindings?: ManagedPlatformBinding[]
+  /** manifest 中已有的自定义软链，用于提前校验总数上限。 */
+  customLinkBindings?: ManagedCustomLinkBinding[]
   /** 用户明确选择接入统一源的自定义目录。 */
   linkCustomRoots?: string[]
   /** 用户决策。 */
@@ -163,9 +169,22 @@ export function createSkillsBatchPlan(input: CreateSkillsPlanInput): SkillsBatch
     if (!status.linkSupported) throw new Error(`平台 ${status.name} 当前不支持建立软链。`)
     return status
   })
-  const platformOperations = selectedStatuses.map((platform) => {
-    return { kind: 'bind-platform' as const, platform: platform.id, path: platform.skillsDir, target: canonicalRoot }
+  const selectedPlatformOperations = selectedStatuses.map((platform) => {
+    const binding = input.platformBindings?.find((entry) => entry.platform === platform.id)
+    const action = binding ? (binding.suspendedAt ? 'resume' as const : 'skip' as const) : 'bind' as const
+    return { kind: 'bind-platform' as const, action, platform: platform.id, path: platform.skillsDir, target: canonicalRoot }
   })
+  const selectedPlatformIds = new Set(selectedStatuses.map((platform) => platform.id))
+  const suspendedPlatformOperations = input.configurationStrategy === 'replace'
+    ? (input.platformBindings ?? []).filter((binding) => !binding.suspendedAt && !selectedPlatformIds.has(binding.platform)).map((binding) => ({
+        kind: 'bind-platform' as const,
+        action: 'suspend' as const,
+        platform: binding.platform,
+        path: binding.path,
+        target: binding.target,
+      }))
+    : []
+  const platformOperations = [...selectedPlatformOperations, ...suspendedPlatformOperations]
   const customLinkPaths = input.mode === 'connect'
     ? [...new Set((input.linkCustomRoots ?? []).map((path) => {
         if (!isAbsolute(path)) throw new Error(`软链使用目录必须是绝对路径：${path}`)
@@ -175,6 +194,10 @@ export function createSkillsBatchPlan(input: CreateSkillsPlanInput): SkillsBatch
   if (customLinkPaths.length > MAX_CUSTOM_SKILL_DIRECTORIES) {
     throw new Error(`一次最多配置 ${MAX_CUSTOM_SKILL_DIRECTORIES} 个自定义软链目录。`)
   }
+  const combinedCustomLinkPaths = new Set([...(input.customLinkBindings ?? []).map((binding) => binding.path), ...customLinkPaths])
+  if (input.configurationStrategy !== 'replace' && combinedCustomLinkPaths.size > MAX_CUSTOM_SKILL_DIRECTORIES) {
+    throw new Error(`已有软链目录与本次新增目录合计不能超过 ${MAX_CUSTOM_SKILL_DIRECTORIES} 个，请先取消或删除旧目录绑定。`)
+  }
   const reservedPaths = [canonicalRoot, ...platformOperations.map((operation) => operation.path)]
   if (customLinkPaths.some((path) => reservedPaths.some((reserved) => pathsOverlap(path, reserved)))) {
     throw new Error('自定义软链目录不能与统一源或平台目录相同，也不能互为父子目录。')
@@ -182,13 +205,29 @@ export function createSkillsBatchPlan(input: CreateSkillsPlanInput): SkillsBatch
   if (customLinkPaths.some((path, index) => customLinkPaths.slice(index + 1).some((candidate) => pathsOverlap(path, candidate)))) {
     throw new Error('多个自定义软链目录不能相同，也不能互为父子目录。')
   }
-  const customLinkOperations = customLinkPaths.map((path) => ({
-    kind: 'bind-custom-root' as const,
-    id: stableHash({ type: 'custom-link-root', path }),
-    name: basename(path),
-    path,
-    target: canonicalRoot,
-  }))
+  const selectedCustomLinkOperations = customLinkPaths.map((path) => {
+    const binding = input.customLinkBindings?.find((entry) => entry.path === path)
+    return {
+      kind: 'bind-custom-root' as const,
+      action: binding ? (binding.suspendedAt ? 'resume' as const : 'skip' as const) : 'bind' as const,
+      id: stableHash({ type: 'custom-link-root', path }),
+      name: basename(path),
+      path,
+      target: canonicalRoot,
+    }
+  })
+  const selectedCustomPaths = new Set(customLinkPaths)
+  const suspendedCustomLinkOperations = input.configurationStrategy === 'replace'
+    ? (input.customLinkBindings ?? []).filter((binding) => !binding.suspendedAt && !selectedCustomPaths.has(binding.path)).map((binding) => ({
+        kind: 'bind-custom-root' as const,
+        action: 'suspend' as const,
+        id: binding.id,
+        name: binding.name,
+        path: binding.path,
+        target: binding.target,
+      }))
+    : []
+  const customLinkOperations = [...selectedCustomLinkOperations, ...suspendedCustomLinkOperations]
   const unsigned = {
     id: randomUUID(),
     createdAt: new Date().toISOString(),
@@ -198,6 +237,7 @@ export function createSkillsBatchPlan(input: CreateSkillsPlanInput): SkillsBatch
     registryRevision: input.registryRevision,
     systemSkillAction: input.manifestRevision === 0 ? 'install' as const : 'none' as const,
     mode: input.mode,
+    configurationStrategy: input.configurationStrategy,
     platforms: input.report.platforms,
     customRoots: input.report.customRoots.map((root) => root.path),
     units: decisions.map((decision) => createUnit({ ...input, managementChoices }, decision)),
@@ -237,6 +277,7 @@ export function assertSkillsPlanScope(plan: SkillsBatchPlan, report: SkillsScanR
       manifestRevision: plan.manifestRevision,
       registryRevision: plan.registryRevision,
       mode: plan.mode,
+      configurationStrategy: plan.configurationStrategy,
       decisions,
       dataDir: '',
       linkPlatformStatuses: platformStatuses,

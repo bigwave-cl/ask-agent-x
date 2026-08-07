@@ -123,6 +123,78 @@ describe('SkillsManager', () => {
     expect(await readFile(join(dataDir, 'skills', 'custom-demo', 'SKILL.md'), 'utf8')).toContain('custom-demo')
   })
 
+  it('自定义软链历史记录与本次新增合计超过三个时会在计划阶段拒绝', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-custom-link-limit-home-'))
+    const dataDir = join(homeDir, '.askx')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const initialReport = await manager.scan(['codex'])
+    const initialPlan = await manager.planOnboarding({
+      platforms: ['codex'],
+      configurationStrategy: 'merge',
+      linkPlatforms: [],
+      detectionFingerprint: initialReport.fingerprint,
+      settingsRevision: 0,
+      decisions: [],
+    })
+    await manager.applyOnboarding(initialPlan, 0, consent(initialPlan))
+    const manifest = (await manager.manifestStore.read())!
+    await manager.manifestStore.write({
+      ...manifest,
+      customLinkBindings: ['one', 'two', 'three'].map((name) => ({
+        id: name,
+        name,
+        path: join(homeDir, name),
+        target: join(dataDir, 'skills'),
+        updatedAt: new Date().toISOString(),
+      })),
+    }, manifest.revision)
+    const report = await manager.scan(['codex'])
+
+    await expect(manager.planOnboarding({
+      platforms: ['codex'],
+      configurationStrategy: 'merge',
+      linkPlatforms: [],
+      linkCustomRoots: [join(homeDir, 'four')],
+      detectionFingerprint: report.fingerprint,
+      settingsRevision: 0,
+      decisions: [],
+    })).rejects.toThrow('合计不能超过 3 个')
+  })
+
+  it('再次扫描确认的新目录列表会替换历史扫描来源而不是静默截断', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-custom-source-replace-home-'))
+    const dataDir = join(homeDir, '.askx')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const roots = [join(homeDir, 'old-one'), join(homeDir, 'old-two'), join(homeDir, 'new-one')]
+    for (const [index, root] of roots.entries()) {
+      await mkdir(join(root, `skill-${index}`), { recursive: true })
+      await writeFile(join(root, `skill-${index}`, 'SKILL.md'), `---\nname: skill-${index}\ndescription: 测试来源\n---\n`)
+    }
+    const firstReport = await manager.scan(['codex'], roots.slice(0, 2))
+    const firstPlan = await manager.planOnboarding({
+      platforms: ['codex'],
+      customRoots: roots.slice(0, 2),
+      linkPlatforms: [],
+      detectionFingerprint: firstReport.fingerprint,
+      settingsRevision: 0,
+      decisions: firstReport.groups.map((group) => ({ kind: 'adopt' as const, sourceLocationId: group.locations[0]!.id })),
+    })
+    await manager.applyOnboarding(firstPlan, 0, consent(firstPlan))
+
+    const secondReport = await manager.scan(['codex'], [roots[2]!])
+    const secondPlan = await manager.planOnboarding({
+      platforms: ['codex'],
+      customRoots: [roots[2]!],
+      linkPlatforms: [],
+      detectionFingerprint: secondReport.fingerprint,
+      settingsRevision: 0,
+      decisions: secondReport.groups.map((group) => ({ kind: 'keep' as const, groupId: group.id })),
+    })
+    await manager.applyOnboarding(secondPlan, 0, consent(secondPlan))
+
+    expect((await manager.bootstrap()).customRoots.map((root) => root.path)).toEqual([roots[2]])
+  })
+
   it('可以幂等停用并恢复单个平台根目录软链且不修改统一源', async () => {
     const homeDir = await mkdtemp(join(tmpdir(), 'askx-suspend-link-home-'))
     const dataDir = join(homeDir, '.askx')
@@ -179,6 +251,65 @@ describe('SkillsManager', () => {
     expect(await readFile(join(homeDir, '.codex', 'skills', 'demo', 'SKILL.md'), 'utf8')).toBe('platform directory changed while disconnected')
     expect(await readFile(join(dataDir, 'skills', 'demo', 'SKILL.md'), 'utf8')).toContain('canonical body')
   })
+
+  it('扫描保存时会跳过已绑定平台并恢复此前停用的平台', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-scan-link-state-home-'))
+    const dataDir = join(homeDir, '.askx')
+    await createSkill(homeDir, 'codex', 'demo', 'canonical body')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const initialReport = await manager.scan(['codex'])
+    const source = initialReport.groups[0]!.locations[0]!
+    const initialPlan = await manager.planOnboarding({
+      platforms: ['codex'],
+      detectionFingerprint: initialReport.fingerprint,
+      settingsRevision: 0,
+      decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
+    })
+    await manager.applyOnboarding(initialPlan, 0, consent(initialPlan))
+
+    const connectedReport = await manager.scan(['codex'])
+    const skipPlan = await manager.planOnboarding({
+      platforms: ['codex'],
+      linkPlatforms: ['codex'],
+      detectionFingerprint: connectedReport.fingerprint,
+      settingsRevision: 0,
+      decisions: connectedReport.groups.map((group) => ({ kind: 'keep' as const, groupId: group.id })),
+    })
+    expect(skipPlan.platformOperations).toMatchObject([{ platform: 'codex', action: 'skip' }])
+    const skipReceipt = await manager.applyOnboarding(skipPlan, 0, consent(skipPlan))
+    expect(skipReceipt.platformResults).toMatchObject([{ platform: 'codex', status: 'skipped' }])
+
+    const suspendPlan = await manager.planPlatformLink('codex', 'suspend')
+    await manager.applyPlatformLink(suspendPlan, consent(suspendPlan))
+    const suspendedReport = await manager.scan(['codex'])
+    const resumePlan = await manager.planOnboarding({
+      platforms: ['codex'],
+      linkPlatforms: ['codex'],
+      detectionFingerprint: suspendedReport.fingerprint,
+      settingsRevision: 0,
+      decisions: suspendedReport.groups.map((group) => ({ kind: 'keep' as const, groupId: group.id })),
+    })
+    expect(resumePlan.platformOperations).toMatchObject([{ platform: 'codex', action: 'resume' }])
+    const resumeReceipt = await manager.applyOnboarding(resumePlan, 0, consent(resumePlan))
+
+    expect(resumeReceipt.platformResults).toMatchObject([{ platform: 'codex', status: 'applied' }])
+    expect((await lstat(join(homeDir, '.codex', 'skills'))).isSymbolicLink()).toBe(true)
+    await expect(access(suspendPlan.suspendedPath)).rejects.toThrow()
+    expect((await manager.bootstrap()).platformBindings[0]).not.toHaveProperty('suspendedAt')
+
+    const replaceReport = await manager.scan(['codex'])
+    const replacePlan = await manager.planOnboarding({
+      platforms: ['codex'],
+      linkPlatforms: [],
+      configurationStrategy: 'replace',
+      detectionFingerprint: replaceReport.fingerprint,
+      settingsRevision: 0,
+      decisions: replaceReport.groups.map((group) => ({ kind: 'keep' as const, groupId: group.id })),
+    })
+    expect(replacePlan.platformOperations).toMatchObject([{ platform: 'codex', action: 'suspend' }])
+    await manager.applyOnboarding(replacePlan, 0, consent(replacePlan))
+    expect((await manager.bootstrap()).platformBindings[0]).toHaveProperty('suspendedAt')
+  }, 10_000)
 
   it('恢复平台软链时不会覆盖被外部占用的原目录备份位置', async () => {
     const homeDir = await mkdtemp(join(tmpdir(), 'askx-resume-conflict-home-'))
@@ -530,6 +661,7 @@ describe('SkillsManager', () => {
     const retryReport = await manager.scan(['claude'])
     const retryPlan = await manager.planOnboarding({
       platforms: ['claude'],
+      configurationStrategy: 'merge',
       detectionFingerprint: retryReport.fingerprint,
       settingsRevision: 0,
       decisions: [],

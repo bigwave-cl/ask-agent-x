@@ -63,6 +63,7 @@ export class SettingsStore {
         revision: current.revision + 1,
         updatedAt: new Date().toISOString(),
         updatedBy: options.source,
+        ...(parsedPatch.cliLocale !== undefined ? { cliLocale: parsedPatch.cliLocale } : {}),
         locale: parsedPatch.locale ?? current.locale,
         themeColor: parsedPatch.themeColor ?? current.themeColor,
         skills: {

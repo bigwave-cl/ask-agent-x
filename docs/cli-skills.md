@@ -1,6 +1,6 @@
 # AskAgent X CLI Skills 管理
 
-本文档对应 AskAgent X `26.806.3`，按照用户实际操作顺序说明如何查看、扫描、验证、关联、管理和统计 Skill，并提供完整的 Skills CLI API 参考。
+本文档对应 AskAgent X `26.807.3`，按照用户实际操作顺序说明如何查看、扫描、验证、关联、管理和统计 Skill，并提供完整的 Skills CLI API 参考。
 
 - [CLI 文档总览](./cli.md)
 - [CLI 基础使用](./cli-base.md)
@@ -45,9 +45,9 @@ askx skills scan
 - Claude / Claude Code
 - Cursor
 
-选择后，CLI 会显示对应的 Skills 文件夹地址并开始只读扫描。
+选择平台后，可以继续输入一个或多个自定义 Skills 文件夹；如果只扫描平台，直接回车即可。也可以取消全部平台勾选，仅输入自定义文件夹。
 
-扫描自定义文件夹时，当前版本需要显式输入绝对路径：
+需要只导入某个平台或自定义文件夹时，可以直接传入来源参数：
 
 ```bash
 askx skills scan --directory /absolute/path/to/skills
@@ -59,9 +59,9 @@ askx skills scan --directory /absolute/path/to/skills
 askx skills scan --platform codex,claude --directory /absolute/path/to/skills
 ```
 
-> 当前 CLI 尚未在无参数扫描界面中提供“输入自定义文件夹”选项；Web 已提供文件夹选择器。CLI 后续需要补齐该交互，补齐前以 `--directory` 为准。
+扫描和选择阶段只读取目录，不复制 Skill、不修改源文件夹，也不建立软链。
 
-扫描只读取目录，不复制 Skill、不修改源文件夹，也不建立软链。
+无参数 `scan` 是完整重新扫描：从来源选择开始，保存时以本次选择重新整理扫描来源和软链状态，未再次选择的旧绑定会无损停用。带 `--platform` 或 `--directory` 是定向导入：跳过来源选择，直接进入 Skill 验证，只处理参数指定的软链目标，保存时与当前配置合并，不影响其他平台和文件夹。
 
 #### 扫描后的验证
 
@@ -75,7 +75,25 @@ askx skills scan --platform codex,claude --directory /absolute/path/to/skills
 | 无效 Skill | 缺少必要元数据或目录结构不符合要求 | 不保存 |
 | 失效软链 | 链接目标不存在 | 不保存，并提示修复来源 |
 
-扫描本身不会进入写入步骤。确认扫描结果后，使用 `askx skills sync` 生成保存计划：
+交互终端中的 `askx skills scan` 会在展示扫描结果后继续进入完整向导：
+
+1. 选择需要同步的 Skill。
+2. 选择需要设置软链的平台。
+3. 输入需要设置软链的自定义文件夹。
+4. 展示完整保存计划，并等待最终确认。
+5. 确认后保存，最后输出当前 Skill 列表和管理命令。
+
+任一阶段按 `Esc`、`Q` 或中断命令都会放弃本次向导，最终确认前不会写入配置或 Skill。`askx skills scan --json` 保持只读，只输出扫描报告，适合自动化调用。
+
+自定义扫描文件夹最多保存 3 个。无参数完整扫描以本次确认的列表为准；带参数定向导入会与历史来源合并，合并后超过上限则在计划阶段拒绝。自定义软链目录同样在写入前校验上限，不会先修改文件系统再报错。
+
+软链设置阶段始终允许选择平台。最终计划会根据当前状态明确标注并执行：未绑定的平台新建关联，已经绑定的平台直接跳过，之前取消绑定的平台恢复关联；三种情况共用最后一次确认和保存，不需要中途退出后再执行其他命令。
+
+第三步的默认选择严格继承第一步：只有第一步选中的平台默认勾选，其他平台保持未选；第一步添加的自定义文件夹默认作为软链目录勾选。用户仍可在第三步增删平台和文件夹，再进入最终确认。
+
+最终确认统一使用 `回车` 执行，使用 `Esc` 或 `Q` 放弃；不再要求输入 `Y/N`。
+
+需要跳过逐项选择并按安全推荐动作直接生成计划时，可以使用 `askx skills sync`：
 
 ```bash
 askx skills sync --platform codex,claude
@@ -304,13 +322,13 @@ askx skills scan --directory /absolute/path/to/skills
 askx skills scan --platform cursor --directory /absolute/path/to/skills --json
 ```
 
-作用：扫描平台和自定义来源，生成 Skill 拓扑及验证结果。
+作用：无参数时完整重新扫描并进入四阶段保存向导；带来源参数时定向扫描并从 Skill 验证阶段开始，最终增量合并。
 
 读取：来源目录、Skill 元数据、软链目标和内容指纹。
 
-写入：无。
+写入：仅在交互向导最终回车确认后写入统一源、绑定和配置；`--json` 始终只读。
 
-不会：保存 Skill、建立软链、修改配置或 Registry。
+不会：在最终确认前写入；定向导入不会移除未传入的历史来源或绑定；`--json` 不修改任何状态。
 
 ### 2.4 `askx skills sync`
 

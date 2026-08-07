@@ -31,6 +31,27 @@ interface SkillScanDirectory {
 }
 
 /**
+ * 生成只反映 Skill 拓扑与可写条件的稳定扫描指纹。
+ * @param input 当前扫描得到的平台、目录与 Skill 数据。
+ * @returns 不受 CLI 版本探测和提示文案波动影响的指纹。
+ */
+export function createSkillsScanFingerprint(input: Pick<SkillsScanReport, 'platforms' | 'platformStatuses' | 'customRoots' | 'locations' | 'groups'>): string {
+  const platformStates = input.platformStatuses.map(({ id, skillsDir, skillsDirExists, linkSupported }) => ({
+    id,
+    skillsDir,
+    skillsDirExists,
+    linkSupported,
+  }))
+  return stableHash({
+    platforms: input.platforms,
+    platformStates,
+    customRoots: input.customRoots,
+    locations: input.locations,
+    groups: input.groups,
+  })
+}
+
+/**
  * 对目录业务内容生成稳定指纹。
  * @param root 要读取的目录。
  * @returns SHA-256 内容指纹。
@@ -146,6 +167,9 @@ async function scanSkillDirectory(root: SkillScanDirectory, scannedPaths: Set<st
     entries = await readdir(root.path, { withFileTypes: true })
   } catch (error) {
     if (['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) return []
+    if (['EACCES', 'EPERM'].includes((error as NodeJS.ErrnoException).code ?? '')) {
+      throw new Error(`没有权限读取 Skill 目录：${root.path} / Permission denied reading Skill directory: ${root.path}`)
+    }
     throw error
   }
   const rootHasSkillFile = root.allowRootSkill && await lstat(join(root.path, 'SKILL.md'))
@@ -248,10 +272,11 @@ export async function scanSkills(
   const customRoots: SkillCustomScanRoot[] = []
   for (const path of normalizedCustomPaths) {
     const stat = await lstat(path).catch((error: NodeJS.ErrnoException) => {
-      if (error.code === 'ENOENT') throw new Error(`额外扫描目录不存在：${path}`)
+      if (error.code === 'ENOENT') throw new Error(`额外扫描目录不存在：${path} / Custom Skill directory does not exist: ${path}`)
+      if (['EACCES', 'EPERM'].includes(error.code ?? '')) throw new Error(`没有权限读取额外扫描目录：${path} / Permission denied reading custom Skill directory: ${path}`)
       throw error
     })
-    if (!stat.isDirectory()) throw new Error(`额外扫描路径不是目录：${path}`)
+    if (!stat.isDirectory()) throw new Error(`额外扫描路径不是目录：${path} / Custom Skill path is not a directory: ${path}`)
     customRoots.push({ id: stableHash({ type: 'custom-skill-root', path }), name: basename(path), path })
   }
   const roots: SkillScanDirectory[] = [
@@ -273,6 +298,6 @@ export async function scanSkills(
   const platformStatuses = (await detectSkillPlatforms(homeDir)).filter((platform) => uniquePlatforms.includes(platform.id))
   const groups = groupSkillLocations(locations)
   const scannedAt = new Date().toISOString()
-  const fingerprint = stableHash({ platforms: uniquePlatforms, platformStatuses, customRoots, locations, groups })
+  const fingerprint = createSkillsScanFingerprint({ platforms: uniquePlatforms, platformStatuses, customRoots, locations, groups })
   return { scannedAt, platforms: uniquePlatforms, platformStatuses, customRoots, locations, groups, fingerprint }
 }

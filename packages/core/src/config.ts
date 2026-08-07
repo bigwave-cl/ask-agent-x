@@ -11,6 +11,7 @@ export const configSchema = z.object({
   revision: z.number().int().nonnegative(),
   updatedAt: z.string().datetime(),
   updatedBy: z.enum(['cli', 'web', 'system']),
+  cliLocale: localeSchema.optional(),
   locale: localeSchema.default('zh-CN'),
   themeColor: themeColorSchema.default('cyan'),
   skills: z.object({
@@ -21,6 +22,7 @@ export const configSchema = z.object({
 
 export const settingsPatchSchema = z
   .object({
+    cliLocale: localeSchema.optional(),
     locale: localeSchema.optional(),
     themeColor: themeColorSchema.optional(),
     skills: configSchema.shape.skills.partial().optional(),

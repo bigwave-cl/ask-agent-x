@@ -87,6 +87,7 @@ import type {
   SkillsBatchMode,
   SkillPlatformId,
   SkillsBatchPlan,
+  SkillsConfigurationStrategy,
   SkillsBatchReceipt,
   SkillsRollbackPlan,
   SkillsBootstrap,
@@ -159,6 +160,8 @@ export interface SkillsPlanRequest {
   managementChoices?: SkillManagementChoice[]
   /** connect 接入平台根目录，sync 只更新统一源。 */
   mode?: SkillsBatchMode
+  /** 本批次如何更新已有扫描与绑定配置。 */
+  configurationStrategy?: SkillsConfigurationStrategy
   /** 用户明确选择建立根目录软链的平台。 */
   linkPlatforms?: SkillPlatformId[]
   /** 用户明确选择建立统一源软链的自定义目录。 */
@@ -258,8 +261,11 @@ export class SkillsManager {
       manifestRevision: manifest?.revision ?? 0,
       registryRevision: registry?.revision ?? 0,
       mode: request.mode ?? 'connect',
+      configurationStrategy: request.configurationStrategy ?? (request.mode === 'sync' ? 'preserve' : 'replace'),
       ...(request.linkPlatforms ? { linkPlatforms: request.linkPlatforms } : {}),
       linkPlatformStatuses: await detectSkillPlatforms(this.context.homeDir),
+      platformBindings: manifest?.platformBindings ?? [],
+      customLinkBindings: manifest?.customLinkBindings ?? [],
       ...(request.linkCustomRoots ? { linkCustomRoots: request.linkCustomRoots } : {}),
       decisions: request.decisions,
       ...(request.managementChoices ? { managementChoices: request.managementChoices } : {}),

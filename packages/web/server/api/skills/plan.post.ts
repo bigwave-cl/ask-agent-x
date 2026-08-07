@@ -11,6 +11,7 @@ const requestSchema = z.object({
   decisions: z.array(skillDecisionSchema),
   managementChoices: z.array(skillManagementChoiceSchema).default([]),
   mode: skillsBatchModeSchema.default('connect'),
+  configurationStrategy: z.enum(['replace', 'merge', 'preserve']).default('replace'),
   linkPlatforms: z.array(skillPlatformIdSchema).max(3).default([]),
   linkCustomRoots: z.array(z.string().min(1)).max(MAX_CUSTOM_SKILL_DIRECTORIES).default([]),
 })

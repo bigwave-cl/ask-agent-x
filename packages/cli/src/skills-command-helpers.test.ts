@@ -65,7 +65,7 @@ describe('Skills CLI helpers', () => {
     const report = createReport()
     const plan = {
       units: createSafeSyncDecisions(report).map((decision, index) => ({ id: String(index), skillName: report.groups[index]!.name, decision, operations: [], warnings: [] })),
-      platformOperations: [{ kind: 'bind-platform', platform: 'claude', path: '/tmp/skills', target: '/tmp/askx' }],
+      platformOperations: [{ kind: 'bind-platform', action: 'bind', platform: 'claude', path: '/tmp/skills', target: '/tmp/askx' }],
       customLinkOperations: [],
     } as unknown as SkillsBatchPlan
 

@@ -28,6 +28,7 @@ import type {
   SkillsBatchReceipt,
   SkillsBootstrap,
   SkillsScanReport,
+  SkillsConfigurationStrategy,
 } from '@askx/module-skills/skill-types'
 import type { SystemSkillRepairPlan, SystemSkillRepairReceipt } from '@askx/module-skills/builtin-skill-manager'
 import type { SkillStatsReport, SkillUsagePlan, SkillUsageReceipt } from '@askx/module-skills/skill-manager-registry'
@@ -37,13 +38,15 @@ import { Command } from 'commander'
 import { Box, render as inkRender, Text, useInput } from 'ink'
 import { useState, type ReactNode } from 'react'
 import { createKeepDecisions, createSafeSyncDecisions, createSelectedSyncDecisions, summarizeSkillsBatchPlan } from './skills-command-helpers.js'
+import { resolveConfirmationInput } from './confirmation-key.js'
+import { resolveSkillsScanInvocationMode } from './skills-scan-mode.js'
 import { createUninstallInvocation, packageManagerFromInstallPath, readInstallRecord } from './install-manager.js'
 import { terminalUrl } from './terminal-link.js'
 
 const accent = '#d7ff3f'
 const settingsStore = new SettingsStore(defaultContext().dataDir)
 const skillsManager = new SkillsManager(defaultContext())
-const activeLocale = (await settingsStore.read()).locale
+let activeLocale: AskXLocale
 
 /** 当前终端中尚未卸载的 Ink 实例。 */
 let activeInkInstance: ReturnType<typeof inkRender> | undefined
@@ -58,6 +61,53 @@ function render(node: ReactNode): ReturnType<typeof inkRender> {
   activeInkInstance = inkRender(node)
   return activeInkInstance
 }
+
+/** 首次启动时的语言选择界面。 */
+function InitialLanguagePrompt({ onComplete }: { onComplete: (locale: AskXLocale | null) => void }) {
+  const options: Array<{ id: AskXLocale; label: string }> = [
+    { id: 'zh-CN', label: '简体中文' },
+    { id: 'en', label: 'English' },
+  ]
+  const [cursor, setCursor] = useState(0)
+  useInput((input, key) => {
+    if (input.toLocaleLowerCase() === 'q' || key.escape) return onComplete(null)
+    if (key.upArrow) setCursor((current) => (current + options.length - 1) % options.length)
+    if (key.downArrow) setCursor((current) => (current + 1) % options.length)
+    if (key.return) onComplete(options[cursor]!.id)
+  })
+  return (
+    <Frame title="LANGUAGE / 语言">
+      <Text dimColor>请选择语言 / Choose your language · Enter 确认 / Confirm · Esc/Q 取消 / Cancel</Text>
+      <Box flexDirection="column" marginTop={1}>
+        {options.map((option, index) => (
+          <Text key={option.id} {...(index === cursor ? { color: accent, bold: true } : {})}>
+            {index === cursor ? '›' : ' '} {option.label}
+          </Text>
+        ))}
+      </Box>
+    </Frame>
+  )
+}
+
+/** @returns 用户首次明确选择的界面语言，取消时返回 null。 */
+function chooseInitialLanguage(): Promise<AskXLocale | null> {
+  return new Promise((resolve) => render(<InitialLanguagePrompt onComplete={resolve} />))
+}
+
+/** 读取现有语言；首次交互运行时先要求用户选择并保存。 */
+async function resolveActiveLocale(): Promise<AskXLocale | null> {
+  const settings = await settingsStore.read()
+  if (settings.cliLocale) return settings.cliLocale
+  if (!process.stdin.isTTY || process.argv.includes('--json')) return 'zh-CN'
+  const selected = await chooseInitialLanguage()
+  if (!selected) return null
+  await settingsStore.update({ cliLocale: selected }, { source: 'cli', expectedRevision: settings.revision })
+  activeInkInstance?.unmount()
+  activeInkInstance = undefined
+  return selected
+}
+
+activeLocale = await resolveActiveLocale() ?? process.exit(0)
 
 const messages = {
   en: {
@@ -77,13 +127,13 @@ const messages = {
     themeArgument: 'cyan or rose', themeDescription: 'Set the shared CLI/Web theme color', themeError: 'Theme color must be "cyan" or "rose"',
     uiDescription: 'Start or manage the local Nuxt management interface', portDescription: 'Local port; defaults to an available five-digit port', invalidPort: 'Invalid port', tokenDescription: 'Print a quick-login URL and the active local UI token', tokenUrl: 'Quick login URL', tokenValue: 'Token', noToken: 'No active UI session. Run "askx ui start" first.', uiStartDescription: 'Start the local UI as a background service', uiStopDescription: 'Stop the background UI service', uiStatusDescription: 'Show background UI service status', uiRestartDescription: 'Restart the background UI service', uiAlreadyRunning: 'The local UI is already running', uiStarted: 'The local UI started in the background', uiStopped: 'The local UI service stopped', uiNotRunning: 'The local UI is not running', uiRunning: 'The local UI is running', uninstallDescription: 'Stop the local UI and uninstall AskAgent X with its package manager', uninstallSourceOnly: 'Cannot identify the global package manager. Stop the UI, then uninstall AskAgent X with the package manager used for installation.', uninstallFailed: 'Package manager uninstall failed',
     manageBackups: 'Manage canonical Skills source backups', clearDescription: 'Clear the current Skill list and create a restorable backup', clearPlan: 'Skill list cleanup plan', clearResult: 'Skill list cleared', historyDescription: 'List completed Skills transactions', rollbackDescription: 'Roll back the latest unchanged Skills transaction', backupListDescription: 'List canonical source backups', backupRestoreDescription: 'Restore the canonical source from a backup', backupRemoveDescription: 'Permanently remove a canonical source backup', receiptArgument: 'transaction receipt ID', backupVersionArgument: 'backup version', historyTitle: 'Skills transaction history', rollbackPlan: 'Skills rollback plan', rollbackResult: 'Skills rollback result', backupRestorePlan: 'Backup restore plan', backupRestoreResult: 'Backup restored', backupRemovePlan: 'Backup removal plan', backupRemoveResult: 'Backup removed', noTransactions: 'No completed Skills transactions.', noBackups: 'No canonical source backups.', restored: 'restored', rollbackRejected: 'rollback rejected', valid: 'valid', invalid: 'invalid',
-    choosePlatforms: 'Choose platforms containing Skills', chooseLinkPlatforms: 'Choose platforms to connect with directory links', chooseSkills: 'Choose Skills to synchronize', chooseSkillsHint: 'Checked Skills will be synchronized · Space toggles · Enter continues · Esc/Q cancels', scanOnlySelected: 'Space toggles · Enter confirms · Esc/Q cancels', linkOnlySelected: 'Selected platforms will use the AskX Skill list · Space toggles · Enter continues · Esc/Q cancels', platformRequired: 'Select at least one platform.', platformSelectionRequired: 'First scan requires --platform in non-interactive mode.', customLinkPrompt: 'Custom link folder (leave empty to continue, Ctrl+C cancels): ', unsafeSkill: 'kept because it requires conflict resolution',
+    choosePlatforms: 'Choose platforms containing Skills', chooseLinkPlatforms: 'Choose platforms to connect with directory links', chooseSkills: 'Choose Skills to synchronize', chooseSkillsHint: 'Checked Skills will be synchronized · Space toggles · Enter continues · Esc/Q cancels', scanOnlySelected: 'Space toggles · Enter confirms · Esc/Q cancels', linkOnlySelected: 'Selected platforms will use the AskX Skill list · Space toggles · Enter continues · Esc/Q cancels', platformRequired: 'Select at least one platform.', sourceRequired: 'Select a platform or enter at least one custom folder.', platformSelectionRequired: 'First scan requires --platform in non-interactive mode.', platformActionBind: 'connect', platformActionResume: 'restore connection', platformActionSkip: 'already connected, skip', customScanPrompt: 'Custom scan folder (leave empty to start scanning, Ctrl+C cancels): ', customLinkPrompt: 'Add another custom link folder (leave empty to review defaults, Ctrl+C cancels): ', customLinkDirectorySelection: 'Keep linked folders by number (Enter keeps all defaults; 0 selects none):', customDirectoryLimit: 'Custom scan folders are limited to 3. Enter up to 3 numbers to keep (comma-separated):', customDirectorySelectionInvalid: 'Select up to 3 valid, non-duplicate numbers.', unsafeSkill: 'kept because it requires conflict resolution',
     skillConflict: 'Skill {name} has conflicting content.', skillBroken: 'Skill {name} has a broken link.', skillInvalid: 'Skill {name} has invalid metadata.',
     syncDescription: 'Synchronize safe Skills from selected roots into the AskX canonical source', linkDescription: 'Bind or resume selected Agent Skills directories to the canonical source', unlinkDescription: 'Suspend selected managed Skills-directory links without synchronizing content',
     directoryDescription: 'Add a custom directory as a read-only synchronization source', linkDirectoryDescription: 'Bind a custom local directory to the canonical source', yesDescription: 'Confirm the displayed immutable plan without an interactive prompt',
     syncPlan: 'Skills sync plan', linkPlan: 'Skills link plan', unlinkPlan: 'Skills unlink plan', syncResult: 'Skills sync result', linkResult: 'Skills link result', unlinkResult: 'Skills unlink result',
     planHash: 'Plan hash', adopt: 'adopt', merge: 'merge', keep: 'keep', customDirectories: 'custom directories', operations: 'operations', applied: 'applied', skipped: 'skipped', failed: 'failed',
-    confirmApply: 'Apply this exact plan?', confirmKeys: 'Y confirms · N/Esc cancels', cancelled: 'Operation cancelled.', confirmationRequired: 'A write plan requires confirmation. Re-run with --yes in non-interactive or JSON mode.',
+    confirmApply: 'Apply this exact plan?', confirmKeys: 'Enter confirms · Esc/Q cancels', cancelled: 'Operation cancelled.', confirmationRequired: 'A write plan requires confirmation. Re-run with --yes in non-interactive or JSON mode.',
     skillsNotInitialized: 'Skills management is not initialized. Run "askx skills sync" first.', platformWriteRequired: 'Select at least one platform for this link operation.', conflictKept: 'Conflicting Skills are kept unchanged and are not overwritten automatically.',
     linkTarget: 'link target', statsDescription: 'View Skill versions, usage counts and connected targets', usageDescription: 'Record explicit local Skill usage', usageRecordDescription: 'Record one use by Skill name or stable ID', managerDescription: 'Manage the built-in AskX Skill Manager', managerRepairDescription: 'Repair a missing, corrupt or outdated built-in Skill Manager', manageAllDescription: 'Initialize version management for every eligible unmanaged Skill', manageSkillDescription: 'Initialize or refresh version management for a named Skill', migrateBoboDescription: 'Migrate a bobo-managed Skill to AskX while preserving its ID and version', statsTitle: 'Skill statistics', skillListTitle: 'Current Skill list', canonicalFolder: 'Skill folder', connectedPlatforms: 'Connected platforms', noManagedSkills: 'No managed Skills yet. Run askx skills to start setup.', statsHint: 'View statistics', manageHint: 'Scan or update the list', totalUsage: 'usage', totalTargets: 'targets', issueTargets: 'target issues', usagePlan: 'Usage record plan', usageResult: 'Usage recorded', managerRepairPlan: 'Skill Manager repair plan', managerRepairResult: 'Skill Manager repaired', skillName: 'Skill', version: 'Version', systemHealth: 'Previous health', preserveRegistry: 'Preserve registry', registryRevision: 'Registry revision', usageCount: 'Usage count', management: 'version management', repairWarnings: 'Warnings',
   },
@@ -104,13 +154,13 @@ const messages = {
     themeArgument: 'cyan 或 rose', themeDescription: '设置 CLI/Web 共享主题色', themeError: '主题色必须是 "cyan" 或 "rose"',
     uiDescription: '启动或管理本地 Nuxt 管理界面', portDescription: '本地端口，默认自动选择可用的五位端口', invalidPort: '无效端口', tokenDescription: '输出本地 UI 快速登录地址和 token', tokenUrl: '快速登录地址', tokenValue: 'Token', noToken: '没有活动的 UI 会话，请先运行 "askx ui start"。', uiStartDescription: '以后台服务方式启动本地 UI', uiStopDescription: '停止后台 UI 服务', uiStatusDescription: '查看后台 UI 服务状态', uiRestartDescription: '重启后台 UI 服务', uiAlreadyRunning: '本地 UI 已在运行', uiStarted: '本地 UI 已在后台启动', uiStopped: '本地 UI 服务已停止', uiNotRunning: '本地 UI 未运行', uiRunning: '本地 UI 正在运行', uninstallDescription: '停止本地 UI，并使用原包管理器全局卸载 AskAgent X', uninstallSourceOnly: '无法识别全局安装使用的包管理器，请先停止 UI，再使用安装时的包管理器卸载 AskAgent X', uninstallFailed: '包管理器卸载失败',
     manageBackups: '管理统一 Skills 来源备份', clearDescription: '清空当前 Skill 列表，并创建可恢复备份', clearPlan: 'Skill 列表清理计划', clearResult: 'Skill 列表已清空', historyDescription: '列出已完成的 Skills 事务', rollbackDescription: '回滚最新且状态未变化的 Skills 事务', backupListDescription: '列出统一源备份', backupRestoreDescription: '从指定备份恢复统一源', backupRemoveDescription: '永久删除指定统一源备份', receiptArgument: '事务回执 ID', backupVersionArgument: '备份版本', historyTitle: 'Skills 事务历史', rollbackPlan: 'Skills 回滚计划', rollbackResult: 'Skills 回滚结果', backupRestorePlan: '备份恢复计划', backupRestoreResult: '备份恢复完成', backupRemovePlan: '备份删除计划', backupRemoveResult: '备份删除完成', noTransactions: '没有已完成的 Skills 事务。', noBackups: '没有统一源备份。', restored: '已恢复', rollbackRejected: '拒绝回滚', valid: '有效', invalid: '无效',
-    choosePlatforms: '选择存放 Skill 的平台', chooseLinkPlatforms: '选择需要设置目录软链的平台', chooseSkills: '选择需要同步的 Skills', chooseSkillsHint: '勾选项将同步到 AskX · 空格切换 · 回车进入下一步 · Esc/Q 放弃', scanOnlySelected: '空格切换 · 回车确认 · Esc/Q 放弃', linkOnlySelected: '选中平台将使用 AskX Skill 列表 · 空格切换 · 回车进入下一步 · Esc/Q 放弃', platformRequired: '至少选择一个平台。', platformSelectionRequired: '非交互模式首次扫描必须传入 --platform。', customLinkPrompt: '输入需要软链的自定义文件夹（直接回车继续，Ctrl+C 放弃）：', unsafeSkill: '需要先处理冲突，本次保持现状',
+    choosePlatforms: '选择存放 Skill 的平台', chooseLinkPlatforms: '选择需要设置目录软链的平台', chooseSkills: '选择需要同步的 Skills', chooseSkillsHint: '勾选项将同步到 AskX · 空格切换 · 回车进入下一步 · Esc/Q 放弃', scanOnlySelected: '空格切换 · 回车确认 · Esc/Q 放弃', linkOnlySelected: '选中平台将使用 AskX Skill 列表 · 空格切换 · 回车进入下一步 · Esc/Q 放弃', platformRequired: '至少选择一个平台。', sourceRequired: '请选择平台，或至少输入一个自定义文件夹。', platformSelectionRequired: '非交互模式首次扫描必须传入 --platform。', platformActionBind: '新建关联', platformActionResume: '恢复关联', platformActionSkip: '已关联，跳过', customScanPrompt: '输入需要扫描的自定义文件夹（直接回车开始扫描，Ctrl+C 放弃）：', customLinkPrompt: '添加其他软链文件夹（直接回车查看第一步默认项，Ctrl+C 放弃）：', customLinkDirectorySelection: '输入要保留软链的文件夹编号（回车保留全部默认项，输入 0 全不选）：', customDirectoryLimit: '自定义扫描文件夹最多保留 3 个，请输入要保留的编号（最多 3 个，逗号分隔）：', customDirectorySelectionInvalid: '请输入最多 3 个有效且不重复的编号。', unsafeSkill: '需要先处理冲突，本次保持现状',
     skillConflict: 'Skill {name} 在不同平台的内容不一致。', skillBroken: 'Skill {name} 包含失效软链。', skillInvalid: 'Skill {name} 的元数据无效。',
     syncDescription: '将选中来源中可安全接管的 Skills 同步到 AskX 统一源', linkDescription: '将选中的 Agent Skills 根目录绑定或恢复到统一源', unlinkDescription: '无损停用选中的受管 Skills 根目录软链，不同步内容',
     directoryDescription: '添加一个只读同步来源的自定义目录', linkDirectoryDescription: '将一个自定义本地目录绑定到统一源', yesDescription: '无需交互确认，直接授权已展示的不可变计划',
     syncPlan: 'Skills 同步计划', linkPlan: 'Skills 软链计划', unlinkPlan: 'Skills 取消软链计划', syncResult: 'Skills 同步结果', linkResult: 'Skills 软链结果', unlinkResult: 'Skills 取消软链结果',
     planHash: '计划指纹', adopt: '接管', merge: '合并', keep: '保留', customDirectories: '自定义目录', operations: '操作', applied: '已应用', skipped: '已跳过', failed: '失败',
-    confirmApply: '确认执行这份完整计划？', confirmKeys: 'Y 确认 · N/Esc 取消', cancelled: '操作已取消。', confirmationRequired: '写操作必须明确授权；非交互或 JSON 模式请重新执行并传入 --yes。',
+    confirmApply: '确认执行这份完整计划？', confirmKeys: '回车确认 · Esc/Q 放弃', cancelled: '操作已取消。', confirmationRequired: '写操作必须明确授权；非交互或 JSON 模式请重新执行并传入 --yes。',
     skillsNotInitialized: 'Skills 管理尚未初始化，请先运行 "askx skills sync"。', platformWriteRequired: '软链操作至少需要选择一个平台。', conflictKept: '内容冲突的 Skills 会保留现状，不会自动覆盖。',
     linkTarget: '软链目标', statsDescription: '查看 Skill 版本、使用次数和已关联目标', usageDescription: '记录明确的本地 Skill 使用', usageRecordDescription: '按 Skill 名称或稳定 ID 记录一次使用', managerDescription: '管理 AskX 内置 Skill Manager', managerRepairDescription: '修复缺失、损坏或过期的内置 Skill Manager', manageAllDescription: '为全部符合条件的未托管 Skill 初始化版本管理', manageSkillDescription: '为指定 Skill 初始化或刷新版本管理', migrateBoboDescription: '保留 ID 和版本，将 bobo 托管 Skill 迁移为 AskX 身份', statsTitle: 'Skill 统计', skillListTitle: '当前 Skill 列表', canonicalFolder: 'Skill 文件夹', connectedPlatforms: '已关联平台', noManagedSkills: '当前还没有 Skill，请运行 askx skills 开始设置。', statsHint: '查看统计', manageHint: '重新扫描或更新列表', totalUsage: '累计使用', totalTargets: '同步目标', issueTargets: '异常目标', usagePlan: 'Usage 记录计划', usageResult: 'Usage 已记录', managerRepairPlan: 'Skill Manager 修复计划', managerRepairResult: 'Skill Manager 已修复', skillName: 'Skill', version: '版本', systemHealth: '修复前状态', preserveRegistry: '保留 Registry', registryRevision: 'Registry 版本', usageCount: '累计次数', management: '版本管理', repairWarnings: '提示',
   },
@@ -135,6 +185,13 @@ function State({ value, locale }: { value: 'ready' | 'blocked' | 'not found' | '
   const color = value === 'ready' || value === 'ok' ? 'green' : value === 'blocked' || value === 'warning' ? 'yellow' : 'gray'
   const key = value === 'not found' ? 'notFound' : value
   return <Text color={color}>● {t(locale, key)}</Text>
+}
+
+/** 显示高对比度多选标记，避免与当前行光标混淆。 */
+function CheckboxMark({ checked }: { checked: boolean }) {
+  return checked
+    ? <Text backgroundColor={accent} color="black" bold> ✓ </Text>
+    : <Text dimColor> □ </Text>
 }
 
 function DoctorView({ detections, locale }: { detections: PlatformDetection[]; locale: AskXLocale }) {
@@ -200,17 +257,22 @@ interface PlatformPromptProps {
   mode?: 'scan' | 'link'
   /** 是否允许不选择任何平台继续。 */
   allowEmpty?: boolean
+  /** 界面初次打开时默认勾选的平台。 */
+  initialSelected?: SkillPlatformId[]
+  /** 本次允许展示和选择的平台范围。 */
+  availablePlatforms?: SkillPlatformId[]
 }
 
 /** 首次扫描使用的 Ink 平台多选界面。 */
-function PlatformPrompt({ locale, onComplete, mode = 'scan', allowEmpty = false }: PlatformPromptProps) {
-  const options: Array<{ id: SkillPlatformId; label: string }> = [
+function PlatformPrompt({ locale, onComplete, mode = 'scan', allowEmpty = false, initialSelected, availablePlatforms }: PlatformPromptProps) {
+  const allOptions: Array<{ id: SkillPlatformId; label: string }> = [
     { id: 'codex', label: 'ChatGPT / Codex' },
     { id: 'claude', label: 'Claude Code' },
     { id: 'cursor', label: 'Cursor' },
   ]
+  const options = availablePlatforms ? allOptions.filter((option) => availablePlatforms.includes(option.id)) : allOptions
   const [cursor, setCursor] = useState(0)
-  const [selected, setSelected] = useState<SkillPlatformId[]>(options.map((option) => option.id))
+  const [selected, setSelected] = useState<SkillPlatformId[]>(initialSelected ?? options.map((option) => option.id))
   const [warning, setWarning] = useState('')
   useInput((_input, key) => {
     if (_input.toLocaleLowerCase() === 'q' || key.escape) {
@@ -236,11 +298,13 @@ function PlatformPrompt({ locale, onComplete, mode = 'scan', allowEmpty = false 
     <Frame title={t(locale, mode === 'link' ? 'chooseLinkPlatforms' : 'choosePlatforms')}>
       <Text dimColor>{t(locale, mode === 'link' ? 'linkOnlySelected' : 'scanOnlySelected')}</Text>
       <Box flexDirection="column" marginTop={1}>
-        {options.map((option, index) => (
-          <Text key={option.id} {...(index === cursor ? { color: accent } : {})}>
-            {index === cursor ? '›' : ' '} {selected.includes(option.id) ? '☑' : '☐'} {option.label}
-          </Text>
-        ))}
+        {options.map((option, index) => {
+          return <Box key={option.id}>
+            <Text {...(index === cursor ? { color: accent } : {})}>{index === cursor ? '›' : ' '} </Text>
+            <CheckboxMark checked={selected.includes(option.id)} />
+            <Text {...(index === cursor ? { color: accent, bold: true } : {})}> {option.label}</Text>
+          </Box>
+        })}
       </Box>
       {warning ? <Text color="yellow">! {warning}</Text> : null}
     </Frame>
@@ -248,9 +312,9 @@ function PlatformPrompt({ locale, onComplete, mode = 'scan', allowEmpty = false 
 }
 
 /** 等待用户在 Ink 中确认首次扫描平台。 */
-function choosePlatforms(locale: AskXLocale, mode: 'scan' | 'link' = 'scan', allowEmpty = false): Promise<SkillPlatformId[] | null> {
+function choosePlatforms(locale: AskXLocale, mode: 'scan' | 'link' = 'scan', allowEmpty = false, initialSelected?: SkillPlatformId[], availablePlatforms?: SkillPlatformId[]): Promise<SkillPlatformId[] | null> {
   return new Promise((resolve) => {
-    render(<PlatformPrompt locale={locale} mode={mode} allowEmpty={allowEmpty} onComplete={(platforms) => {
+    render(<PlatformPrompt locale={locale} mode={mode} allowEmpty={allowEmpty} {...(initialSelected ? { initialSelected } : {})} {...(availablePlatforms ? { availablePlatforms } : {})} onComplete={(platforms) => {
       resolve(platforms)
     }} />)
   })
@@ -300,9 +364,11 @@ function SkillSyncPrompt({ report, locale, onComplete }: SkillSyncPromptProps) {
         {report.groups.map((group, index) => {
           const safe = safeGroupIds.includes(group.id)
           return (
-            <Text key={group.id} {...(index === cursor ? { color: accent } : {})} dimColor={!safe}>
-              {index === cursor ? '›' : ' '} {selected.includes(group.id) ? '☑' : '☐'} {group.name}{safe ? '' : `  (${t(locale, 'unsafeSkill')})`}
-            </Text>
+            <Box key={group.id}>
+              <Text {...(index === cursor ? { color: accent } : {})} dimColor={!safe}>{index === cursor ? '›' : ' '} </Text>
+              <CheckboxMark checked={selected.includes(group.id)} />
+              <Text {...(index === cursor ? { color: accent, bold: true } : {})} dimColor={!safe}> {group.name}{safe ? '' : `  (${t(locale, 'unsafeSkill')})`}</Text>
+            </Box>
           )
         })}
         {!report.groups.length ? <Text dimColor>—</Text> : null}
@@ -325,20 +391,87 @@ function chooseSkills(report: SkillsScanReport, locale: AskXLocale): Promise<str
  * @param locale 当前界面语言。
  * @returns 用户输入并去重后的文件夹路径。
  */
-async function chooseCustomLinkDirectories(locale: AskXLocale): Promise<string[]> {
+async function chooseCustomDirectories(locale: AskXLocale, message: 'customScanPrompt' | 'customLinkPrompt'): Promise<string[]> {
   activeInkInstance?.unmount()
   activeInkInstance = undefined
   process.stdin.resume()
+  const inputKeepAlive = setInterval(() => undefined, 1_000)
   const prompt = createInterface({ input: process.stdin, output: process.stdout })
   const directories: string[] = []
   try {
     while (true) {
-      const directory = (await prompt.question(`${t(locale, 'customLinkPrompt')} `)).trim()
+      const directory = (await prompt.question(`${t(locale, message)} `)).trim()
       if (!directory) return [...new Set(directories)]
       directories.push(resolve(directory))
     }
   } finally {
     prompt.close()
+    clearInterval(inputKeepAlive)
+  }
+}
+
+/**
+ * 让用户确认软链目录；第一步的扫描目录默认全部选中。
+ * @param locale 当前终端语言。
+ * @param defaults 第一阶段选择的默认目录。
+ * @returns 用户最终确认的软链目录。
+ */
+async function chooseCustomLinkDirectories(locale: AskXLocale, defaults: string[], allowAdditions = true): Promise<string[]> {
+  const additions = allowAdditions ? await chooseCustomDirectories(locale, 'customLinkPrompt') : []
+  const directories = [...new Set([...defaults, ...additions].map((path) => resolve(path)))]
+  if (!directories.length) return []
+  process.stdin.resume()
+  const inputKeepAlive = setInterval(() => undefined, 1_000)
+  const prompt = createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    console.log(directories.map((path, index) => `${index + 1}. ${path}`).join('\n'))
+    while (true) {
+      const answer = (await prompt.question(`${t(locale, 'customLinkDirectorySelection')} `)).trim()
+      if (!answer) return directories
+      if (answer === '0') return []
+      const indexes = answer.split(/[,，\s]+/).filter(Boolean).map((value) => Number(value) - 1)
+      if (indexes.length <= 3 && new Set(indexes).size === indexes.length && indexes.every((index) => Number.isInteger(index) && directories[index])) {
+        return indexes.map((index) => directories[index]!)
+      }
+      console.log(t(locale, 'customDirectorySelectionInvalid'))
+    }
+  } finally {
+    prompt.close()
+    clearInterval(inputKeepAlive)
+  }
+}
+
+/** @returns 用户为扫描阶段输入的自定义目录。 */
+function chooseCustomScanDirectories(locale: AskXLocale): Promise<string[]> {
+  return chooseCustomDirectories(locale, 'customScanPrompt')
+}
+
+/**
+ * 合并历史与本次扫描目录，并在超过上限时让用户明确选择保留项。
+ * @param locale 当前终端语言。
+ * @param previous 历史保存的扫描目录。
+ * @param current 本次输入的扫描目录。
+ * @returns 用户确认后最多三个目录。
+ */
+async function reconcileCustomScanDirectories(locale: AskXLocale, previous: string[], current: string[]): Promise<string[]> {
+  const directories = [...new Set([...previous, ...current].map((path) => resolve(path)))]
+  if (directories.length <= 3) return directories
+  process.stdin.resume()
+  const inputKeepAlive = setInterval(() => undefined, 1_000)
+  const prompt = createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    console.log(directories.map((path, index) => `${index + 1}. ${path}`).join('\n'))
+    while (true) {
+      const answer = await prompt.question(`${t(locale, 'customDirectoryLimit')} `)
+      const indexes = answer.split(/[,，\s]+/).filter(Boolean).map((value) => Number(value) - 1)
+      if (indexes.length >= 1 && indexes.length <= 3 && new Set(indexes).size === indexes.length && indexes.every((index) => Number.isInteger(index) && directories[index])) {
+        return indexes.map((index) => directories[index]!)
+      }
+      console.log(t(locale, 'customDirectorySelectionInvalid'))
+    }
+  } finally {
+    prompt.close()
+    clearInterval(inputKeepAlive)
   }
 }
 
@@ -361,13 +494,8 @@ interface ConfirmationPromptProps {
 /** Skills 写计划使用的 Ink 确认界面。 */
 function ConfirmationPrompt({ locale, onComplete }: ConfirmationPromptProps) {
   useInput((input, key) => {
-    const normalized = input.toLocaleLowerCase()
-    if (normalized === 'y') {
-      onComplete(true)
-    }
-    if (normalized === 'n' || normalized === 'q' || key.escape) {
-      onComplete(false)
-    }
+    const confirmed = resolveConfirmationInput(input, { return: key.return, escape: key.escape })
+    if (confirmed !== undefined) onComplete(confirmed)
   })
   return (
     <Frame title={t(locale, 'confirmApply')}>
@@ -426,7 +554,7 @@ function SkillsBatchPlanView({ plan, report, locale, title }: { plan: SkillsBatc
             · {unit.skillName}  [{t(locale, unit.decision.kind === 'adopt' ? 'adopt' : unit.decision.kind === 'merge' ? 'merge' : 'keep')}]
           </Text>
         ))}
-        {plan.platformOperations.map((operation) => <Text key={operation.platform} color={accent}>→ {operation.platform}  {operation.path}</Text>)}
+        {plan.platformOperations.map((operation) => <Text key={operation.platform} color={accent}>→ {operation.platform}  [{t(locale, operation.action === 'bind' ? 'platformActionBind' : operation.action === 'resume' ? 'platformActionResume' : 'platformActionSkip')}]  {operation.path}</Text>)}
         {plan.customLinkOperations.map((operation) => <Text key={operation.id} color={accent}>→ {operation.name}  {operation.path}</Text>)}
       </Box>
     </Frame>
@@ -636,7 +764,7 @@ function UiView({ url, locale }: { url: string; locale: AskXLocale }) {
 
 const program = new Command()
 /** 当前 AskAgent X 发布版本，格式为“年.月日.当日次数”。 */
-const askxVersion = '26.806.3'
+const askxVersion = '26.807.3'
 program.name('askx').description(t(activeLocale, 'appDescription')).version(askxVersion)
 
 program
@@ -727,16 +855,73 @@ function consentFor(plan: { hash: string }): UserConsent {
  */
 async function resolveSourcePlatforms(values: string[], initialized: boolean, json = false): Promise<SkillPlatformId[] | null> {
   if (values.length) return parseSkillPlatforms(values)
+  if (process.stdin.isTTY && !json) return choosePlatforms(activeLocale)
   if (initialized) {
     const configuredPlatforms = (await settingsStore.read()).skills.platforms
     if (configuredPlatforms.length) return configuredPlatforms
   }
-  if (process.stdin.isTTY && !json) return choosePlatforms(activeLocale)
   const payload = { error: { code: 'PLATFORM_SELECTION_REQUIRED', message: t(activeLocale, 'platformSelectionRequired') } }
   if (json) console.log(JSON.stringify(payload, null, 2))
   else render(<NoticeView title={t(activeLocale, 'skillsScan')} message={payload.error.message} />)
   process.exitCode = 2
   return null
+}
+
+/**
+ * 执行扫描、Skill 选择、软链目标选择和最终保存的完整交互向导。
+ * @param platforms 本次扫描的平台来源。
+ * @param customRoots 本次扫描的自定义目录来源。
+ */
+async function runSkillsSetupWizard(platforms: SkillPlatformId[], customRoots: string[] = [], configurationStrategy: SkillsConfigurationStrategy = 'replace'): Promise<void> {
+  const wizardKeepAlive = setInterval(() => undefined, 1_000)
+  try {
+    const settings = await settingsStore.read()
+    const report = await skillsManager.scan(platforms, customRoots)
+    const issues = scanIssues(report)
+    render(<SkillsScanView report={report} issues={issues} status={issues.length ? 'warning' : 'ok'} locale={activeLocale} />)
+
+    const selectedGroupIds = await chooseSkills(report, activeLocale)
+    if (!selectedGroupIds) {
+      render(<NoticeView title={t(activeLocale, 'skillsTitle')} message={t(activeLocale, 'cancelled')} />)
+      return
+    }
+    const linkPlatforms = configurationStrategy === 'merge'
+      ? platforms.length ? await choosePlatforms(activeLocale, 'link', true, platforms, platforms) : []
+      : await choosePlatforms(activeLocale, 'link', true, platforms)
+    if (!linkPlatforms) {
+      render(<NoticeView title={t(activeLocale, 'skillsTitle')} message={t(activeLocale, 'cancelled')} />)
+      return
+    }
+    const linkCustomRoots = await chooseCustomLinkDirectories(activeLocale, customRoots, configurationStrategy !== 'merge')
+    const plan = await skillsManager.planOnboarding({
+      platforms,
+      customRoots,
+      detectionFingerprint: report.fingerprint,
+      settingsRevision: settings.revision,
+      decisions: createSelectedSyncDecisions(report, selectedGroupIds),
+      managementChoices: [],
+      mode: 'connect',
+      configurationStrategy,
+      linkPlatforms,
+      linkCustomRoots,
+    })
+    render(<SkillsBatchPlanView plan={plan} report={report} locale={activeLocale} title={t(activeLocale, 'syncPlan')} />)
+    if (!await authorizeWrite({}, plan)) {
+      render(<NoticeView title={t(activeLocale, 'skillsTitle')} message={t(activeLocale, 'cancelled')} />)
+      return
+    }
+    await skillsManager.applyOnboarding(plan, settings.revision, consentFor(plan))
+    const latestSettings = await settingsStore.read()
+    const nextPlatforms = configurationStrategy === 'merge'
+      ? [...new Set([...latestSettings.skills.platforms, ...platforms])]
+      : platforms
+    if (latestSettings.skills.platforms.join(',') !== nextPlatforms.join(',')) {
+      await settingsStore.update({ skills: { platforms: nextPlatforms } }, { source: 'cli', expectedRevision: latestSettings.revision })
+    }
+    render(<ManagedSkillListView bootstrap={await skillsManager.bootstrap()} locale={activeLocale} />)
+  } finally {
+    clearInterval(wizardKeepAlive)
+  }
 }
 
 /** 裸 `askx skills` 命令：查看列表，首次使用时完成扫描与平台关联。 */
@@ -751,54 +936,21 @@ skills.action(async () => {
     process.exitCode = 2
     return
   }
-
-  const wizardKeepAlive = setInterval(() => undefined, 1_000)
-  try {
-    const platforms = await choosePlatforms(activeLocale)
-    if (!platforms) {
-      render(<NoticeView title={t(activeLocale, 'skillsTitle')} message={t(activeLocale, 'cancelled')} />)
-      return
-    }
-    const settings = await settingsStore.read()
-    const report = await skillsManager.scan(platforms)
-    const issues = scanIssues(report)
-    render(<SkillsScanView report={report} issues={issues} status={issues.length ? 'warning' : 'ok'} locale={activeLocale} />)
-
-    const selectedGroupIds = await chooseSkills(report, activeLocale)
-    if (!selectedGroupIds) {
-      render(<NoticeView title={t(activeLocale, 'skillsTitle')} message={t(activeLocale, 'cancelled')} />)
-      return
-    }
-    const linkPlatforms = await choosePlatforms(activeLocale, 'link', true)
-    if (!linkPlatforms) {
-      render(<NoticeView title={t(activeLocale, 'skillsTitle')} message={t(activeLocale, 'cancelled')} />)
-      return
-    }
-    const linkCustomRoots = await chooseCustomLinkDirectories(activeLocale)
-    const plan = await skillsManager.planOnboarding({
-      platforms,
-      detectionFingerprint: report.fingerprint,
-      settingsRevision: settings.revision,
-      decisions: createSelectedSyncDecisions(report, selectedGroupIds),
-      managementChoices: [],
-      mode: 'connect',
-      linkPlatforms,
-      linkCustomRoots,
-    })
-    render(<SkillsBatchPlanView plan={plan} report={report} locale={activeLocale} title={t(activeLocale, 'syncPlan')} />)
-    if (!await authorizeWrite({}, plan)) {
-      render(<NoticeView title={t(activeLocale, 'skillsTitle')} message={t(activeLocale, 'cancelled')} />)
-      return
-    }
-    await skillsManager.applyOnboarding(plan, settings.revision, consentFor(plan))
-    const latestSettings = await settingsStore.read()
-    if (latestSettings.skills.platforms.join(',') !== platforms.join(',')) {
-      await settingsStore.update({ skills: { platforms } }, { source: 'cli', expectedRevision: latestSettings.revision })
-    }
-    render(<ManagedSkillListView bootstrap={await skillsManager.bootstrap()} locale={activeLocale} />)
-  } finally {
-    clearInterval(wizardKeepAlive)
+  const platforms = await choosePlatforms(activeLocale, 'scan', true)
+  if (!platforms) {
+    render(<NoticeView title={t(activeLocale, 'skillsTitle')} message={t(activeLocale, 'cancelled')} />)
+    return
   }
+  const customRoots = await reconcileCustomScanDirectories(
+    activeLocale,
+    bootstrap.customRoots.map((root) => root.path),
+    await chooseCustomScanDirectories(activeLocale),
+  )
+  if (!platforms.length && !customRoots.length) {
+    render(<NoticeView title={t(activeLocale, 'skillsTitle')} message={t(activeLocale, 'sourceRequired')} />)
+    return
+  }
+  await runSkillsSetupWizard(platforms, customRoots)
 })
 
 /** 单个平台软链计划执行状态。 */
@@ -848,17 +1000,41 @@ skills
   .option('-p, --platform <platform>', t(activeLocale, 'platformsArgument'), collectPlatform, [])
   .option('-d, --directory <path>', t(activeLocale, 'directoryDescription'), collectDirectory, [])
   .action(async ({ json, platform, directory }: { json?: boolean; platform: string[]; directory: string[] }) => {
+    try {
     const bootstrap = await skillsManager.bootstrap()
-    const platforms = await resolveSourcePlatforms(platform, bootstrap.initialized, json)
+    const invocationMode = resolveSkillsScanInvocationMode({ json: Boolean(json), platforms: platform, directories: directory })
+    const platforms = invocationMode === 'full-reconcile'
+      ? await choosePlatforms(activeLocale, 'scan', true)
+      : platform.length
+        ? parseSkillPlatforms(platform)
+        : directory.length
+          ? []
+          : invocationMode === 'targeted-import'
+            ? []
+            : await resolveSourcePlatforms(platform, bootstrap.initialized, json)
     if (!platforms) return
-    const current = await settingsStore.read()
-    if (current.skills.platforms.join(',') !== platforms.join(',')) {
-      await settingsStore.update({ skills: { platforms } }, { source: 'cli', expectedRevision: current.revision })
+    if (!json && process.stdin.isTTY) {
+      const customRoots = invocationMode === 'targeted-import'
+        ? [...new Set(directory.map((entry) => resolve(entry)))].sort()
+        : await reconcileCustomScanDirectories(activeLocale, [], await chooseCustomScanDirectories(activeLocale))
+      if (!platforms.length && !customRoots.length) {
+        render(<NoticeView title={t(activeLocale, 'skillsTitle')} message={t(activeLocale, 'sourceRequired')} />)
+        return
+      }
+      await runSkillsSetupWizard(platforms, customRoots, invocationMode === 'targeted-import' ? 'merge' : 'replace')
+      return
     }
     const report = await skillsManager.scan(platforms, directory)
     const issues = scanIssues(report)
     if (json) console.log(JSON.stringify(report, null, 2))
     else render(<SkillsScanView report={report} issues={issues} status={issues.length ? 'warning' : 'ok'} locale={activeLocale} />)
+    } catch (error) {
+      const message = (error as Error).message
+      if (json) console.log(JSON.stringify({ error: { code: 'SKILLS_SCAN_FAILED', message } }, null, 2))
+      else if (process.stdin.isTTY) render(<NoticeView title={t(activeLocale, 'skillsScan')} message={message} />)
+      else console.error(message)
+      process.exitCode = 1
+    }
   })
 
 /** Skills 同步命令选项。 */
@@ -902,6 +1078,7 @@ skills
       decisions: createSafeSyncDecisions(report),
       managementChoices: createManagementChoices(report, Boolean(options.manageAll), options.manageSkill, options.migrateBobo),
       mode: 'sync',
+      configurationStrategy: 'preserve',
       linkPlatforms: [],
     })
     if (!options.json) render(<SkillsBatchPlanView plan={plan} report={report} locale={activeLocale} title={t(activeLocale, 'syncPlan')} />)
@@ -970,6 +1147,7 @@ skills
         settingsRevision: settings.revision,
         decisions: createKeepDecisions(report),
         mode: 'connect',
+        configurationStrategy: 'merge',
         linkPlatforms: newPlatforms,
         linkCustomRoots: options.directory,
       })
