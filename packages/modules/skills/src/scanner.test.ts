@@ -110,6 +110,22 @@ describe('scanSkills', () => {
     expect(result.groups.map((group) => group.name).sort()).toEqual(['alpha', 'beta', 'single-skill'])
   })
 
+  it('将额外目录第一层 local 子目录中的 Skill 标记为本地范围', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'askx-home-'))
+    const data = join(home, '.askx')
+    const collection = join(home, 'import-skills')
+    await writeSkill(join(collection, 'shared-demo'), 'shared')
+    await writeSkill(join(collection, 'local', 'private-demo'), 'private')
+
+    const result = await scanSkills(home, data, [], [collection])
+    const customLocations = result.locations.filter(location => location.platform === 'custom')
+
+    expect(customLocations.map(location => location.name).sort()).toEqual(['private-demo', 'shared-demo'])
+    expect(customLocations.find(location => location.name === 'shared-demo')?.importScope).toBe('shared')
+    expect(customLocations.find(location => location.name === 'private-demo')?.importScope).toBe('local')
+    expect(result.groups.some(group => group.name === 'local')).toBe(false)
+  })
+
   it('平台预设目录与自选目录使用同一目录扫描器并按绝对路径去重', async () => {
     const home = await mkdtemp(join(tmpdir(), 'askx-home-'))
     const data = join(home, '.askx')

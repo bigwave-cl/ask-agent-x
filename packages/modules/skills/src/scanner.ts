@@ -222,12 +222,24 @@ async function scanSkillDirectory(root: SkillScanDirectory, scannedPaths: Set<st
       if (error.code === 'ENOENT') return false
       throw error
     })
-  const candidates = rootHasSkillFile
-    ? [{ name: basename(root.path), path: root.path }]
-    : entries.sort((left, right) => left.name.localeCompare(right.name)).flatMap((entry) => {
-        if (entry.name.startsWith('.') || (!entry.isDirectory() && !entry.isSymbolicLink())) return []
-        return [{ name: entry.name, path: join(root.path, entry.name) }]
-      })
+  const candidates: Array<{ name: string; path: string; importScope: 'shared' | 'local' }> = rootHasSkillFile
+    ? [{ name: basename(root.path), path: root.path, importScope: 'shared' }]
+    : []
+  if (!rootHasSkillFile) {
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+      if (entry.name.startsWith('.') || (!entry.isDirectory() && !entry.isSymbolicLink())) continue
+      if (entry.name !== 'local' || !entry.isDirectory()) {
+        candidates.push({ name: entry.name, path: join(root.path, entry.name), importScope: 'shared' })
+        continue
+      }
+      const localRoot = join(root.path, entry.name)
+      const localEntries = await readSkillDirectory(localRoot)
+      for (const localEntry of localEntries.sort((left, right) => left.name.localeCompare(right.name))) {
+        if (localEntry.name.startsWith('.') || (!localEntry.isDirectory() && !localEntry.isSymbolicLink())) continue
+        candidates.push({ name: localEntry.name, path: join(localRoot, localEntry.name), importScope: 'local' })
+      }
+    }
+  }
   const locations: SkillLocation[] = []
   for (const entry of candidates) {
     if (entry.name.startsWith('.')) continue
@@ -251,6 +263,7 @@ async function scanSkillDirectory(root: SkillScanDirectory, scannedPaths: Set<st
           ...(root.platform === 'custom' ? { customRootId: root.customRootId! } : {}),
           name: entry.name,
           path,
+          importScope: entry.importScope,
           kind: 'symlink',
           target,
           ...inspected,
@@ -264,6 +277,7 @@ async function scanSkillDirectory(root: SkillScanDirectory, scannedPaths: Set<st
           ...(root.platform === 'custom' ? { customRootId: root.customRootId! } : {}),
           name: entry.name,
           path,
+          importScope: entry.importScope,
           kind: 'symlink',
           target,
           managerState: 'metadata-invalid',
@@ -281,6 +295,7 @@ async function scanSkillDirectory(root: SkillScanDirectory, scannedPaths: Set<st
       ...(root.platform === 'custom' ? { customRootId: root.customRootId! } : {}),
       name: entry.name,
       path,
+      importScope: entry.importScope,
       kind: 'directory',
       ...inspected,
       metadata: await readSkillMetadata(path),

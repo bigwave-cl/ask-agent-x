@@ -45,10 +45,22 @@ function createReport(): SkillsScanReport {
 }
 
 describe('Skills CLI helpers', () => {
-  it('按用户动作区分已关联和取消软链结果', () => {
-    expect(platformLinkResultMessage('skipped', 'link')).toBe('already-linked-no-action')
-    expect(platformLinkResultMessage('applied', 'unlink')).toBe('unlink-applied')
-    expect(platformLinkResultMessage('failed', 'unlink')).toBe('failed')
+  it('完整覆盖关联和取消软链的结果语义矩阵', () => {
+    expect([
+      platformLinkResultMessage('applied', 'link'),
+      platformLinkResultMessage('skipped', 'link'),
+      platformLinkResultMessage('failed', 'link'),
+      platformLinkResultMessage('applied', 'unlink'),
+      platformLinkResultMessage('skipped', 'unlink'),
+      platformLinkResultMessage('failed', 'unlink'),
+    ]).toEqual([
+      'link-applied',
+      'already-linked-no-action',
+      'failed',
+      'unlink-applied',
+      'unlink-no-data',
+      'failed',
+    ])
   })
 
   it('只自动接管安全来源并保留冲突', () => {

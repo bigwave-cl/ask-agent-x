@@ -19,7 +19,7 @@ export interface SkillsBatchPlanSummary {
 }
 
 /** CLI 软链结果对应的用户语义。 */
-export type PlatformLinkResultMessage = 'applied' | 'already-linked-no-action' | 'failed' | 'skipped' | 'unlink-applied'
+export type PlatformLinkResultMessage = 'already-linked-no-action' | 'failed' | 'link-applied' | 'skipped' | 'unlink-applied' | 'unlink-no-data'
 
 /**
  * 把模块执行状态转换成符合当前软链动作的用户语义。
@@ -29,8 +29,10 @@ export type PlatformLinkResultMessage = 'applied' | 'already-linked-no-action' |
  */
 export function platformLinkResultMessage(status: 'applied' | 'skipped' | 'failed', action: 'link' | 'unlink'): PlatformLinkResultMessage {
   if (status === 'skipped' && action === 'link') return 'already-linked-no-action'
+  if (status === 'skipped' && action === 'unlink') return 'unlink-no-data'
+  if (status === 'applied' && action === 'link') return 'link-applied'
   if (status === 'applied' && action === 'unlink') return 'unlink-applied'
-  return status
+  return status === 'failed' ? 'failed' : 'skipped'
 }
 
 /**

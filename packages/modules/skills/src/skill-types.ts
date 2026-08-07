@@ -84,6 +84,8 @@ export interface SkillLocation {
   name: string
   /** 副本绝对路径。 */
   path: string
+  /** 根据来源目录结构推导的默认导入范围。 */
+  importScope?: 'shared' | 'local'
   /** 目录或软链。 */
   kind: z.infer<typeof skillLocationKindSchema>
   /** 软链原始目标。 */
@@ -760,10 +762,10 @@ export interface SkillsManifest {
 
 /** 用户对扫描分组作出的处理决策。 */
 export type SkillDecision =
-  | { kind: 'adopt'; sourceLocationId: string }
-  | { kind: 'merge'; sourceLocationId: string }
-  | { kind: 'replace'; sourceLocationId: string; targetLocationIds: string[] }
-  | { kind: 'rename-and-adopt'; sourceLocationId: string; newName: string }
+  | { kind: 'adopt'; sourceLocationId: string; scope?: 'shared' | 'local' | undefined }
+  | { kind: 'merge'; sourceLocationId: string; scope?: 'shared' | 'local' | undefined }
+  | { kind: 'replace'; sourceLocationId: string; targetLocationIds: string[]; scope?: 'shared' | 'local' | undefined }
+  | { kind: 'rename-and-adopt'; sourceLocationId: string; newName: string; scope?: 'shared' | 'local' | undefined }
   | { kind: 'keep'; groupId: string }
   | { kind: 'archive'; locationIds: string[] }
 
@@ -864,6 +866,8 @@ export interface SkillPlanUnit {
   skillName: string
   /** 用户决策。 */
   decision: SkillDecision
+  /** 本次 Skill 最终写入共享源或本地专属源。 */
+  scope: 'shared' | 'local'
   /** 用户明确选择的版本管理动作。 */
   management: SkillManagementChoice['action']
   /** 预计执行的可解释操作。 */
@@ -1248,10 +1252,10 @@ export const skillsManifestSchema = z.object({
 
 /** Zod 使用的用户决策 schema。 */
 export const skillDecisionSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('adopt'), sourceLocationId: z.string().min(1) }),
-  z.object({ kind: z.literal('merge'), sourceLocationId: z.string().min(1) }),
-  z.object({ kind: z.literal('replace'), sourceLocationId: z.string().min(1), targetLocationIds: z.array(z.string().min(1)).min(1) }),
-  z.object({ kind: z.literal('rename-and-adopt'), sourceLocationId: z.string().min(1), newName: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/) }),
+  z.object({ kind: z.literal('adopt'), sourceLocationId: z.string().min(1), scope: z.enum(['shared', 'local']).optional() }),
+  z.object({ kind: z.literal('merge'), sourceLocationId: z.string().min(1), scope: z.enum(['shared', 'local']).optional() }),
+  z.object({ kind: z.literal('replace'), sourceLocationId: z.string().min(1), targetLocationIds: z.array(z.string().min(1)).min(1), scope: z.enum(['shared', 'local']).optional() }),
+  z.object({ kind: z.literal('rename-and-adopt'), sourceLocationId: z.string().min(1), newName: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/), scope: z.enum(['shared', 'local']).optional() }),
   z.object({ kind: z.literal('keep'), groupId: z.string().min(1) }),
   z.object({ kind: z.literal('archive'), locationIds: z.array(z.string().min(1)).min(1) }),
 ])
@@ -1283,6 +1287,7 @@ export const skillsBatchPlanSchema = z.object({
     id: z.string().uuid(),
     skillName: z.string().min(1),
     decision: skillDecisionSchema,
+    scope: z.enum(['shared', 'local']).default('shared'),
     management: z.enum(['preserve', 'initialize', 'migrate-bobo', 'refresh']).default('preserve'),
     operations: z.array(skillPlanOperationSchema),
     warnings: z.array(z.string()),

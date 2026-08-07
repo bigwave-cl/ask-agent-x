@@ -27,7 +27,7 @@ description: AskX 本地 Skill 生命周期管理器。用于维护 Skill 身份
 
 ## Local-only Workflow
 
-`local_only: true` 的 Skill 保存在 AskX 本地专属目录，不进入平台根目录软链，也不参与导出。只有用户明确执行迁移计划后，才可以进入共享 Skills。
+`local_only: true` 的 Skill 保存在 AskX 本地专属目录，不进入平台根目录软链，也不参与导出。导入根目录第一层的 `local/` 子目录默认映射为本地 Skill，用户也可以在导入时主动选择范围。已有 Skill 只有经过明确迁移计划，才会在本地与共享 Skills 之间移动。
 
 ## Registry
 
@@ -39,9 +39,8 @@ description: AskX 本地 Skill 生命周期管理器。用于维护 Skill 身份
 askx skills stats [--json]
 askx skills usage record <name-or-id> [--yes] [--json]
 askx skills manager repair [--yes]
-askx skills sync --manage-all
-askx skills sync --manage-skill <name>
-askx skills sync --migrate-bobo <name>
+askx skills scope <skill-name> --local|--shared [--yes] [--json]
+在 Web 统计页中选择需要纳入、刷新或迁移版本管理的 Skill。
 ```
 
 ## Managed By

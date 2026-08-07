@@ -84,6 +84,29 @@ describe('本地专属 Skill 迁移', () => {
     expect(skillDocument).not.toContain('local-only skill')
   })
 
+  it('支持共享与本地范围双向迁移并更新管理声明', async () => {
+    const { manifestStore, localSkill } = await createFixture()
+    const sharedPlan = await createLocalSkillMigrationPlan(manifestStore, localSkill.id, 'shared')
+    await applyLocalSkillMigrationPlan(manifestStore, sharedPlan, {
+      planHash: sharedPlan.hash,
+      confirmedAt: new Date().toISOString(),
+    })
+
+    const localPlan = await createLocalSkillMigrationPlan(manifestStore, localSkill.id, 'local')
+    const receipt = await applyLocalSkillMigrationPlan(manifestStore, localPlan, {
+      planHash: localPlan.hash,
+      confirmedAt: new Date().toISOString(),
+    })
+    const manifest = await manifestStore.read()
+    const migrated = manifest?.localSkills?.find(skill => skill.id === localSkill.id)
+    const inspection = await inspectSkillManagerMetadata(receipt.destinationPath)
+
+    expect(manifest?.skills.some(skill => skill.id === localSkill.id)).toBe(false)
+    expect(migrated?.localPath).toBe(receipt.destinationPath)
+    expect(migrated?.manager?.skillId).toBe(localSkill.manager?.skillId)
+    expect(inspection.metadata?.local_only).toBe(true)
+  })
+
   it('来源在授权前变化时拒绝迁移且不创建共享副本', async () => {
     const { manifestStore, localSkill } = await createFixture()
     const plan = await createLocalSkillMigrationPlan(manifestStore, localSkill.id)

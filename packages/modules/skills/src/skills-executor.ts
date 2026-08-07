@@ -199,19 +199,27 @@ async function copySkillIntoStaging(source: SkillLocation, target: string, allow
 
 /** 在 staging 中执行用户明确授权的版本管理改造。 */
 async function applyManagementChoice(target: string, unit: SkillPlanUnit): Promise<void> {
-  if (unit.management === 'preserve') return
-  if (unit.management === 'initialize') {
-    await ensureAskxManagedDeclaration(target, false)
+  const localOnly = unit.scope === 'local'
+  if (unit.management === 'preserve') {
+    const current = await inspectSkillManagerMetadata(target)
+    if (!current.metadata || current.metadata.local_only === localOnly) return
     const fingerprint = await fingerprintManagedSkill(target)
-    await writeSkillManagerMetadata(target, createSkillManagerMetadata(fingerprint.businessContentHash, false))
+    await writeSkillManagerMetadata(target, updateSkillManagerMetadata(current.metadata, fingerprint.businessContentHash, { localOnly, bumpVersion: false }))
+    return
+  }
+  if (unit.management === 'initialize') {
+    await ensureAskxManagedDeclaration(target, localOnly)
+    const fingerprint = await fingerprintManagedSkill(target)
+    await writeSkillManagerMetadata(target, createSkillManagerMetadata(fingerprint.businessContentHash, localOnly))
     return
   }
   const before = await inspectSkillManagerMetadata(target)
   if (!before.metadata) throw new Error(`Skill ${unit.skillName} 缺少可更新的 manager 元数据。`)
-  await ensureAskxManagedDeclaration(target, before.metadata.local_only)
+  await ensureAskxManagedDeclaration(target, localOnly)
   const fingerprint = await fingerprintManagedSkill(target)
   await writeSkillManagerMetadata(target, updateSkillManagerMetadata(before.metadata, fingerprint.businessContentHash, {
     migrateOwner: unit.management === 'migrate-bobo',
+    localOnly,
     bumpVersion: unit.management === 'refresh',
   }))
 }
@@ -328,7 +336,7 @@ async function buildCanonicalStaging(
       const source = getSource(report, unit.decision)
       if (!source) throw new Error(`Skill ${unit.skillName} 缺少统一来源。`)
       const canonicalName = getCanonicalName(unit, source)
-      const localOnly = source.managerMetadata?.localOnly === true
+      const localOnly = unit.scope === 'local'
       result.canonicalPath = join(localOnly ? localRoot : canonicalRoot, canonicalName)
       const target = join(localOnly ? localStagingRoot : stagingRoot, canonicalName)
       await copySkillIntoStaging(source, target, unit.decision.kind === 'replace')
@@ -892,7 +900,9 @@ export async function applySkillsBatchPlan(input: ApplySkillsPlanInput): Promise
       version: 3,
       revision: input.plan.manifestRevision,
       initializedAt: manifestBefore?.initializedAt ?? now,
-      lastScan: { scannedAt: report.scannedAt, fingerprint: report.fingerprint, platforms: report.platforms },
+      lastScan: input.plan.configurationStrategy === 'preserve' && manifestBefore?.lastScan
+        ? manifestBefore.lastScan
+        : { scannedAt: report.scannedAt, fingerprint: report.fingerprint, platforms: report.platforms },
       skills: records,
       localSkills: localRecords,
       customRoots: persistedCustomRoots,

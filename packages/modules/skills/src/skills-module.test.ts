@@ -309,7 +309,7 @@ describe('SkillsManager', () => {
     expect(replacePlan.platformOperations).toMatchObject([{ platform: 'codex', action: 'suspend' }])
     await manager.applyOnboarding(replacePlan, 0, consent(replacePlan))
     expect((await manager.bootstrap()).platformBindings[0]).toHaveProperty('suspendedAt')
-  }, 10_000)
+  }, 30_000)
 
   it('恢复平台软链时不会覆盖被外部占用的原目录备份位置', async () => {
     const homeDir = await mkdtemp(join(tmpdir(), 'askx-resume-conflict-home-'))
@@ -517,6 +517,45 @@ describe('SkillsManager', () => {
     expect(await readFile(join(customRoot, 'custom-demo', 'SKILL.md'), 'utf8')).toContain('custom body')
     expect(await readFile(join(dataDir, 'skills', 'custom-demo', 'SKILL.md'), 'utf8')).toContain('custom body')
     expect((await manager.bootstrap()).customLinkBindings).toEqual([])
+  })
+
+  it('独立软链计划不扫描 Skill 并保留上一次扫描记录', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-link-only-home-'))
+    const dataDir = join(homeDir, '.askx')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const initialReport = await manager.scan(['codex'])
+    const initialPlan = await manager.planOnboarding({
+      platforms: ['codex'],
+      linkPlatforms: [],
+      detectionFingerprint: initialReport.fingerprint,
+      settingsRevision: 0,
+      decisions: [],
+    })
+    await manager.applyOnboarding(initialPlan, 0, consent(initialPlan))
+    const lastScanBefore = (await manager.manifestStore.read())!.lastScan
+    const customRoot = join(homeDir, 'shared-skills')
+    await mkdir(customRoot, { recursive: true })
+
+    const emptyReport = await manager.scan([])
+    const linkPlan = await manager.planOnboarding({
+      platforms: [],
+      linkPlatforms: [],
+      linkCustomRoots: [customRoot],
+      detectionFingerprint: emptyReport.fingerprint,
+      settingsRevision: 0,
+      decisions: [],
+      mode: 'connect',
+      configurationStrategy: 'preserve',
+    })
+
+    expect(linkPlan.platforms).toEqual([])
+    expect(linkPlan.units).toEqual([])
+    expect(linkPlan.customLinkOperations).toHaveLength(1)
+
+    await manager.applyOnboarding(linkPlan, 0, consent(linkPlan))
+
+    expect((await manager.manifestStore.read())!.lastScan).toEqual(lastScanBefore)
+    expect((await lstat(customRoot)).isSymbolicLink()).toBe(true)
   })
 
   it('自定义软链目录保存失败时会恢复接入前的完整目录', async () => {

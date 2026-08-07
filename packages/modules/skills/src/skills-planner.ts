@@ -68,6 +68,8 @@ function createUnit(input: CreateSkillsPlanInput, decision: SkillDecision): Skil
   const source = decision.kind === 'keep' || decision.kind === 'archive'
     ? undefined
     : location(decision.sourceLocationId)
+  const explicitScope = 'scope' in decision ? decision.scope : undefined
+  const scope = source ? explicitScope ?? source.importScope ?? (source.managerMetadata?.localOnly ? 'local' : 'shared') : 'shared'
   if (management === 'initialize' && source?.managerState !== 'unmanaged') throw new Error(`Skill ${group.name} 不能重复初始化版本管理。`)
   if (management === 'migrate-bobo' && source?.managerState !== 'bobo-managed') throw new Error(`Skill ${group.name} 不存在可迁移的 bobo manager 身份。`)
   if (management === 'refresh' && source?.managerState !== 'metadata-stale') throw new Error(`Skill ${group.name} 没有需要刷新的版本元数据。`)
@@ -89,7 +91,7 @@ function createUnit(input: CreateSkillsPlanInput, decision: SkillDecision): Skil
     const source = location(decision.sourceLocationId)
     if (!source.metadata.valid || !source.contentHash || source.broken) throw new Error(`Skill ${source.name} 无法作为接管来源。`)
     if (decision.kind === 'merge' && group.status !== 'identical') throw new Error(`Skill ${group.name} 的内容不一致，不能合并。`)
-    operations.push({ kind: 'copy-canonical', sourcePath: source.path, targetPath: join(input.dataDir, 'skills', source.name) })
+    operations.push({ kind: 'copy-canonical', sourcePath: source.path, targetPath: join(input.dataDir, scope === 'local' ? 'local-skills' : 'skills', source.name) })
   }
   if (decision.kind === 'replace') {
     const source = location(decision.sourceLocationId)
@@ -111,7 +113,7 @@ function createUnit(input: CreateSkillsPlanInput, decision: SkillDecision): Skil
     if (input.report.locations.some((entry) => entry.name === decision.newName)) throw new Error(`Skill 名称已存在：${decision.newName}`)
     operations.push({ kind: 'write-renamed', name: decision.newName })
   }
-  return { id: randomUUID(), skillName: group.name, decision, management, operations, warnings }
+  return { id: randomUUID(), skillName: group.name, decision, scope, management, operations, warnings }
 }
 
 /**

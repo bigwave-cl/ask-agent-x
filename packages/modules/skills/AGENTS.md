@@ -39,7 +39,7 @@
 - `src/skill-manager-metadata.ts`：Skill 身份、日期版本、业务/事务双指纹和托管声明。
 - `src/skill-manager-registry.ts`：revisioned registry、显式 usage 与本地统计。
 - `src/builtin-skill-manager.ts`：内置系统 Skill 的健康检查、安装和确认修复。
-- `src/local-skill-manager.ts`：本地专属 Skill 向共享统一源迁移的安全事务。
+- `src/local-skill-manager.ts`：Skill 在本地专属与共享统一源之间双向迁移的安全事务。
 - `src/skills-module.ts`：`SkillsManager` 与 Core 模块入口。
 
 新增公共符号时由实际 owner 文件声明，并通过 package subpath 暴露；不要恢复 `src/index.ts` 桶导出。

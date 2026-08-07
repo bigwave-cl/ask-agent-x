@@ -324,12 +324,12 @@ export class SkillsManager {
     return applySystemSkillRepairPlan(this.manifestStore, plan, consent)
   }
 
-  /** 为本地专属 Skill 迁移到共享统一源生成计划。 */
-  planLocalSkillMigration(skillId: string): Promise<LocalSkillMigrationPlan> {
-    return createLocalSkillMigrationPlan(this.manifestStore, skillId)
+  /** 为 Skill 在共享与本地范围之间迁移生成计划。 */
+  planLocalSkillMigration(skillId: string, targetScope: 'shared' | 'local' = 'shared'): Promise<LocalSkillMigrationPlan> {
+    return createLocalSkillMigrationPlan(this.manifestStore, skillId, targetScope)
   }
 
-  /** 应用一次经过确认的本地专属 Skill 迁移。 */
+  /** 应用一次经过确认的 Skill 范围迁移。 */
   applyLocalSkillMigration(plan: LocalSkillMigrationPlan, consent: UserConsent): Promise<LocalSkillMigrationReceipt> {
     return applyLocalSkillMigrationPlan(this.manifestStore, plan, consent)
   }
