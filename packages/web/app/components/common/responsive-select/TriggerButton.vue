@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
   responsiveSelectTriggerClass,
+  responsiveSelectTriggerSizeClass,
   responsiveSelectTriggerIconClass,
   responsiveSelectTriggerLabelClass,
 } from './triggerStyles'
@@ -17,6 +18,7 @@ const props = defineProps<{
   placeholder: string
   title: string
   triggerClass?: ResponsiveOverlayClass
+  size?: '36' | '40' | '48'
   valueSlotProps: ResponsiveSelectValueSlotProps
 }>()
 
@@ -32,7 +34,7 @@ defineSlots<{
     variant="outline"
     size="default"
     :disabled="disabled"
-    :class="cn(responsiveSelectTriggerClass, 'w-full justify-between', triggerClass)"
+    :class="cn(responsiveSelectTriggerClass, responsiveSelectTriggerSizeClass[size ?? '36'], 'w-full justify-between', triggerClass)"
     :aria-label="title"
     :aria-expanded="open"
     :data-state="open ? 'open' : 'closed'"

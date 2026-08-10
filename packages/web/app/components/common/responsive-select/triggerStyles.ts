@@ -1,5 +1,5 @@
 export const responsiveSelectTriggerClass = [
-  'group box-border h-9 min-w-40 self-stretch rounded-lg border border-solid border-ds-border-subtle-5 data-[size=default]:h-9',
+  'group box-border min-w-40 self-stretch rounded-lg border border-solid border-ds-border-subtle-5',
   'bg-ds-fill-bw-transparent-3 px-3 py-2 text-xs font-medium leading-4 text-ds-text-secondary shadow-none backdrop-blur-[8px]',
   'gap-2 transition-colors duration-150 hover:border-ds-border-subtle-5 hover:bg-ds-fill-bw-transparent-5 hover:text-ds-text-primary',
   'active:border-ds-border-subtle-5 active:bg-ds-fill-bw-transparent-5 active:text-ds-text-primary',
@@ -9,6 +9,13 @@ export const responsiveSelectTriggerClass = [
   'disabled:cursor-not-allowed disabled:border-ds-border-subtle-5 disabled:bg-ds-fill-bw-transparent-3 disabled:text-ds-text-disabled disabled:opacity-100 disabled:[&>*]:opacity-50',
   '*:data-[slot=select-value]:min-w-0 *:data-[slot=select-value]:flex-1 *:data-[slot=select-value]:overflow-hidden *:data-[slot=select-value]:text-ellipsis *:data-[slot=select-value]:whitespace-nowrap *:data-[slot=select-value]:p-0 *:data-[slot=select-value]:text-left *:data-[slot=select-value]:font-medium',
 ].join(' ')
+
+/** PG DsSelect 的触发器尺寸。 */
+export const responsiveSelectTriggerSizeClass: Record<'36' | '40' | '48', string> = {
+  '36': '!h-9 gap-2 px-3 py-2 text-xs leading-4',
+  '40': '!h-10 gap-2 px-3.5 py-2 text-[13px] leading-[21px]',
+  '48': '!h-12 gap-2 px-5 py-2 text-base leading-6',
+}
 
 export const responsiveSelectDefaultIconClass = '[&>svg:last-child]:hidden'
 

@@ -1,141 +1,74 @@
 <script setup lang="ts">
-import { Badge } from '@/components/ui/badge'
-import type { ResponsiveSelectChangeEvent, ResponsiveSelectOption } from '@/components/common/responsive-select/types'
+import type { ResponsiveSelectOption } from '@/components/common/responsive-select/types'
 import DemoCopyButton from '../../components/DemoCopyButton.vue'
 import DemoSection from '../../components/DemoSection.vue'
 
 defineOptions({ name: 'DemoSelect' })
-
 const isOpen = defineModel<boolean>({ default: false })
-const language = ref<string>()
-const model = ref('gpt-5')
-const region = ref('cn-east')
-const lastChange = ref('等待选择')
-
-const languageOptions: ResponsiveSelectOption[] = [
-  { value: 'zh-CN', label: '简体中文' },
-  { value: 'en', label: 'English' },
-  { value: 'ja', label: '日本語', disabled: true },
-]
-
-const modelOptions: ResponsiveSelectOption[] = [
-  { value: 'gpt-5', label: 'GPT-5', description: '适合复杂规划与代码任务' },
-  { value: 'claude-sonnet', label: 'Claude Sonnet', description: '速度与推理能力均衡' },
-  { value: 'gemini-pro', label: 'Gemini Pro', description: '支持较长上下文输入' },
-]
-
-const regionOptions: ResponsiveSelectOption[] = [
-  { value: 'cn-east', label: '华东节点', description: '延迟约 28ms' },
-  { value: 'cn-south', label: '华南节点', description: '延迟约 34ms' },
-  { value: 'sg', label: '新加坡节点', description: '延迟约 62ms' },
-]
-
-function recordChange(event: ResponsiveSelectChangeEvent) {
-  lastChange.value = event.option?.label ?? '已清除'
-}
+const lightValue = ref('en'); const darkValue = ref('warm'); const clearableValue = ref('asia'); const transparentValue = ref('pt'); const brandValue = ref('en'); const slotValue = ref('studio'); const longListValue = ref('item-01')
+const languageOptions: ResponsiveSelectOption[] = [{ label: 'English', value: 'en' }, { label: 'Español', value: 'es' }, { label: 'Português', value: 'pt' }]
+const voiceOptions: ResponsiveSelectOption[] = [{ label: 'Warm Voice', value: 'warm' }, { label: 'Clear Voice', value: 'clear' }, { label: 'Narration', value: 'narration' }]
+const regionOptions: ResponsiveSelectOption[] = [{ label: 'Asia', value: 'asia' }, { label: 'Europe', value: 'europe' }, { label: 'America', value: 'america' }]
+const modelOptions: ResponsiveSelectOption[] = [{ label: 'Studio', value: 'studio', description: '适合精修和稳定输出' }, { label: 'Realtime', value: 'realtime', description: '适合快速预览和轻量场景' }, { label: 'Creative', value: 'creative', description: '适合探索更强风格化结果' }]
+const longListOptions: ResponsiveSelectOption[] = Array.from({ length: 18 }, (_, index) => ({ label: `Long Option ${String(index + 1).padStart(2, '0')}`, value: `item-${String(index + 1).padStart(2, '0')}`, description: `第 ${String(index + 1).padStart(2, '0')} 项，用于演示列表滚动。` }))
+const selectedFormats = ref(['markdown', 'json'])
+const formatOptions: ResponsiveSelectOption[] = [{ value: 'markdown', label: 'Markdown', description: '适合文档与说明内容' }, { value: 'json', label: 'JSON', description: '适合结构化数据' }, { value: 'csv', label: 'CSV', description: '适合表格数据' }]
 </script>
 
 <template>
-  <DemoSection
-    v-model="isOpen"
-    sec-key="components-select"
-    title="Select 响应式下拉"
-    description="桌面使用 shadcn Select，移动端自动切换为 Drawer。"
-  >
-    <div class="grid gap-6 rounded-2xl border bg-background p-3 sm:p-5" data-testid="responsive-select-demo">
-      <article class="relative overflow-hidden rounded-2xl border bg-background p-6 sm:p-8">
-        <div class="pointer-events-none absolute -right-16 -top-24 size-72 rounded-full bg-primary/12 blur-3xl" />
-        <div class="relative flex flex-wrap items-end justify-between gap-6">
-          <div>
-            <Badge variant="soft"><Icon name="askx-status:star" />SHADCN / RESPONSIVE</Badge>
-            <h3 class="mt-6 max-w-3xl text-3xl font-semibold sm:text-5xl">同一份选择，在合适的容器里发生。</h3>
-            <p class="mt-4 max-w-3xl text-sm leading-6 text-muted-foreground">桌面端保留 Select 的键盘导航、typeahead 与定位能力；移动端根据统一断点规则切换为 Drawer，并共享同一份选项和 model。</p>
+  <DemoSection v-model="isOpen" title="Select" sec-key="components-ds-select">
+    <article class="grid gap-4 rounded-2xl border bg-background p-5">
+      <div class="grid gap-2"><h4 class="text-2xl font-extrabold">Select</h4><p class="max-w-3xl text-sm leading-6 text-muted-foreground">Select 是旧选择器迁移后的唯一入口，样式集中管理；桌面端使用 Panel，H5 自动切换为 Drawer。</p></div>
+      <div class="grid gap-3 md:grid-cols-2">
+        <section v-for="example in [
+          { key: 'light', title: 'Light 默认主题', description: '不传 theme 时使用浅色 DS token，默认 size 为 36。' },
+          { key: 'dark', title: 'Dark 默认 size 36', description: '默认 size 为 36；业务暗色弹窗内显式传入 dark 主题。' },
+          { key: 'clearable', title: 'Clearable 清除', description: 'clearable 开启后点击清除会回写 clearValue。' },
+          { key: 'transparent', title: 'Transparent 透明', description: '透明变体仅让默认触发器透明，hover 和展开状态仍按 Select 状态样式处理。' },
+          { key: 'brand', title: 'Brand 浅色按钮', description: 'Brand 变体用于浅色按钮触发器，视觉状态对齐 DsButton outlined。' },
+          { key: 'rich', title: 'Option Brand 复合选项', description: 'icon、description、extra 可按业务自由组合。' },
+          { key: 'long', title: '长列表滚动', description: '内容较多时可通过 content-class 控制列表最大高度。' },
+          { key: 'slot', title: '自定义 Slot', description: 'value 和 item 可重置触发器与选项内容。' },
+        ]" :key="example.key" class="grid content-start gap-3 rounded-xl border bg-card p-4">
+          <div class="flex items-start justify-between gap-3"><div><h5 class="text-base font-extrabold">{{ example.title }}</h5><p class="mt-1 text-xs leading-5 text-muted-foreground">{{ example.description }}</p></div><DemoCopyButton text="&lt;CsResponsiveSelect v-model=&#34;value&#34; :options=&#34;options&#34; /&gt;" size="36">复制实现</DemoCopyButton></div>
+          <div class="flex min-h-16 items-center gap-3 rounded-lg bg-muted/30 p-3">
+            <CsResponsiveSelect v-if="example.key === 'light'" v-model="lightValue" title="选择语言" placeholder="选择语言" close-label="关闭" clear-label="清除" empty-text="暂无" :options="languageOptions" />
+            <CsResponsiveSelect v-else-if="example.key === 'dark'" v-model="darkValue" theme="dark" title="选择音色" placeholder="选择音色" close-label="关闭" clear-label="清除" empty-text="暂无" :options="voiceOptions" />
+            <CsResponsiveSelect v-else-if="example.key === 'clearable'" v-model="clearableValue" clearable title="筛选地区" placeholder="筛选地区" close-label="关闭" clear-label="清除" empty-text="暂无" :options="regionOptions" />
+            <CsResponsiveSelect v-else-if="example.key === 'transparent'" v-model="transparentValue" variant="transparent" title="透明触发器" placeholder="透明触发器" close-label="关闭" clear-label="清除" empty-text="暂无" :options="languageOptions" />
+            <CsResponsiveSelect v-else-if="example.key === 'brand'" v-model="brandValue" variant="brand" shape="pill" title="浅色按钮" placeholder="浅色按钮" close-label="关闭" clear-label="清除" empty-text="暂无" :options="languageOptions" />
+            <CsResponsiveSelect v-else-if="example.key === 'rich'" v-model="slotValue" title="Skills" placeholder="选择模型" close-label="关闭" clear-label="清除" empty-text="暂无" :options="modelOptions"><template #item="{ option }"><span class="grid min-w-0 gap-0.5"><strong>{{ option.label }}</strong><small class="text-muted-foreground">{{ option.description }}</small></span></template></CsResponsiveSelect>
+            <CsResponsiveSelect v-else-if="example.key === 'long'" v-model="longListValue" title="选择大量内容" placeholder="选择大量内容" close-label="关闭" clear-label="清除" empty-text="暂无" content-class="max-h-52" :options="longListOptions" />
+            <CsResponsiveSelect v-else v-model="slotValue" title="自定义选项" placeholder="选择模型" close-label="关闭" clear-label="清除" empty-text="暂无" :options="modelOptions"><template #value="{ option, placeholder }"><span class="inline-flex items-center gap-2"><span class="size-2 rounded-full bg-primary" />{{ option?.label ?? placeholder }}</span></template></CsResponsiveSelect>
           </div>
-          <div class="rounded-xl border bg-card px-4 py-3 font-mono text-[10px] text-muted-foreground">
-            最近变更：<span class="text-primary">{{ lastChange }}</span>
-          </div>
-        </div>
-      </article>
-
-      <section class="grid gap-2" data-demo-subsection="select-basic">
-        <div class="px-1">
-          <h4 class="text-base font-semibold">基础单选</h4>
-          <p class="mt-1 text-xs leading-5 text-muted-foreground">支持占位、禁用选项和统一 change 事件；缩窄视口即可验证 Drawer 呈现。</p>
-        </div>
-        <article class="grid gap-5 rounded-2xl border bg-card p-4 sm:p-5">
-          <div class="grid gap-2 sm:max-w-sm">
-            <label class="text-xs font-medium" for="demo-language">界面语言</label>
-            <CsResponsiveSelect
-              id="demo-language"
-              v-model="language"
-              name="language"
-              title="选择界面语言"
-              placeholder="请选择语言"
-              close-label="关闭语言选择"
-              clear-label="清除语言"
-              empty-text="暂无可选语言"
-              :options="languageOptions"
-              @change="recordChange"
-            />
-            <code class="font-mono text-[10px] text-muted-foreground">modelValue: {{ language ?? 'undefined' }}</code>
-          </div>
-          <div class="flex justify-end">
-            <DemoCopyButton text='<CsResponsiveSelect v-model="language" :options="options" title="选择语言" placeholder="请选择" />' label="复制基础用法" copied-label="已复制" />
-          </div>
-        </article>
-      </section>
-
-      <section class="grid gap-2" data-demo-subsection="select-rich">
-        <div class="px-1">
-          <h4 class="text-base font-semibold">描述与自定义内容</h4>
-          <p class="mt-1 text-xs leading-5 text-muted-foreground">选项描述由两端共享，item 与 value 插槽可加入业务图标，不接管触发器结构。</p>
-        </div>
-        <article class="grid gap-5 rounded-2xl border bg-card p-4 sm:p-5">
-          <div class="grid gap-2 sm:max-w-md">
-            <label class="text-xs font-medium">默认模型</label>
-            <CsResponsiveSelect
-              v-model="model"
-              title="选择默认模型"
-              placeholder="请选择模型"
-              close-label="关闭模型选择"
-              clear-label="清除模型"
-              empty-text="暂无可用模型"
-              content-class="sm:min-w-80"
-              :options="modelOptions"
-              @change="recordChange"
-            >
-              <template #value="{ option, placeholder }">
-                <span class="inline-flex min-w-0 items-center gap-2"><Icon name="askx-objects:agent" class="size-4 shrink-0 text-primary" /><span class="truncate">{{ option?.label ?? placeholder }}</span></span>
-              </template>
-              <template #item="{ option }">
-                <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground"><Icon name="askx-objects:agent" class="size-4" /></span>
-                <span class="grid min-w-0 flex-1 gap-0.5 text-left"><strong class="text-sm">{{ option.label }}</strong><span class="text-xs leading-5 text-muted-foreground">{{ option.description }}</span></span>
-              </template>
-            </CsResponsiveSelect>
-          </div>
-        </article>
-      </section>
-
-      <section class="grid gap-2" data-demo-subsection="select-states">
-        <div class="px-1">
-          <h4 class="text-base font-semibold">清除、空列表与禁用</h4>
-          <p class="mt-1 text-xs leading-5 text-muted-foreground">清除操作独立提交空值；无选项和整体禁用时不产生变更事件。</p>
-        </div>
-        <article class="grid gap-4 rounded-2xl border bg-card p-4 sm:grid-cols-3 sm:p-5">
+        </section>
+      </div>
+      <section class="grid gap-3 rounded-xl border bg-card p-4">
+        <div><h5 class="text-base font-extrabold">Size / Shape / Square</h5><p class="text-xs leading-5 text-muted-foreground">默认 size 为 36；square 是图标入口，不内置展开箭头。</p></div>
+        <div class="grid gap-3 rounded-lg bg-muted/30 p-3 md:grid-cols-3">
           <div class="grid content-start gap-2">
-            <span class="inline-flex items-center gap-2 text-xs font-medium"><Icon name="askx-objects:map" class="size-4 text-primary" />可清除节点</span>
-            <CsResponsiveSelect v-model="region" clearable title="选择服务节点" placeholder="请选择节点" close-label="关闭节点选择" clear-label="清除节点" empty-text="暂无服务节点" :options="regionOptions" @change="recordChange" />
+            <span class="text-xs font-bold text-muted-foreground">size</span>
+            <div class="flex flex-wrap items-center gap-2">
+              <CsResponsiveSelect v-model="lightValue" size="36" trigger-class="!w-36" title="size 36" placeholder="36" close-label="关闭" clear-label="清除" empty-text="暂无" :options="languageOptions" />
+              <CsResponsiveSelect v-model="darkValue" size="40" trigger-class="!w-40" title="size 40" placeholder="40" close-label="关闭" clear-label="清除" empty-text="暂无" :options="languageOptions" />
+              <CsResponsiveSelect v-model="brandValue" size="48" trigger-class="!w-44" title="size 48" placeholder="48" close-label="关闭" clear-label="清除" empty-text="暂无" :options="languageOptions" />
+            </div>
           </div>
           <div class="grid content-start gap-2">
-            <span class="inline-flex items-center gap-2 text-xs font-medium"><Icon name="askx-actions:adjust" class="size-4 text-primary" />空列表</span>
-            <CsResponsiveSelect title="选择执行器" placeholder="暂无执行器" close-label="关闭执行器选择" clear-label="清除执行器" empty-text="暂无可用执行器" :options="[]" />
+            <span class="text-xs font-bold text-muted-foreground">shape</span>
+            <div class="flex flex-wrap items-center gap-2">
+              <CsResponsiveSelect v-model="lightValue" trigger-class="!w-36" title="regular" placeholder="regular" close-label="关闭" clear-label="清除" empty-text="暂无" :options="languageOptions" />
+              <CsResponsiveSelect v-model="brandValue" shape="pill" trigger-class="!w-36" title="pill" placeholder="pill" close-label="关闭" clear-label="清除" empty-text="暂无" :options="languageOptions" />
+            </div>
           </div>
           <div class="grid content-start gap-2">
-            <span class="inline-flex items-center gap-2 text-xs font-medium"><Icon name="askx-objects:language" class="size-4 text-primary" />整体禁用</span>
-            <CsResponsiveSelect disabled title="选择语言" placeholder="不可修改" close-label="关闭语言选择" clear-label="清除语言" empty-text="暂无语言" :options="languageOptions" />
+            <span class="text-xs font-bold text-muted-foreground">square</span>
+            <CsResponsiveSelect v-model="brandValue" square title="square" placeholder="" close-label="关闭" clear-label="清除" empty-text="暂无" :options="languageOptions"><template #value><Icon name="askx-status:info" class="size-4" /></template></CsResponsiveSelect>
           </div>
-        </article>
+        </div>
       </section>
-    </div>
+      <section class="grid gap-2 rounded-xl border bg-card p-4"><h5 class="text-base font-extrabold">响应式弹层行为</h5><ul class="grid gap-1 pl-5 text-xs leading-5 text-muted-foreground"><li>桌面端使用 Select Panel，保持键盘导航和定位。</li><li>H5 自动切换为底部 Drawer，共享同一份选项和 model。</li><li>theme="dark" 时触发器、Panel 和 Drawer 使用暗色 token。</li></ul></section>
+      <section class="grid gap-3 rounded-xl border bg-card p-4"><h5 class="text-base font-extrabold">多选（AskX 扩展）</h5><p class="text-xs leading-5 text-muted-foreground">多选场景追加在 PG 单选示例之后，选项样式参考 Agent Model。</p><CsResponsiveMultiSelect v-model="selectedFormats" size="40" title="选择导出格式" placeholder="选择格式" close-label="关闭" empty-text="暂无" :options="formatOptions" /></section>
+    </article>
   </DemoSection>
 </template>

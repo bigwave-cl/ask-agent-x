@@ -41,6 +41,16 @@ export interface ResponsiveSelectProps {
   disabled?: boolean
   clearable?: boolean
   clearValue?: string
+  /** 选择器尺寸，与 PG DsSelect 保持一致。 */
+  size?: '36' | '40' | '48'
+  /** PG Select 主题。 */
+  theme?: 'light' | 'dark'
+  /** PG Select 触发器变体。 */
+  variant?: 'default' | 'transparent' | 'brand'
+  /** PG Select 形状。 */
+  shape?: 'regular' | 'pill'
+  /** 是否使用方形图标触发器。 */
+  square?: boolean
   name?: string
   desktopQuery?: string
   triggerClass?: ResponsiveOverlayClass

@@ -15,6 +15,7 @@ import ResponsiveSelectTriggerButton from './TriggerButton.vue'
 import {
   responsiveSelectClearClass,
   responsiveSelectDefaultIconClass,
+  responsiveSelectTriggerSizeClass,
   responsiveSelectTriggerClass,
   responsiveSelectTriggerIconClass,
 } from './triggerStyles'
@@ -43,6 +44,11 @@ const props = withDefaults(defineProps<ResponsiveSelectProps>(), {
   drawer: undefined,
   name: undefined,
   triggerClass: undefined,
+  size: '36',
+  theme: 'light',
+  variant: 'default',
+  shape: 'regular',
+  square: false,
 })
 const modelValue = defineModel<string | undefined>()
 const open = defineModel<boolean>('open', { default: false })
@@ -67,6 +73,13 @@ const hasValue = computed(() => modelValue.value !== undefined && modelValue.val
 const accessibleDescription = computed(() => props.description ?? props.placeholder)
 const selectDrawerOptions = computed(() => getResponsiveSelectDrawerOptions(props.drawer))
 const { isMobile, isPending } = useResponsiveOverlayViewport(() => props.desktopQuery)
+const resolvedTriggerClass = computed(() => cn(
+  props.shape === 'pill' ? 'rounded-full' : 'rounded-lg',
+  props.square ? 'aspect-square min-w-0 w-auto justify-center px-0 [&>svg]:hidden *:data-[slot=select-value]:!flex-none *:data-[slot=select-value]:!justify-center *:data-[slot=select-value]:text-center' : '',
+  props.variant === 'transparent' ? 'border-transparent bg-transparent hover:border-ds-border-subtle-5 hover:bg-ds-fill-bw-transparent-5' : '',
+  props.variant === 'brand' ? 'border-ds-brand-default/20 bg-ds-brand-default/10 text-ds-brand-default hover:bg-ds-brand-default/15' : '',
+  props.theme === 'dark' ? 'dark bg-ds-bg-inverse text-ds-text-primary' : '',
+))
 const valueSlotProps = (isMobile: boolean): ResponsiveSelectValueSlotProps => ({
   isMobile,
   open: open.value,
@@ -123,7 +136,8 @@ function clearSelection(event: MouseEvent) {
     :open="open"
     :placeholder="placeholder"
     :title="title"
-    :trigger-class="triggerClass"
+    :size="size"
+    :trigger-class="cn(triggerClass, resolvedTriggerClass)"
     :value-slot-props="valueSlotProps(true)"
   >
     <template v-if="$slots.value" #value="slotProps">
@@ -147,7 +161,8 @@ function clearSelection(event: MouseEvent) {
         :open="open"
         :placeholder="placeholder"
         :title="title"
-        :trigger-class="triggerClass"
+        :size="size"
+        :trigger-class="cn(triggerClass, resolvedTriggerClass)"
         :value-slot-props="valueSlotProps(true)"
       >
         <template v-if="$slots.value" #value="slotProps">
@@ -198,7 +213,7 @@ function clearSelection(event: MouseEvent) {
     <Select v-model="modelValue" v-model:open="open" :disabled="disabled">
       <SelectTrigger
         v-bind="attrs"
-        :class="cn(responsiveSelectTriggerClass, responsiveSelectDefaultIconClass, 'w-full', triggerClass)"
+        :class="cn(responsiveSelectTriggerClass, responsiveSelectTriggerSizeClass[props.size], responsiveSelectDefaultIconClass, 'w-full', resolvedTriggerClass, triggerClass)"
         :aria-label="title"
         data-slot="responsive-select-trigger"
       >
@@ -215,7 +230,10 @@ function clearSelection(event: MouseEvent) {
         />
       </SelectTrigger>
 
-      <SelectContent position="popper" :class="contentClass">
+      <SelectContent position="popper" :class="cn('min-w-40 rounded-xl border border-ds-border-subtle-5 bg-ds-bg-inverse p-1.5 text-ds-text-primary shadow-[0_4px_12px_color-mix(in_srgb,var(--ds-color-fill-bb-transparent-5)_100%,transparent),0_8px_32px_color-mix(in_srgb,var(--ds-color-fill-bb-transparent-5)_100%,transparent)]', props.theme === 'dark' ? 'dark' : '', contentClass)">
+        <div v-if="title.trim()" class="flex h-6 shrink-0 items-center px-1.5 py-0.5 text-[11px] font-medium leading-[15px] text-ds-text-tertiary">
+          <span class="truncate">{{ title }}</span>
+        </div>
         <div v-if="options.length === 0" class="px-2 py-6 text-center text-sm text-muted-foreground">
           {{ emptyText }}
         </div>
@@ -225,6 +243,7 @@ function clearSelection(event: MouseEvent) {
           :value="option.value"
           :disabled="option.disabled"
           :text-value="option.label"
+          class="min-h-10 cursor-pointer rounded-lg px-2 py-2 text-sm font-medium leading-[22px] text-ds-text-secondary data-[disabled]:cursor-not-allowed data-[highlighted]:bg-ds-fill-bw-transparent-5 data-[highlighted]:text-ds-text-secondary"
           @select="emitDesktopChange(option, $event)"
         >
           <slot name="item" :option="option" :selected="option.value === modelValue" :is-mobile="false">
