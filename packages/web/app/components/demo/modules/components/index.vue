@@ -5,6 +5,7 @@ import DemoChoice from './DemoChoice.vue'
 import DemoCodeEditor from './DemoCodeEditor.vue'
 import DemoConfirm from './DemoConfirm.vue'
 import DemoMdcRender from './DemoMdcRender.vue'
+import DemoLoading from './DemoLoading.vue'
 import DemoResponsiveOverlay from './DemoResponsiveOverlay.vue'
 import DemoScrollArea from './DemoScrollArea.vue'
 import DemoSelect from './DemoSelect.vue'
@@ -14,7 +15,7 @@ import DemoTooltip from './DemoTooltip.vue'
 defineOptions({ name: 'DemoComponentsModule' })
 
 /** 基础组件 Demo 各 Section 的展开状态。 */
-const openSections = reactive({ button: true, choice: false, confirm: false, codeEditor: false, mdcRender: false, responsiveOverlay: false, scrollArea: false, select: false, tabs: false, tooltip: false })
+const openSections = reactive({ button: true, choice: false, confirm: false, loading: false, codeEditor: false, mdcRender: false, responsiveOverlay: false, scrollArea: false, select: false, tabs: false, tooltip: false })
 </script>
 
 <template>
@@ -29,7 +30,7 @@ const openSections = reactive({ button: true, choice: false, confirm: false, cod
         </div>
         <div class="grid min-w-56 gap-2 rounded-xl border bg-card/80 p-4 font-mono text-[10px] text-muted-foreground">
           <span class="flex items-center gap-2"><Icon name="askx-objects:layers" class="size-3.5 text-primary" />模块：基础组件</span>
-          <span class="flex items-center gap-2"><Icon name="askx-objects:model" class="size-3.5 text-primary" />Section：Button / Choice / Select / Tabs / Tooltip / ScrollArea / CodeEditor / MDC / ResponsiveOverlay</span>
+          <span class="flex items-center gap-2"><Icon name="askx-objects:model" class="size-3.5 text-primary" />Section：Button / Choice / Confirm / Loading / Select / Tabs / Tooltip / ScrollArea / CodeEditor / MDC / ResponsiveOverlay</span>
         </div>
       </div>
     </article>
@@ -37,6 +38,7 @@ const openSections = reactive({ button: true, choice: false, confirm: false, cod
     <DemoButton v-model="openSections.button" />
     <DemoChoice v-model="openSections.choice" />
     <DemoConfirm v-model="openSections.confirm" />
+    <DemoLoading v-model="openSections.loading" />
     <DemoSelect v-model="openSections.select" />
     <DemoTabs v-model="openSections.tabs" />
     <DemoTooltip v-model="openSections.tooltip" />

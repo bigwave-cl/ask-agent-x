@@ -13,7 +13,7 @@ const askxIconDirectories = {
 export default defineNuxtConfig({
   compatibilityDate: '2026-07-16',
   devtools: { enabled: true },
-  modules: ['shadcn-nuxt', '@nuxtjs/i18n', '@nuxt/icon'],
+  modules: ['shadcn-nuxt', '@nuxtjs/i18n', '@nuxt/icon', '@pinia/nuxt'],
   components: [
     { path: '~/components/common', prefix: 'Cs', extensions: ['vue'] },
     { path: '~/components/ui', extensions: ['vue'] },
