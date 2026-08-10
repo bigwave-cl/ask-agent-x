@@ -18,9 +18,9 @@ const applying = ref(false)
 async function prepareMigration(skillId: string): Promise<void> {
   applying.value = true
   try {
-    pendingPlan.value = await $fetch<LocalSkillMigrationPlan>('/api/skills/local/migrate-plan', { method: 'POST', body: { skillId } })
+    pendingPlan.value = await $fetch<LocalSkillMigrationPlan>('/api/skills/local/migrate-plan', { method: 'POST', body: { skillId, targetScope: 'shared' } })
   } catch {
-    toast.error(t('skills.localMigrationFailed'))
+    toast.error(t('skills.scopeMigrationFailed'))
   } finally {
     applying.value = false
   }
@@ -37,7 +37,7 @@ async function applyMigration(): Promise<void> {
     toast.success(t('skills.localMigrationCompleted'))
     emit('updated')
   } catch {
-    toast.error(t('skills.localMigrationFailed'))
+    toast.error(t('skills.scopeMigrationFailed'))
   } finally {
     applying.value = false
   }

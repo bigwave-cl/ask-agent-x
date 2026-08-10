@@ -11,6 +11,7 @@ import type {
   SkillPlatformStatus,
   SkillsScanReport,
 } from '@askx/module-skills/skill-types'
+import type { LocalSkillMigrationPlan } from '@askx/module-skills/local-skill-manager'
 import { useResizeObserver } from '@vueuse/core'
 import Tabs from '@/components/ui/tabs/Tabs.vue'
 import TabsList from '@/components/ui/tabs/TabsList.vue'
@@ -69,6 +70,10 @@ const descriptionElement = ref<HTMLElement | null>(null)
 const descriptionOverflow = ref(false)
 /** 完整描述响应式弹层是否打开。 */
 const descriptionOpen = ref(false)
+/** 等待确认的共享转本地迁移计划。 */
+const scopePlan = ref<LocalSkillMigrationPlan | null>(null)
+/** 是否正在生成或应用范围迁移计划。 */
+const migratingScope = ref(false)
 
 /** 当前详情请求序号，用于阻止清空后到达的旧请求恢复已失效内容。 */
 let detailRequestRevision = 0
@@ -254,6 +259,43 @@ async function copyPath(path: string): Promise<void> {
   if (copied) toast.success(t('skills.pathCopied'))
 }
 
+/** 为当前共享 Skill 生成迁移到本地范围的计划。 */
+async function prepareLocalMigration(): Promise<void> {
+  if (!selectedSkillId.value || dirty.value) return
+  migratingScope.value = true
+  try {
+    scopePlan.value = await $fetch<LocalSkillMigrationPlan>('/api/skills/local/migrate-plan', {
+      method: 'POST',
+      body: { skillId: selectedSkillId.value, targetScope: 'local' },
+    })
+  } catch {
+    toast.error(t('skills.scopeMigrationFailed'))
+  } finally {
+    migratingScope.value = false
+  }
+}
+
+/** 应用当前共享转本地迁移计划。 */
+async function applyLocalMigration(): Promise<void> {
+  if (!scopePlan.value) return
+  migratingScope.value = true
+  try {
+    const plan = scopePlan.value
+    await $fetch('/api/skills/local/migrate-apply', {
+      method: 'POST',
+      body: { plan, consent: { planHash: plan.hash, confirmedAt: new Date().toISOString() } },
+    })
+    scopePlan.value = null
+    toast.success(t('skills.migrateToLocalCompleted'))
+    clearSelection()
+    emit('updated')
+  } catch {
+    toast.error(t('skills.scopeMigrationFailed'))
+  } finally {
+    migratingScope.value = false
+  }
+}
+
 watch(() => props.managedSkills, (skills) => {
   if (skills.some((skill) => skill.id === selectedSkillId.value)) return
   clearSelection()
@@ -351,6 +393,7 @@ onMounted(() => {
               <div class="relative mt-4 flex w-full max-w-full flex-wrap items-center justify-between gap-2">
                 <button type="button" class="flex h-9 min-w-0 max-w-full items-center gap-2 rounded-lg bg-ds-fill-bw-transparent-3 px-3 font-mono text-[10px] text-muted-foreground transition hover:bg-ds-fill-bw-transparent-5 hover:text-foreground" @click="copyPath(detail.canonicalPath)"><Icon name="askx-actions:copy" class="size-3.5 shrink-0" /><span class="truncate">{{ detail.canonicalPath }}</span></button>
                 <div class="flex flex-wrap items-center gap-2">
+                  <Button variant="outline" size="36" :disabled="busy || dirty || migratingScope" @click="prepareLocalMigration"><Icon name="askx-objects:file" />{{ t('skills.migrateToLocal') }}</Button>
                   <CsLocalPathOpener :path="detail.canonicalPath" />
                 </div>
               </div>
@@ -412,6 +455,14 @@ onMounted(() => {
           <div><span class="text-muted-foreground">{{ t('skills.planHash') }}</span><code class="ml-2">{{ updatePlan.hash.slice(0, 16) }}</code></div>
         </div>
         <DialogFooter class="mt-2"><Button variant="outline" :disabled="saving" @click="confirmOpen = false">{{ t('skills.cancelFileSave') }}</Button><Button :disabled="saving" @click="applySave"><Icon name="askx-actions:edit" />{{ saving ? t('skills.savingFile') : t('skills.confirmSaveFile') }}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog :open="Boolean(scopePlan)" @update:open="value => { if (!value && !migratingScope) scopePlan = null }">
+      <DialogContent class="sm:max-w-lg">
+        <DialogHeader><DialogTitle>{{ t('skills.migrateToLocalConfirmTitle') }}</DialogTitle><DialogDescription>{{ t('skills.migrateToLocalConfirmDescription') }}</DialogDescription></DialogHeader>
+        <div v-if="scopePlan" class="rounded-xl border bg-muted/30 p-4"><strong>{{ scopePlan.skillName }}</strong><code class="mt-2 block break-all text-[10px] text-muted-foreground">{{ scopePlan.sourcePath }} → {{ scopePlan.destinationPath }}</code></div>
+        <DialogFooter><Button variant="outline" :disabled="migratingScope" @click="scopePlan = null">{{ t('common.cancel') }}</Button><Button :disabled="migratingScope" @click="applyLocalMigration"><Icon name="askx-objects:file" />{{ t('skills.migrateToLocal') }}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   </section>

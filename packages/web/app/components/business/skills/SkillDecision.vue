@@ -79,6 +79,18 @@ const decisionModel = computed<string | undefined>({
 })
 /** 当前修改状态的展示信息。 */
 const currentDecisionPresentation = computed(() => getDecisionPresentation(props.decision.kind))
+/** 当前导入范围；显式选择优先于来源目录的自动识别。 */
+const importScope = computed<'shared' | 'local'>(() => {
+  if ('scope' in props.decision && props.decision.scope) return props.decision.scope
+  if ('sourceLocationId' in props.decision) return findLocation(props.decision.sourceLocationId)?.importScope ?? 'shared'
+  return 'shared'
+})
+
+/** 更新当前 Skill 的导入范围。 */
+function updateImportScope(scope: 'shared' | 'local'): void {
+  if (!('sourceLocationId' in props.decision)) return
+  emit('update:decision', { ...props.decision, scope })
+}
 
 /** 返回位置来源的本地化名称。 */
 function locationSourceName(location: SkillLocation): string {
@@ -241,6 +253,11 @@ watch(renameSourceId, (locationId) => {
       </div>
 
       <div class="grid w-full min-w-0 gap-2 lg:w-[180px] lg:justify-self-end">
+        <div v-if="'sourceLocationId' in decision" class="grid grid-cols-2 rounded-xl border bg-background p-1">
+          <button v-for="scope in (['shared', 'local'] as const)" :key="scope" type="button" class="h-7 rounded-lg text-[10px] font-medium transition" :class="importScope === scope ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'" @click="updateImportScope(scope)">
+            {{ t(scope === 'shared' ? 'skills.sharedSkillsTab' : 'skills.localSkillsTab') }}
+          </button>
+        </div>
         <CsResponsiveSelect
           v-model="decisionModel"
           :options="decisionOptions"

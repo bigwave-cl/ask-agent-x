@@ -118,8 +118,8 @@ function notifyRequestError(error: unknown, fallback = 'requestFailed'): void {
 /** 为分组创建安全的默认决策。 */
 function defaultDecision(group: SkillGroup): SkillDecision {
   const source = group.locations.find((location) => location.metadata.valid && !location.broken)
-  if (group.recommendedAction === 'adopt' && source) return { kind: 'adopt', sourceLocationId: source.id }
-  if (group.recommendedAction === 'merge' && source) return { kind: 'merge', sourceLocationId: source.id }
+  if (group.recommendedAction === 'adopt' && source) return { kind: 'adopt', sourceLocationId: source.id, scope: source.importScope ?? 'shared' }
+  if (group.recommendedAction === 'merge' && source) return { kind: 'merge', sourceLocationId: source.id, scope: source.importScope ?? 'shared' }
   return { kind: 'keep', groupId: group.id }
 }
 
