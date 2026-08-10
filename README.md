@@ -28,8 +28,7 @@ pnpm check
 pnpm askx doctor
 pnpm askx skills scan
 pnpm askx skills scan --platform codex --platform claude --json
-pnpm askx skills sync --platform claude
-pnpm askx skills sync --platform claude --manage-all
+pnpm askx skills scan --platform claude
 pnpm askx skills link --platform claude
 pnpm askx skills unlink --platform claude
 pnpm askx skills history list
@@ -76,13 +75,13 @@ pnpm dev:web
 pnpm package:pack
 ```
 
-默认输出 `./dist/npm/askagent-x-26.807.11.tgz`。本地验证和正式发布都使用这个文件。可直接选择一种包管理器全局安装：
+默认输出 `./dist/npm/askagent-x-26.807.13.tgz`。本地验证和正式发布都使用这个文件。可直接选择一种包管理器全局安装：
 
 ```bash
-npm install --global ./dist/npm/askagent-x-26.807.11.tgz
-pnpm add --global ./dist/npm/askagent-x-26.807.11.tgz
-yarn global add ./dist/npm/askagent-x-26.807.11.tgz
-bun add --global ./dist/npm/askagent-x-26.807.11.tgz
+npm install --global ./dist/npm/askagent-x-26.807.13.tgz
+pnpm add --global ./dist/npm/askagent-x-26.807.13.tgz
+yarn global add ./dist/npm/askagent-x-26.807.13.tgz
+bun add --global ./dist/npm/askagent-x-26.807.13.tgz
 ```
 
 Yarn 命令仅适用于 Yarn Classic。npm、pnpm 或 Yarn Classic 允许生命周期脚本时会通过 `postinstall` 自动启动后台 UI；Bun 默认拦截不受信任依赖的生命周期脚本，需执行 `askx ui start`。使用 `askx ui start|status|stop|restart` 管理服务。
@@ -100,20 +99,20 @@ askx uninstall
 本地观察通过后，正式发布同一份已验证产物，不重新打包：
 
 ```bash
-npm publish ./dist/npm/askagent-x-26.807.11.tgz --access public
+npm publish ./dist/npm/askagent-x-26.807.13.tgz --access public
 ```
 
 `askx ui` 只监听 `127.0.0.1`。开发环境固定使用 `4242`；发布版首次启动会选择可用的五位端口并记住，后续 `start/restart` 默认复用该生产端口。记住的端口被占用时会明确提示先停止占用服务，不会静默切换端口。启动时会生成一次性会话 token。打开不带 token 的页面会进入欢迎登录页，可通过 `askx ui token` 获取当前 token；验证成功后使用 HttpOnly Cookie 保存本次会话。
 
 首次进入 `/skills-x` 会先选择 Codex、Claude Code、Cursor 管理范围，再执行只读目录扫描。平台只是 AskX 根据当前操作系统预设的 Skills 目录，自选文件夹与平台目录复用同一套枚举、读取、内容指纹和去重规则。用户确认后，AskX 先生成 `~/.askx/skills` 统一源，再逐个平台备份原 Skills 目录并接入统一源；单个平台失败只恢复并标记该平台。已接入平台可以随时无损取消或恢复软链：取消时隐藏 AskX 创建的根目录软链并原样放回接入前的平台目录，恢复时将该目录原样收回原备份位并放回软链；两种操作都不会扫描、同步或改写任何 Skill，任一步失败都会逆序恢复已经完成的路径移动。任何相关路径被占用时都会安全停止，不覆盖现有内容。macOS/Linux 使用目录软链，原生 Windows 使用目录 junction。
 
-CLI 提供相同的计划与授权链路：`askx skills sync` 只把平台或 `--directory` 指定目录中的安全版本同步到统一源，内容冲突默认保留；`askx skills link` 只建立或恢复所选平台的整目录软链；`askx skills unlink` 只无损停用软链。交互终端会显示计划并等待确认，自动化脚本必须显式传入 `--yes`，需要稳定机器输出时同时使用 `--json`。首次交互扫描提供 Ink 平台多选；非交互环境通过重复的 `--platform` 明确范围。
+CLI 提供相同的计划与授权链路：`askx skills scan` 负责完整重新扫描或带参数定向导入；`askx skills link` 只建立或恢复所选平台和文件夹的整目录软链；`askx skills unlink` 只无损停用软链。交互终端会显示计划并等待确认，`scan --json` 只输出稳定的只读扫描结果。首次交互扫描提供 Ink 平台多选；定向导入通过重复的 `--platform` 或 `--directory` 明确范围。导入根目录第一层的 `local/` 子目录默认映射为本地专属 Skill，验证时可逐项切换共享/本地范围；已有 Skill 可通过 `askx skills scope <name> --local|--shared` 或 Web 在两种范围间安全迁移。
 
-AskX 首次保存 Skills 配置时会显式安装内置 `askx-skill-manager`。用户可以在扫描确认阶段选择“一键纳入版本管理”，或通过 CLI 的 `--manage-all`、`--manage-skill`、`--migrate-bobo` 逐项决定；默认不改造普通 Skill。版本管理使用稳定 `skill_id`、`YY.MDD.N` 和排除管理元数据的业务 Hash。usage 只在用户明确执行 `askx skills usage record` 后写入本地 Registry，不监听平台、不后台采集、不上传。Web 的 Skill 资源区域提供“共享 Skills / 本地 Skills / 统计”三个视图，统计页首次打开时才异步读取 Registry。
+AskX 首次保存 Skills 配置时会显式安装内置 `askx-skill-manager`。版本管理状态在 Web 统计页中逐项配置，默认不改造普通 Skill。版本管理使用稳定 `skill_id`、`YY.MDD.N` 和排除管理元数据的业务 Hash。usage 只在用户明确执行 `askx skills usage record` 后写入本地 Registry，不监听平台、不后台采集、不上传。Web 的 Skill 资源区域提供“共享 Skills / 本地 Skills / 统计”三个视图，统计页首次打开时才异步读取 Registry。
 
 ```bash
-# 从 Claude Code 和额外目录同步到统一源，不建立软链
-pnpm askx skills sync --platform claude --directory /absolute/path/to/skills
+# 从 Claude Code 和额外目录定向扫描并选择要导入的 Skill
+pnpm askx skills scan --platform claude --directory /absolute/path/to/skills
 
 # 将 Claude Code 的整个 Skills 目录绑定到统一源
 pnpm askx skills link --platform claude
@@ -121,11 +120,15 @@ pnpm askx skills link --platform claude
 # 无损停用 Claude Code 软链并恢复接入前目录
 pnpm askx skills unlink --platform claude
 
-# 自动化环境明确授权并输出纯 JSON
-pnpm askx skills sync --platform claude --yes --json
+# 自动化环境输出只读扫描 JSON
+pnpm askx skills scan --platform claude --json
 
 # 查看本地版本、usage 与同步目标统计
 pnpm askx skills stats
+
+# 将已有共享 Skill 改为本地专属，或恢复为共享
+pnpm askx skills scope my-skill --local
+pnpm askx skills scope my-skill --shared
 ```
 
 AskX 内部状态写入 `~/.askx/config.json`，并使用 revision、原子写入和文件锁避免并发覆盖。语言和主题属于 Web 界面设置，只通过 Web 修改；CLI 不提供通用设置命令。

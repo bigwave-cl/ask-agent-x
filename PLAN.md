@@ -76,7 +76,7 @@ interface AskXModule {
 - `askx settings set theme cyan|rose`：切换 CLI/Web 共享主题色。
 - `askx skills scan [--json]`：只读检测 Skill 拓扑。
 - `askx skills status`：显示冲突、未同步、已挂接、漂移和可恢复状态。
-- `askx skills sync`：解决冲突并汇总到统一源。
+- `askx skills scan`：扫描、解决冲突并汇总到统一源。
 - `askx skills link`：校验同步凭证、询问备份并确认后创建软链。
 - `askx skills unlink`：物化中央版本并取消软链。
 - `askx skills update`：重新生成并应用挂接计划。

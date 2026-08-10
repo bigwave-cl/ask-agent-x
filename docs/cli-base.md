@@ -1,6 +1,6 @@
 # AskAgent X CLI 基础使用
 
-本文档对应 AskAgent X `26.807.11`，说明安装后的基础命令、环境诊断、Web 服务和自动化调用规则。
+本文档对应 AskAgent X `26.807.13`，说明安装后的基础命令、环境诊断、Web 服务和自动化调用规则。
 
 - [CLI 文档总览](./cli.md)
 - [Skills 管理](./cli-skills.md)
@@ -91,7 +91,7 @@ detect → plan → resolve → consent → apply → verify → rollback
 ```bash
 askx doctor --json
 askx skills status --json
-askx skills sync --platform codex --yes --json
+askx skills scan --platform codex --json
 ```
 
 ## 4. 数据范围
