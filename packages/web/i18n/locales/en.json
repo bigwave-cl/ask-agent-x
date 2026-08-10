@@ -25,7 +25,8 @@
     "cancel": "Cancel",
     "confirm": "Confirm",
     "close": "Close",
-    "retry": "Reload"
+    "retry": "Reload",
+    "loading": "Loading…"
   },
   "meta": {
     "description": "AskAgent X local Agent extension control surface",

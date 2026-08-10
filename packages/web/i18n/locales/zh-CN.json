@@ -25,7 +25,8 @@
     "cancel": "取消",
     "confirm": "确认",
     "close": "关闭",
-    "retry": "重新加载"
+    "retry": "重新加载",
+    "loading": "正在加载…"
   },
   "meta": {
     "description": "AskAgent X 本地 Agent 扩展控制台",
