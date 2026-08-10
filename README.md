@@ -26,6 +26,9 @@ AskAgent X 是一个面向本地 Agent 的体验增强与扩展平台。当前�
 pnpm install
 pnpm check
 pnpm askx doctor
+pnpm askx clear
+pnpm askx clear --links
+pnpm askx clear --skills
 pnpm askx skills scan
 pnpm askx skills scan --platform codex --platform claude --json
 pnpm askx skills scan --platform claude
@@ -45,27 +48,71 @@ pnpm askx ui token
 
 ## 本地开发
 
-在根目录启动 CLI 依赖链监听和 Nuxt 热更新服务：
+### 启动完整开发环境
+
+在项目根目录执行：
 
 ```bash
 pnpm dev
 ```
 
-无需 Token 的 UI Demo 支持 `http://127.0.0.1:4242/demo` 和 `http://127.0.0.1:4242/en/demo` 两个 locale 路径，但内容固定展示中文，不解析多语言资源。Demo 只展示和调试 `packages/web/app/components/ui` 中的 shadcn 组件，不读取本地配置。Nuxt Pages 只提供 `/demo` 单页入口，通过 `?module=` 与 `catalog.ts` 异步加载各个示例模块。
+该命令会先构建 CLI 依赖，再同时启动 CLI 依赖链监听和 Nuxt 热更新服务。开发 Web 固定监听 `127.0.0.1:4242`，默认开发 Token 固定为 `askx-local-dev`。
 
-Nuxt 开发页面：`http://127.0.0.1:4242/?token=askx-local-dev`。在另一个终端中直接验证 CLI：
+保持第一个终端运行，在第二个终端获取当前开发登录地址：
+
+```bash
+pnpm askx ui token
+```
+
+开发服务正常时输出：
+
+```text
+快速登录地址: http://127.0.0.1:4242/?token=askx-local-dev
+Token: askx-local-dev
+```
+
+复制快速登录地址到浏览器即可完成验证；也可以直接打开 [http://127.0.0.1:4242/?token=askx-local-dev](http://127.0.0.1:4242/?token=askx-local-dev)。Token 验证成功后由 HttpOnly Cookie 保持本次浏览器会话。
+
+### 开发环境执行 CLI
+
+`pnpm dev` 保持运行时，在另一个终端通过 `pnpm askx` 调用当前仓库构建出的 CLI：
 
 ```bash
 pnpm askx doctor
+pnpm askx ui token
+pnpm askx skills
 pnpm askx skills scan
+pnpm askx skills status
 ```
 
-也可以只启动一侧：
+开发模式下无需执行 `pnpm askx ui start`。`ui start/status/stop/restart` 管理的是安装包启动的后台生产服务；Nuxt 开发服务由 `pnpm dev` 或 `pnpm dev:web` 所在的前台终端管理，停止时在该终端按 `Ctrl+C`。
+
+### 只启动 CLI 或 Web
 
 ```bash
+# 只监听 Core、Adapters、Skills 和 CLI
 pnpm dev:cli
+
+# 只启动 Nuxt Web，固定使用 4242 和 askx-local-dev
 pnpm dev:web
 ```
+
+首次进入仓库或 CLI 依赖发生变化时，优先使用 `pnpm dev`。如果只执行 `pnpm dev:web`，需要确保 CLI 已经构建过，之后才能在另一终端运行 `pnpm askx ui token`。
+
+### 自定义开发 Token
+
+默认联调不需要修改 Token。确需临时指定时，不使用预设的 `pnpm dev:web` 脚本，改为直接启动 Nuxt：
+
+```bash
+NUXT_ASKX_SESSION_TOKEN=my-local-token \
+pnpm --filter @askx/web exec nuxt dev --host 127.0.0.1 --port 4242
+```
+
+此时快速登录地址为 `http://127.0.0.1:4242/?token=my-local-token`。当前 `pnpm askx ui token` 只自动识别默认开发 Token `askx-local-dev`，自定义 Token 由启动者自行保存和使用。
+
+### 无需 Token 的组件 Demo
+
+UI Demo 支持 `http://127.0.0.1:4242/demo` 和 `http://127.0.0.1:4242/en/demo` 两个 locale 路径，不需要 Token。Demo 内容固定展示中文，不读取本地配置；Nuxt Pages 只提供 `/demo` 单页入口，通过 `?module=` 与 `catalog.ts` 异步加载组件示例。
 
 ## 发布前本地安装
 
@@ -75,13 +122,13 @@ pnpm dev:web
 pnpm package:pack
 ```
 
-默认输出 `./dist/npm/askagent-x-26.807.13.tgz`。本地验证和正式发布都使用这个文件。可直接选择一种包管理器全局安装：
+默认输出 `./dist/npm/askagent-x-26.810.1.tgz`。本地验证和正式发布都使用这个文件。可直接选择一种包管理器全局安装：
 
 ```bash
-npm install --global ./dist/npm/askagent-x-26.807.13.tgz
-pnpm add --global ./dist/npm/askagent-x-26.807.13.tgz
-yarn global add ./dist/npm/askagent-x-26.807.13.tgz
-bun add --global ./dist/npm/askagent-x-26.807.13.tgz
+npm install --global ./dist/npm/askagent-x-26.810.1.tgz
+pnpm add --global ./dist/npm/askagent-x-26.810.1.tgz
+yarn global add ./dist/npm/askagent-x-26.810.1.tgz
+bun add --global ./dist/npm/askagent-x-26.810.1.tgz
 ```
 
 Yarn 命令仅适用于 Yarn Classic。npm、pnpm 或 Yarn Classic 允许生命周期脚本时会通过 `postinstall` 自动启动后台 UI；Bun 默认拦截不受信任依赖的生命周期脚本，需执行 `askx ui start`。使用 `askx ui start|status|stop|restart` 管理服务。
@@ -99,7 +146,7 @@ askx uninstall
 本地观察通过后，正式发布同一份已验证产物，不重新打包：
 
 ```bash
-npm publish ./dist/npm/askagent-x-26.807.13.tgz --access public
+npm publish ./dist/npm/askagent-x-26.810.1.tgz --access public
 ```
 
 `askx ui` 只监听 `127.0.0.1`。开发环境固定使用 `4242`；发布版首次启动会选择可用的五位端口并记住，后续 `start/restart` 默认复用该生产端口。记住的端口被占用时会明确提示先停止占用服务，不会静默切换端口。启动时会生成一次性会话 token。打开不带 token 的页面会进入欢迎登录页，可通过 `askx ui token` 获取当前 token；验证成功后使用 HttpOnly Cookie 保存本次会话。

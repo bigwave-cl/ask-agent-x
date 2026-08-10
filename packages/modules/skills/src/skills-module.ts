@@ -22,6 +22,7 @@ import {
   createCanonicalSourceMutationPlan,
   listCanonicalSkillsBackups,
   type CanonicalSkillsBackup,
+  type ClearModule,
   type CanonicalSourceAction,
   type CanonicalSourceMutationPlan,
   type CanonicalSourceMutationReceipt,
@@ -469,9 +470,10 @@ export class SkillsManager {
    * 为统一源清空、备份恢复或永久删除生成确认计划。
    * @param action 二次操作类型。
    * @param backupVersion 要恢复或永久删除的备份版本。
+   * @param clearModules 清空操作选择的基础模块。
    */
-  planCanonicalSource(action: CanonicalSourceAction, backupVersion?: string): Promise<CanonicalSourceMutationPlan> {
-    return createCanonicalSourceMutationPlan({ manifestStore: this.manifestStore }, action, backupVersion)
+  planCanonicalSource(action: CanonicalSourceAction, backupVersion?: string, clearModules?: ClearModule[]): Promise<CanonicalSourceMutationPlan> {
+    return createCanonicalSourceMutationPlan({ manifestStore: this.manifestStore }, action, backupVersion, new Date(), clearModules)
   }
 
   /**

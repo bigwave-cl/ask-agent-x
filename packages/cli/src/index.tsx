@@ -38,6 +38,7 @@ import type { SystemSkillRepairPlan, SystemSkillRepairReceipt } from '@askx/modu
 import type { SkillStatsReport, SkillUsagePlan, SkillUsageReceipt } from '@askx/module-skills/skill-manager-registry'
 import { detectPlatforms, type PlatformDetection } from '@askx/platform-adapters'
 import { readUiSession, startUi, stopUi } from '@askx/web/server'
+import { resolveUiTokenServicePreference } from './ui-token-mode.js'
 import { Command } from 'commander'
 import { Box, render as inkRender, Text, useInput } from 'ink'
 import { useState, type ReactNode } from 'react'
@@ -130,7 +131,7 @@ const messages = {
     languageArgument: 'zh-CN or en', languageDescription: 'Set the shared CLI/Web language', languageError: 'Language must be "zh-CN" or "en"',
     themeArgument: 'cyan or rose', themeDescription: 'Set the shared CLI/Web theme color', themeError: 'Theme color must be "cyan" or "rose"',
     uiDescription: 'Start or manage the local Nuxt management interface', portDescription: 'Production UI port; reuses the last successful port by default', invalidPort: 'Invalid port', tokenDescription: 'Print a quick-login URL and the active local UI token', tokenUrl: 'Quick login URL', tokenValue: 'Token', noToken: 'No active UI session. Run "askx ui start" first.', uiStartDescription: 'Start the local UI as a background service', uiStopDescription: 'Stop the background UI service', uiStatusDescription: 'Show background UI service status', uiRestartDescription: 'Restart the background UI service on the same port', uiAlreadyRunning: 'The local UI is already running', uiStarted: 'The local UI started in the background', uiStopped: 'The local UI service stopped', uiNotRunning: 'The local UI is not running', uiRunning: 'The local UI is running', uninstallDescription: 'Stop the local UI and uninstall AskAgent X with its package manager', uninstallSourceOnly: 'Cannot identify the global package manager. Stop the UI, then uninstall AskAgent X with the package manager used for installation.', uninstallFailed: 'Package manager uninstall failed',
-    manageBackups: 'Manage canonical Skills source backups', clearDescription: 'Clear the current Skill list and create a restorable backup', clearPlan: 'Skill list cleanup plan', clearResult: 'Skill list cleared', historyDescription: 'List completed Skills transactions', rollbackDescription: 'Roll back the latest unchanged Skills transaction', backupListDescription: 'List canonical source backups', backupRestoreDescription: 'Restore the canonical source from a backup', backupRemoveDescription: 'Permanently remove a canonical source backup', receiptArgument: 'transaction receipt ID', backupVersionArgument: 'backup version', historyTitle: 'Skills transaction history', rollbackPlan: 'Skills rollback plan', rollbackResult: 'Skills rollback result', backupRestorePlan: 'Backup restore plan', backupRestoreResult: 'Backup restored', backupRemovePlan: 'Backup removal plan', backupRemoveResult: 'Backup removed', noTransactions: 'No completed Skills transactions.', noBackups: 'No canonical source backups.', restored: 'restored', rollbackRejected: 'rollback rejected', valid: 'valid', invalid: 'invalid',
+    manageBackups: 'Manage canonical Skills source backups', clearDescription: 'Clear all managed data, or only symlink settings or Skill data', clearLinksDescription: 'Clear managed symlink settings only', clearSkillsDescription: 'Clear managed Skill data only', clearPlan: 'Clear plan', clearScope: 'Clear scope', clearModuleLinks: 'symlink settings', clearModuleSkills: 'Skill data', clearResult: 'Clear completed', linkBindings: 'Symlink bindings', noData: 'No data', backedUp: 'backed up', skillBackup: 'SKILL', backupCount: 'Backed up {success}, failed {failed}', backupIdentifier: 'Backup identifier', backupPath: 'Backup path', historyDescription: 'List completed Skills transactions', rollbackDescription: 'Roll back the latest unchanged Skills transaction', backupListDescription: 'List canonical source backups', backupRestoreDescription: 'Restore the canonical source from a backup', backupRemoveDescription: 'Permanently remove a canonical source backup', receiptArgument: 'transaction receipt ID', backupVersionArgument: 'backup version', historyTitle: 'Skills transaction history', rollbackPlan: 'Skills rollback plan', rollbackResult: 'Skills rollback result', backupRestorePlan: 'Backup restore plan', backupRestoreResult: 'Backup restored', backupRemovePlan: 'Backup removal plan', backupRemoveResult: 'Backup removed', noTransactions: 'No completed Skills transactions.', noBackups: 'No canonical source backups.', restored: 'restored', rollbackRejected: 'rollback rejected', valid: 'valid', invalid: 'invalid',
     choosePlatforms: 'Choose platforms containing Skills', chooseLinkPlatforms: 'Choose platforms to connect with directory links', chooseSkills: 'Choose Skills to import', chooseSkillsHint: 'Space selects · L toggles Shared/Local · Enter continues · Esc/Q cancels', sharedScope: 'Shared', localScope: 'Local', scanOnlySelected: 'Space toggles · Enter confirms · Esc/Q cancels', linkOnlySelected: 'Selected platforms will use the AskX Skill list · Space toggles · Enter continues · Esc/Q cancels', platformRequired: 'Select at least one platform.', sourceRequired: 'Select a platform or enter at least one custom folder.', platformSelectionRequired: 'First scan requires --platform in non-interactive mode.', platformActionBind: 'connect', platformActionResume: 'restore connection', platformActionSkip: 'already connected; no action this time', alreadyLinkedNoAction: 'already connected; no action this time', customScanPrompt: 'Custom scan folder (leave empty to start scanning, Ctrl+C cancels): ', customLinkPrompt: 'Add another custom link folder (leave empty to review defaults, Ctrl+C cancels): ', customLinkDirectorySelection: 'Keep linked folders by number (Enter keeps all defaults; 0 selects none):', customDirectoryLimit: 'Custom scan folders are limited to 3. Enter up to 3 numbers to keep (comma-separated):', customDirectorySelectionInvalid: 'Select up to 3 valid, non-duplicate numbers.', unsafeSkill: 'conflict · resolve in the next step', conflictResolution: 'Resolve Skill conflicts', conflictProgress: 'Conflict {current}/{total}', conflictActionHint: 'Choose an action · Enter continues · Esc/Q cancels the entire command', conflictKeep: 'Keep unchanged (recommended)', conflictReplace: 'Choose one source as the canonical version', conflictRename: 'Import one source with a new name', conflictChooseSource: 'Choose source', conflictSourceHint: 'Enter selects · B goes back · Esc/Q cancels the entire command', conflictRenamePrompt: 'New Skill name (lowercase letters, numbers and hyphens)', conflictRenameInvalid: 'Use lowercase letters, numbers and single hyphens; the name must not already exist.', conflictSummary: 'Conflict decisions', conflictDecisionKeep: 'keep unchanged', conflictDecisionReplace: 'use {source} as canonical version', conflictDecisionRename: 'import {source} as {name}',
     skillConflict: 'Skill {name} has conflicting content.', skillBroken: 'Skill {name} has a broken link.', skillInvalid: 'Skill {name} has invalid metadata.',
     linkDescription: 'Bind or resume selected Agent Skills directories to the canonical source', unlinkDescription: 'Suspend selected managed Skills-directory links without synchronizing content',
@@ -157,7 +158,7 @@ const messages = {
     languageArgument: 'zh-CN 或 en', languageDescription: '设置 CLI/Web 共享语言', languageError: '语言必须是 "zh-CN" 或 "en"',
     themeArgument: 'cyan 或 rose', themeDescription: '设置 CLI/Web 共享主题色', themeError: '主题色必须是 "cyan" 或 "rose"',
     uiDescription: '启动或管理本地 Nuxt 管理界面', portDescription: '生产 UI 端口，默认复用上次成功启动的端口', invalidPort: '无效端口', tokenDescription: '输出本地 UI 快速登录地址和 token', tokenUrl: '快速登录地址', tokenValue: 'Token', noToken: '没有活动的 UI 会话，请先运行 "askx ui start"。', uiStartDescription: '以后台服务方式启动本地 UI', uiStopDescription: '停止后台 UI 服务', uiStatusDescription: '查看后台 UI 服务状态', uiRestartDescription: '使用同一端口重启后台 UI 服务', uiAlreadyRunning: '本地 UI 已在运行', uiStarted: '本地 UI 已在后台启动', uiStopped: '本地 UI 服务已停止', uiNotRunning: '本地 UI 未运行', uiRunning: '本地 UI 正在运行', uninstallDescription: '停止本地 UI，并使用原包管理器全局卸载 AskAgent X', uninstallSourceOnly: '无法识别全局安装使用的包管理器，请先停止 UI，再使用安装时的包管理器卸载 AskAgent X', uninstallFailed: '包管理器卸载失败',
-    manageBackups: '管理统一 Skills 来源备份', clearDescription: '清空当前 Skill 列表，并创建可恢复备份', clearPlan: 'Skill 列表清理计划', clearResult: 'Skill 列表已清空', historyDescription: '列出已完成的 Skills 事务', rollbackDescription: '回滚最新且状态未变化的 Skills 事务', backupListDescription: '列出统一源备份', backupRestoreDescription: '从指定备份恢复统一源', backupRemoveDescription: '永久删除指定统一源备份', receiptArgument: '事务回执 ID', backupVersionArgument: '备份版本', historyTitle: 'Skills 事务历史', rollbackPlan: 'Skills 回滚计划', rollbackResult: 'Skills 回滚结果', backupRestorePlan: '备份恢复计划', backupRestoreResult: '备份恢复完成', backupRemovePlan: '备份删除计划', backupRemoveResult: '备份删除完成', noTransactions: '没有已完成的 Skills 事务。', noBackups: '没有统一源备份。', restored: '已恢复', rollbackRejected: '拒绝回滚', valid: '有效', invalid: '无效',
+    manageBackups: '管理统一 Skills 来源备份', clearDescription: '清空全部受管数据，或仅清空软链配置、Skill 数据', clearLinksDescription: '仅清空受管软链配置', clearSkillsDescription: '仅清空受管 Skill 数据', clearPlan: '一键清空计划', clearScope: '清空范围', clearModuleLinks: '软链配置', clearModuleSkills: 'Skill 数据', clearResult: '一键清空完成', linkBindings: '软链绑定', noData: '无数据', backedUp: '已备份', skillBackup: 'SKILL', backupCount: '已备份 {success} 个，失败 {failed} 个', backupIdentifier: '备份标识', backupPath: '备份路径', historyDescription: '列出已完成的 Skills 事务', rollbackDescription: '回滚最新且状态未变化的 Skills 事务', backupListDescription: '列出统一源备份', backupRestoreDescription: '从指定备份恢复统一源', backupRemoveDescription: '永久删除指定统一源备份', receiptArgument: '事务回执 ID', backupVersionArgument: '备份版本', historyTitle: 'Skills 事务历史', rollbackPlan: 'Skills 回滚计划', rollbackResult: 'Skills 回滚结果', backupRestorePlan: '备份恢复计划', backupRestoreResult: '备份恢复完成', backupRemovePlan: '备份删除计划', backupRemoveResult: '备份删除完成', noTransactions: '没有已完成的 Skills 事务。', noBackups: '没有统一源备份。', restored: '已恢复', rollbackRejected: '拒绝回滚', valid: '有效', invalid: '无效',
     choosePlatforms: '选择存放 Skill 的平台', chooseLinkPlatforms: '选择需要设置目录软链的平台', chooseSkills: '选择需要导入的 Skills', chooseSkillsHint: '空格选择 · L 切换共享/本地 · 回车继续 · Esc/Q 放弃', sharedScope: '共享', localScope: '本地', scanOnlySelected: '空格切换 · 回车确认 · Esc/Q 放弃', linkOnlySelected: '选中平台将使用 AskX Skill 列表 · 空格切换 · 回车进入下一步 · Esc/Q 放弃', platformRequired: '至少选择一个平台。', sourceRequired: '请选择平台，或至少输入一个自定义文件夹。', platformSelectionRequired: '非交互模式首次扫描必须传入 --platform。', platformActionBind: '新建关联', platformActionResume: '恢复关联', platformActionSkip: '已存在关联，本次不处理', alreadyLinkedNoAction: '已存在关联，本次不处理', customScanPrompt: '输入需要扫描的自定义文件夹（直接回车开始扫描，Ctrl+C 放弃）：', customLinkPrompt: '添加其他软链文件夹（直接回车查看第一步默认项，Ctrl+C 放弃）：', customLinkDirectorySelection: '输入要保留软链的文件夹编号（回车保留全部默认项，输入 0 全不选）：', customDirectoryLimit: '自定义扫描文件夹最多保留 3 个，请输入要保留的编号（最多 3 个，逗号分隔）：', customDirectorySelectionInvalid: '请输入最多 3 个有效且不重复的编号。', unsafeSkill: '存在冲突 · 下一步处理', conflictResolution: '解决 Skill 冲突', conflictProgress: '冲突 {current}/{total}', conflictActionHint: '选择处理方式 · 回车继续 · Esc/Q 放弃整次命令', conflictKeep: '保持现状，本次跳过（推荐）', conflictReplace: '选择一个来源作为统一版本', conflictRename: '选择一个来源并以新名称导入', conflictChooseSource: '选择来源', conflictSourceHint: '回车选择 · B 返回 · Esc/Q 放弃整次命令', conflictRenamePrompt: '输入新的 Skill 名称（小写字母、数字和连字符）', conflictRenameInvalid: '名称只能包含小写字母、数字和单个连字符，并且不能与已有 Skill 重名。', conflictSummary: '冲突处理结果', conflictDecisionKeep: '保持现状', conflictDecisionReplace: '使用 {source} 作为统一版本', conflictDecisionRename: '将 {source} 导入为 {name}',
     skillConflict: 'Skill {name} 在不同平台的内容不一致。', skillBroken: 'Skill {name} 包含失效软链。', skillInvalid: 'Skill {name} 的元数据无效。',
     linkDescription: '将选中的 Agent Skills 根目录绑定或恢复到统一源', unlinkDescription: '无损停用选中的受管 Skills 根目录软链，不同步内容',
@@ -898,12 +899,36 @@ function CanonicalBackupsView({ backups, locale }: { backups: CanonicalSkillsBac
 
 /** 展示统一源备份写计划。 */
 function CanonicalPlanView({ plan, locale, title }: { plan: CanonicalSourceMutationPlan; locale: AskXLocale; title: string }) {
+  const clearScope = plan.clearModules.map(module => t(locale, module === 'links' ? 'clearModuleLinks' : 'clearModuleSkills')).join('、')
   return (
     <Frame title={title}>
       <Text>{t(locale, 'operations')}  <Text color="yellow">{plan.action}</Text></Text>
       <Text>{t(locale, 'backup')}  <Text color={accent}>{plan.backupVersion ?? '-'}</Text></Text>
       <Text>{t(locale, 'skills')}  {plan.currentSkillCount}</Text>
+      {plan.action === 'clear' && <Text>{t(locale, 'clearScope')}  <Text color={accent}>{clearScope}</Text></Text>}
       <Text dimColor>{t(locale, 'planHash')}  {plan.hash}</Text>
+    </Frame>
+  )
+}
+
+/** 展示清空后的软链与 Skill 备份回执。 */
+function CanonicalClearResultView({ receipt, locale }: { receipt: CanonicalSourceMutationReceipt; locale: AskXLocale }) {
+  const summary = receipt.clearBackupSummary
+  const formatCount = (template: string, success: number, failed: number) => template.replace('{success}', String(success)).replace('{failed}', String(failed))
+  return (
+    <Frame title={t(locale, 'clearResult')}>
+      <Text bold>{t(locale, 'linkBindings')}:</Text>
+      {!summary?.links.length
+        ? <Text dimColor>{t(locale, 'noData')}</Text>
+        : summary.links.map(link => <Text key={`${link.kind}:${link.id}`}>· <Text color={link.status === 'backed-up' ? 'green' : 'red'}>{link.name}  {link.status === 'backed-up' ? t(locale, 'backedUp') : t(locale, 'failed')}</Text></Text>)}
+      <Box flexDirection="column" marginTop={1}>
+        <Text bold>{t(locale, 'skillBackup')}:</Text>
+        {!summary || (summary.skills.backedUp === 0 && summary.skills.failed === 0)
+          ? <Text dimColor>{t(locale, 'noData')}</Text>
+          : <Text>{formatCount(t(locale, 'backupCount'), summary.skills.backedUp, summary.skills.failed)}</Text>}
+      </Box>
+      {summary?.backupVersion && <Text>{t(locale, 'backupIdentifier')}:  <Text color={accent}>{summary.backupVersion}</Text></Text>}
+      {summary?.backupPath && <Text>{t(locale, 'backupPath')}:  <Text color={accent}>{summary.backupPath}</Text></Text>}
     </Frame>
   )
 }
@@ -1006,7 +1031,7 @@ function UiView({ url, locale }: { url: string; locale: AskXLocale }) {
 
 const program = new Command()
 /** 当前 AskAgent X 发布版本，格式为“年.月日.当日次数”。 */
-const askxVersion = '26.807.13'
+const askxVersion = '26.810.1'
 program.name('askx').description(t(activeLocale, 'appDescription')).version(askxVersion)
 
 program
@@ -1017,6 +1042,25 @@ program
     const detections = await detectPlatforms()
     if (json) console.log(JSON.stringify(detections, null, 2))
     else render(<DoctorView detections={detections} locale={activeLocale} />)
+  })
+
+program
+  .command('clear')
+  .description(t(activeLocale, 'clearDescription'))
+  .option('--links', t(activeLocale, 'clearLinksDescription'))
+  .option('--skills', t(activeLocale, 'clearSkillsDescription'))
+  .option('--json', t(activeLocale, 'jsonDescription'))
+  .option('-y, --yes', t(activeLocale, 'yesDescription'))
+  .action(async (options: SkillsWriteOptions & { links?: boolean, skills?: boolean }) => {
+    const clearModules = options.links || options.skills
+      ? [...(options.links ? ['links' as const] : []), ...(options.skills ? ['skills' as const] : [])]
+      : ['links' as const, 'skills' as const]
+    const plan = await skillsManager.planCanonicalSource('clear', undefined, clearModules)
+    if (!options.json) render(<CanonicalPlanView plan={plan} locale={activeLocale} title={t(activeLocale, 'clearPlan')} />)
+    if (!await authorizeWrite(options, plan)) return
+    const receipt = await skillsManager.applyCanonicalSource(plan, consentFor(plan))
+    if (options.json) console.log(JSON.stringify(receipt, null, 2))
+    else render(<CanonicalClearResultView receipt={receipt} locale={activeLocale} />)
   })
 
 const skills = program.command('skills').description(t(activeLocale, 'skillsDescription'))
@@ -1520,20 +1564,6 @@ skills.command('status').description(t(activeLocale, 'statusDescription')).optio
   else render(<StatusView status={issues.length ? 'warning' : 'ok'} issues={issues} fingerprint={report.fingerprint} locale={activeLocale} />)
 })
 
-skills
-  .command('clear')
-  .description(t(activeLocale, 'clearDescription'))
-  .option('--json', t(activeLocale, 'jsonDescription'))
-  .option('-y, --yes', t(activeLocale, 'yesDescription'))
-  .action(async (options: SkillsWriteOptions) => {
-    const plan = await skillsManager.planCanonicalSource('clear')
-    if (!options.json) render(<CanonicalPlanView plan={plan} locale={activeLocale} title={t(activeLocale, 'clearPlan')} />)
-    if (!await authorizeWrite(options, plan)) return
-    const receipt = await skillsManager.applyCanonicalSource(plan, consentFor(plan))
-    if (options.json) console.log(JSON.stringify(receipt, null, 2))
-    else render(<NoticeView title={t(activeLocale, 'clearResult')} message={receipt.createdBackup?.version ?? receipt.status} />)
-  })
-
 const history = skills.command('history').description(t(activeLocale, 'historyDescription'))
 history.command('list').option('--json', t(activeLocale, 'jsonDescription')).action(async ({ json }: { json?: boolean }) => {
   const receipts = await skillsManager.history()
@@ -1773,6 +1803,23 @@ ui
   .command('token')
   .description(t(activeLocale, 'tokenDescription'))
   .action(async () => {
+    const developmentToken = 'askx-local-dev'
+    const printDevelopmentToken = async (): Promise<boolean> => {
+      try {
+        const response = await fetch(`http://127.0.0.1:4242/api/health?token=${developmentToken}`)
+        if (response.ok) {
+          const quickUrl = `http://127.0.0.1:4242/?token=${developmentToken}`
+          console.log(`${t(activeLocale, 'tokenUrl')}: ${terminalUrl(quickUrl)}`)
+          console.log(`${t(activeLocale, 'tokenValue')}: ${developmentToken}`)
+          return true
+        }
+      } catch {
+        // 开发服务未运行时继续检查安装版后台服务。
+      }
+      return false
+    }
+
+    if (resolveUiTokenServicePreference() === 'development' && await printDevelopmentToken()) return
     const activeSession = await readUiSession()
     if (activeSession) {
       const quickUrl = `http://127.0.0.1:${activeSession.port}/?token=${encodeURIComponent(activeSession.token)}`
@@ -1780,19 +1827,7 @@ ui
       console.log(`${t(activeLocale, 'tokenValue')}: ${activeSession.token}`)
       return
     }
-
-    const developmentToken = 'askx-local-dev'
-    try {
-      const response = await fetch(`http://127.0.0.1:4242/api/health?token=${developmentToken}`)
-      if (response.ok) {
-        const quickUrl = `http://127.0.0.1:4242/?token=${developmentToken}`
-        console.log(`${t(activeLocale, 'tokenUrl')}: ${terminalUrl(quickUrl)}`)
-        console.log(`${t(activeLocale, 'tokenValue')}: ${developmentToken}`)
-        return
-      }
-    } catch {
-      // The local development server is not running.
-    }
+    if (await printDevelopmentToken()) return
     throw new Error(t(activeLocale, 'noToken'))
   })
 

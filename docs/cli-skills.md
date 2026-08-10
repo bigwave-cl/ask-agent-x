@@ -1,6 +1,6 @@
 # AskAgent X CLI Skills 管理
 
-本文档对应 AskAgent X `26.807.13`，按照用户实际操作顺序说明如何查看、扫描、验证、关联、管理和统计 Skill，并提供完整的 Skills CLI API 参考。
+本文档对应 AskAgent X `26.810.1`，按照用户实际操作顺序说明如何查看、扫描、验证、关联、管理和统计 Skill，并提供完整的 Skills CLI API 参考。
 
 - [CLI 文档总览](./cli.md)
 - [CLI 基础使用](./cli-base.md)
@@ -189,13 +189,17 @@ askx skills scope my-skill --shared
 
 CLI 后续增加导出命令时，应只读取当前统一源并输出到用户指定位置，不改变 Skill、软链或统计数据。
 
-#### 清空全部 Skill
+#### 清空全部受管数据
 
 ```bash
-askx skills clear
+askx clear
+askx clear --links
+askx clear --skills
 ```
 
-命令会先展示当前 Skill 数量、备份版本和计划 Hash。确认后清空统一 Skill 列表，并在存在用户 Skill 时创建长期备份。
+`askx clear` 是根级基础命令，不属于 `skills` 子命令。无参数时同时清空用户 Skill 和软链配置；`--links` 只清空软链配置，`--skills` 只清空用户 Skill。命令会先展示影响数量、备份版本和计划 Hash。
+
+执行结果会分别展示“软链绑定”和“SKILL”。完全没有数据时，两项均显示“无数据”；有数据时会展示各软链的备份状态、Skill 成功/失败数量、备份标识和绝对路径。选择软链模块时会取消受管软链、恢复接入前目录并删除绑定配置。
 
 清空不会静默删除：
 
@@ -268,7 +272,7 @@ askx skills status
 
 # Skill 管理
 askx skills scan --platform <platform>
-askx skills clear
+askx clear
 askx skills backups list
 
 # Skill 统计
@@ -381,16 +385,18 @@ askx skills status --json
 
 写入：无。
 
-### 2.7 `askx skills clear`
+### 2.7 `askx clear`
 
 ```bash
-askx skills clear
-askx skills clear --yes --json
+askx clear
+askx clear --yes --json
+askx clear --links
+askx clear --skills
 ```
 
-作用：清空统一 Skill 列表，并为用户 Skill 创建可恢复的长期备份。
+作用：默认清空用户 Skill 和全部软链配置；通过参数只清空指定模块，并创建可追溯的长期备份。
 
-写入：统一源、manifest、备份和事务回执。
+写入：统一源、manifest、包含软链配置快照的备份，以及带成功/失败数量和绝对路径的事务回执。
 
 不会：删除长期备份、Registry 或未受 AskX 管理的外部文件。
 
@@ -544,7 +550,7 @@ askx skills unlink --platform codex
 askx skills status
 
 # Skill 管理
-askx skills clear
+askx clear
 askx skills scope my-skill --local
 askx skills scope my-skill --shared
 askx skills backups list

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -16,7 +16,7 @@ import { hashSkillDirectory } from './scanner.js'
 const temporaryDirectories: string[] = []
 
 /** 创建已经初始化的统一源测试环境。 */
-async function createFixture(withSkill = true) {
+async function createFixture(withSkill = true, withBinding = true) {
   const dataDir = await mkdtemp(join(tmpdir(), 'askx-canonical-source-'))
   temporaryDirectories.push(dataDir)
   const canonicalRoot = join(dataDir, 'skills')
@@ -35,6 +35,7 @@ async function createFixture(withSkill = true) {
       updatedAt: new Date('2026-08-01T08:00:00.000Z').toISOString(),
     })
   }
+  if (withBinding) await symlink(canonicalRoot, join(dataDir, 'claude-skills'), 'dir')
   await manifestStore.write({
     version: 3,
     revision: 0,
@@ -42,12 +43,12 @@ async function createFixture(withSkill = true) {
     lastScan: { scannedAt: new Date('2026-08-01T08:00:00.000Z').toISOString(), fingerprint: 'fixture', platforms: ['claude'] },
     skills,
     localSkills: [],
-    platformBindings: [{
+    platformBindings: withBinding ? [{
       platform: 'claude',
       path: join(dataDir, 'claude-skills'),
       target: canonicalRoot,
       updatedAt: new Date('2026-08-01T08:00:00.000Z').toISOString(),
-    }],
+    }] : [],
   }, 0)
   return { dataDir, canonicalRoot, manifestStore }
 }
@@ -70,6 +71,12 @@ describe('统一 Skill 来源备份管理', () => {
     expect(firstPlan.backupVersion).toBe('2026-08-03-01')
     const firstReceipt = await applyCanonicalSourceMutationPlan({ manifestStore: fixture.manifestStore }, firstPlan, consent(firstPlan))
     expect(firstReceipt.createdBackup?.version).toBe('2026-08-03-01')
+    expect(firstReceipt.clearBackupSummary).toMatchObject({
+      links: [{ name: 'claude', status: 'backed-up' }],
+      skills: { backedUp: 1, failed: 0 },
+      backupVersion: '2026-08-03-01',
+    })
+    expect(firstReceipt.clearBackupSummary?.backupPath).toBe(join(fixture.dataDir, 'backups', 'skills-source', '2026-08-03-01'))
     expect(await readdir(fixture.canonicalRoot)).toEqual(['askx-skill-manager'])
     expect((await fixture.manifestStore.read())?.skills.map((skill) => skill.name)).toEqual(['askx-skill-manager'])
 
@@ -85,16 +92,37 @@ describe('统一 Skill 来源备份管理', () => {
   })
 
   it('统一源没有内容时直接幂等跳过且不创建备份', async () => {
-    const fixture = await createFixture(false)
+    const fixture = await createFixture(false, false)
     const plan = await createCanonicalSourceMutationPlan({ manifestStore: fixture.manifestStore }, 'clear', undefined, new Date('2026-08-03T12:00:00.000Z'))
     expect(plan.backupRequired).toBe(false)
     expect(plan.backupVersion).toBeUndefined()
     const receipt = await applyCanonicalSourceMutationPlan({ manifestStore: fixture.manifestStore }, plan, consent(plan))
     expect(receipt.status).toBe('skipped')
+    expect(receipt.clearBackupSummary).toEqual({ links: [], skills: { backedUp: 0, failed: 0 } })
     expect(await listCanonicalSkillsBackups({ manifestStore: fixture.manifestStore })).toEqual([])
   })
 
-  it('从备份恢复统一源和 Skill 清单并保留当前平台绑定', async () => {
+  it('仅清空 Skill 时保留现有软链配置', async () => {
+    const fixture = await createFixture()
+    const plan = await createCanonicalSourceMutationPlan({ manifestStore: fixture.manifestStore }, 'clear', undefined, new Date('2026-08-03T12:00:00.000Z'), ['skills'])
+    expect(plan.clearModules).toEqual(['skills'])
+    expect(plan.linkBindings).toEqual([])
+    await applyCanonicalSourceMutationPlan({ manifestStore: fixture.manifestStore }, plan, consent(plan))
+    expect((await fixture.manifestStore.read())?.platformBindings.map((binding) => binding.platform)).toEqual(['claude'])
+    expect(await readFile(join(fixture.dataDir, 'claude-skills', 'askx-skill-manager', 'SKILL.md'), 'utf8')).toContain('askx-skill-manager')
+  })
+
+  it('仅清空软链时保留用户 Skill 并删除绑定配置', async () => {
+    const fixture = await createFixture()
+    const plan = await createCanonicalSourceMutationPlan({ manifestStore: fixture.manifestStore }, 'clear', undefined, new Date('2026-08-03T12:00:00.000Z'), ['links'])
+    expect(plan.clearModules).toEqual(['links'])
+    const receipt = await applyCanonicalSourceMutationPlan({ manifestStore: fixture.manifestStore }, plan, consent(plan))
+    expect(receipt.clearBackupSummary?.skills).toEqual({ backedUp: 0, failed: 0 })
+    expect((await fixture.manifestStore.read())?.platformBindings).toEqual([])
+    expect(await readFile(join(fixture.canonicalRoot, 'demo-skill', 'SKILL.md'), 'utf8')).toContain('初始内容')
+  })
+
+  it('从备份恢复统一源和 Skill 清单且不自动重建已清空的软链', async () => {
     const fixture = await createFixture()
     const clearPlan = await createCanonicalSourceMutationPlan({ manifestStore: fixture.manifestStore }, 'clear', undefined, new Date('2026-08-03T12:00:00.000Z'))
     await applyCanonicalSourceMutationPlan({ manifestStore: fixture.manifestStore }, clearPlan, consent(clearPlan))
@@ -104,7 +132,7 @@ describe('统一 Skill 来源备份管理', () => {
     expect(await readFile(join(fixture.canonicalRoot, 'demo-skill', 'SKILL.md'), 'utf8')).toContain('初始内容')
     const manifest = await fixture.manifestStore.read()
     expect(manifest?.skills.map((skill) => skill.name)).toEqual(['askx-skill-manager', 'demo-skill'])
-    expect(manifest?.platformBindings.map((binding) => binding.platform)).toEqual(['claude'])
+    expect(manifest?.platformBindings).toEqual([])
   })
 
   it('永久删除备份后无法再次恢复', async () => {

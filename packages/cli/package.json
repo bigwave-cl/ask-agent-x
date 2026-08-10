@@ -1,6 +1,6 @@
 {
   "name": "askagent-x",
-  "version": "26.807.13",
+  "version": "26.810.1",
   "description": "Extend every agent. Keep control.",
   "type": "module",
   "bin": {

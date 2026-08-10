@@ -11,6 +11,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import type { AskxIconName } from '@/lib/iconCatalog'
 import { parseSessionCredential } from '@/lib/session-credential'
 import { skillPlatformPresentations } from '@/lib/skillPlatformPresentation'
+import { useConfirm } from '@/composables/useConfirm'
 
 /** 设置页展示的 Agent 平台。 */
 const agents: Array<{ id: ManagedPlatformId; name: string; icon: AskxIconName; note: string }> = [
@@ -54,7 +55,6 @@ const draft = reactive<{ backupBeforeLink: boolean; platforms: ManagedPlatformId
 })
 const loading = ref(true)
 const saving = ref(false)
-const resetOpen = ref(false)
 const resetting = ref(false)
 const dirty = ref(false)
 const feedbackKey = ref<FeedbackKey>('feedbackConnecting')
@@ -297,7 +297,7 @@ async function saveSettings() {
 }
 
 /** 恢复全部共享设置默认值，同时保留 Skills、备份和链接数据。 */
-async function resetSettings(close: () => void) {
+async function resetSettings(done: () => void) {
   if (!settings.value || resetting.value) return
   resetting.value = true
   try {
@@ -306,7 +306,7 @@ async function resetSettings(close: () => void) {
       body: { revision: settings.value.revision, confirmed: true },
     })
     await applySettings(updated, 'feedbackReset', { revision: updated.revision })
-    close()
+    done()
   } catch (error) {
     if (errorStatus(error) === 409) {
       dirty.value = false
@@ -318,6 +318,18 @@ async function resetSettings(close: () => void) {
   } finally {
     resetting.value = false
   }
+}
+
+/** 打开共享设置重置确认。 */
+function requestResetSettings(): void {
+  useConfirm({
+    title: copy.value.resetSettingsConfirmTitle,
+    desc: copy.value.resetSettingsConfirmDescription,
+    cancelText: copy.value.resetSettingsCancel,
+    okText: copy.value.confirmResetSettings,
+    okVariant: 'destructive',
+    onOk: async done => resetSettings(done),
+  })
 }
 
 function openWorkspacePage(destination: WorkspaceView) {
@@ -592,7 +604,7 @@ onBeforeUnmount(() => {
               <CardDescription>{{ copy.resetSettingsDescription }}</CardDescription>
             </CardHeader>
             <CardFooter>
-              <Button variant="destructive" size="40" :disabled="loading || saving" data-testid="reset-settings" @click="resetOpen = true">
+              <Button variant="destructive" size="40" :disabled="loading || saving" data-testid="reset-settings" @click="requestResetSettings">
                 <Icon name="askx-actions:refresh" />{{ copy.resetSettingsAction }}
               </Button>
             </CardFooter>
@@ -600,22 +612,6 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <CsResponsiveOverlayDialogDrawer
-        v-model:open="resetOpen"
-        :title="copy.resetSettingsConfirmTitle"
-        :description="copy.resetSettingsConfirmDescription"
-        :dismissible="!resetting"
-        :close-disabled="resetting"
-        :close-label="copy.resetSettingsCancel"
-      >
-        <p class="rounded-2xl border bg-muted/20 p-4 text-xs leading-5 text-muted-foreground">{{ copy.resetSettingsPreserved }}</p>
-        <template #footer="{ close }">
-          <Button variant="outline" :disabled="resetting" @click="close">{{ copy.resetSettingsCancel }}</Button>
-          <Button variant="destructive" :disabled="resetting" data-testid="confirm-reset-settings" @click="resetSettings(close)">
-            <Icon name="askx-actions:refresh" :class="{ 'animate-spin': resetting }" />{{ resetting ? copy.resettingSettings : copy.confirmResetSettings }}
-          </Button>
-        </template>
-      </CsResponsiveOverlayDialogDrawer>
     </CsWorkspaceContent>
 
   </div>

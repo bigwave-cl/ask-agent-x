@@ -1,4 +1,4 @@
-import { canonicalSourceActionSchema } from '@askx/module-skills/canonical-source-manager'
+import { canonicalSourceActionSchema, clearModuleSchema } from '@askx/module-skills/canonical-source-manager'
 import type { CanonicalSourceMutationPlan } from '@askx/module-skills/canonical-source-manager'
 import { z } from 'zod'
 import { skillsManager, throwSkillsApiError } from '../../../utils/skills.js'
@@ -7,12 +7,13 @@ import { skillsManager, throwSkillsApiError } from '../../../utils/skills.js'
 const requestSchema = z.object({
   action: canonicalSourceActionSchema,
   backupVersion: z.string().min(1).optional(),
+  clearModules: z.array(clearModuleSchema).min(1).max(2).optional(),
 })
 
 export default defineEventHandler(async (event): Promise<CanonicalSourceMutationPlan> => {
   try {
     const input = requestSchema.parse(await readBody(event))
-    return await skillsManager.planCanonicalSource(input.action, input.backupVersion)
+    return await skillsManager.planCanonicalSource(input.action, input.backupVersion, input.clearModules)
   } catch (error) {
     throwSkillsApiError(error)
   }

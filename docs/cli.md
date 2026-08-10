@@ -1,6 +1,6 @@
 # AskAgent X CLI 文档总览
 
-本文档对应 AskAgent X `26.807.13`。CLI 文档按基础运行能力和 Skills 管理两个模块拆分，每份文档都可以独立阅读。
+本文档对应 AskAgent X `26.810.1`。CLI 文档按基础运行能力和 Skills 管理两个模块拆分，每份文档都可以独立阅读。
 
 - [返回项目 README](../README.md)
 
@@ -64,6 +64,11 @@ askx skills scan --platform codex
 askx skills link --platform codex
 askx skills stats
 
+# 基础清空：默认清空 Skill 与软链配置
+askx clear
+askx clear --links
+askx clear --skills
+
 # Web
 askx ui status
 askx ui token
@@ -78,7 +83,8 @@ askx uninstall
 | --- | --- | --- | --- | --- |
 | `askx doctor` | 否 | 否 | 否 | 否 |
 | `askx skills scan/status/stats` | `scan` 先只读扫描 | `scan` 最终确认后会 | `scan` 最终确认后会 | 否 |
-| `askx skills clear/backups` | 否 | 是 | 否 | 否 |
+| `askx clear` | 否 | 默认是，可用 `--links` 排除 | 默认是，可用 `--skills` 排除 | 否 |
+| `askx skills backups` | 否 | 恢复时会 | 否 | 否 |
 | `askx skills link/unlink` | 否 | 否 | 是 | 否 |
 | `askx ui/uninstall` | 否 | 否 | 否 | 是 |
 

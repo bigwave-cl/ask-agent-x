@@ -1,6 +1,6 @@
 # AskAgent X CLI 基础使用
 
-本文档对应 AskAgent X `26.807.13`，说明安装后的基础命令、环境诊断、Web 服务和自动化调用规则。
+本文档对应 AskAgent X `26.810.1`，说明安装后的基础命令、环境诊断、Web 服务和自动化调用规则。
 
 - [CLI 文档总览](./cli.md)
 - [Skills 管理](./cli-skills.md)
@@ -111,7 +111,20 @@ AskAgent X 默认只操作当前设备中的本地数据，不上传 Skill 内�
 
 Skills、备份和事务的详细规则见 [Skills 管理文档](./cli-skills.md)。
 
-## 5. Web 服务管理
+## 5. 一键清空
+
+\`askx clear\` 是根级基础命令。无参数时默认清空用户 Skill 与全部受管软链配置；参数可以限制本次范围：
+
+\`\`\`bash
+askx clear
+askx clear --links
+askx clear --skills
+askx clear --links --skills --yes --json
+\`\`\`
+
+执行前会备份所选模块并展示不可变计划。清空软链时会恢复接入前目录并删除绑定配置；清空 Skill 时保留受保护的系统 Skill Manager。语言、主题、Web 服务、历史备份和 Registry 不在此命令范围内。
+
+## 6. Web 服务管理
 
 ### 5.1 安装后自动启动
 

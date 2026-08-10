@@ -18,7 +18,7 @@ askx --help
 
 运行 `askx skills` 可直接查看当前 Skill 列表；首次运行会依次选择扫描平台、展示文件夹与待处理 Skill、选择软链平台并确认保存。使用 `askx skills stats` 查看版本、使用次数和关联目标统计。
 
-使用 `askx skills clear` 按计划清空当前 Skill 列表并创建可恢复备份；使用 `askx skills backups list|restore|remove` 管理清理后的备份。
+使用 `askx clear` 按计划清空当前 Skill 列表并创建可恢复备份；使用 `askx skills backups list|restore|remove` 管理清理后的备份。
 
 ## 使用文档
 
