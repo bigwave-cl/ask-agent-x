@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge'
 import DemoButton from './DemoButton.vue'
 import DemoChoice from './DemoChoice.vue'
 import DemoCodeEditor from './DemoCodeEditor.vue'
+import DemoConfirm from './DemoConfirm.vue'
 import DemoMdcRender from './DemoMdcRender.vue'
 import DemoResponsiveOverlay from './DemoResponsiveOverlay.vue'
 import DemoScrollArea from './DemoScrollArea.vue'
@@ -13,7 +14,7 @@ import DemoTooltip from './DemoTooltip.vue'
 defineOptions({ name: 'DemoComponentsModule' })
 
 /** 基础组件 Demo 各 Section 的展开状态。 */
-const openSections = reactive({ button: true, choice: false, codeEditor: false, mdcRender: false, responsiveOverlay: false, scrollArea: false, select: false, tabs: false, tooltip: false })
+const openSections = reactive({ button: true, choice: false, confirm: false, codeEditor: false, mdcRender: false, responsiveOverlay: false, scrollArea: false, select: false, tabs: false, tooltip: false })
 </script>
 
 <template>
@@ -35,6 +36,7 @@ const openSections = reactive({ button: true, choice: false, codeEditor: false, 
 
     <DemoButton v-model="openSections.button" />
     <DemoChoice v-model="openSections.choice" />
+    <DemoConfirm v-model="openSections.confirm" />
     <DemoSelect v-model="openSections.select" />
     <DemoTabs v-model="openSections.tabs" />
     <DemoTooltip v-model="openSections.tooltip" />
