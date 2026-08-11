@@ -1,13 +1,178 @@
-# AskAgent X CLI 基础使用
+# AskAgent X Base CLI API
 
-本文档对应 AskAgent X `26.810.1`，说明安装后的基础命令、环境诊断、Web 服务和自动化调用规则。
+本文档对应 AskAgent X `26.810.1`，罗列安装、诊断、清空、Web 服务和卸载命令。
 
-- [CLI 文档总览](./cli.md)
-- [Skills 管理](./cli-skills.md)
+- [命令索引](./cli.md)
+- [Skills API](./cli-skills.md)
 
-## 1. 安装与确认
+## API 索引
 
-AskAgent X 需要 Node.js 22+。可选择任一支持持久全局安装的包管理器：
+| 命令 | 类型 | 作用 |
+| --- | --- | --- |
+| `askx --version` | 只读 | 查看当前版本。 |
+| `askx --help` | 只读 | 查看命令和参数。 |
+| `askx doctor` | 只读 | 检测 Agent、目录和软链环境。 |
+| `askx clear` | 写入 | 清空 Skill、软链配置或全部受管数据。 |
+| `askx ui` | 进程 | 前台运行 Web 服务。 |
+| `askx ui start` | 进程 | 后台启动 Web 服务。 |
+| `askx ui stop` | 进程 | 停止后台 Web 服务。 |
+| `askx ui status` | 只读 | 查看 Web 服务状态。 |
+| `askx ui restart` | 进程 | 重启后台 Web 服务。 |
+| `askx ui token` | 只读 | 获取快速登录地址和 Token。 |
+| `askx uninstall` | 写入 | 停止服务并卸载全局包。 |
+
+## `askx --version`
+
+```bash
+askx --version
+```
+
+- 类型：只读。
+- 输出：当前安装版本。
+
+## `askx --help`
+
+```bash
+askx --help
+askx <command> --help
+askx skills <command> --help
+```
+
+- 类型：只读。
+- 输出：当前版本实际注册的命令、子命令和参数。
+
+## `askx doctor`
+
+```bash
+askx doctor [--json]
+```
+
+| 参数 | 必填 | 说明 |
+| --- | --- | --- |
+| `--json` | 否 | 输出纯 JSON。 |
+
+- 类型：只读。
+- 输出：ChatGPT/Codex、Claude Code、Cursor 的检测结果、默认 Skills 路径和软链接入条件。
+- 不会：扫描 Skill 内容、创建统一源或修改目录。
+
+## `askx clear`
+
+```bash
+askx clear [--links] [--skills] [--backup-name <name> | --no-backup] [-y] [--json]
+```
+
+| 参数 | 必填 | 说明 |
+| --- | --- | --- |
+| `--links` | 否 | 只清空受管软链及其配置。 |
+| `--skills` | 否 | 只清空用户 Skill，保留系统 Skill Manager。 |
+| `--backup-name <name>` | 否 | 创建备份并指定名称。 |
+| `--no-backup` | 否 | 不创建备份；不能与 `--backup-name` 同时使用。 |
+| `-y, --yes` | 否 | 确认执行生成的计划。 |
+| `--json` | 否 | 输出纯 JSON。 |
+
+- 类型：写入。
+- 默认：同时清空 Skill 和软链配置，并在清空前备份。
+- 交互：裸命令选择清空模块、是否备份和备份名称，再确认最终计划。
+- 输出：Skill 和软链分别统计已清空、未清空、已备份、未备份，并输出可打开的完整备份路径。
+- 不会：清空语言、主题、Web 服务、历史备份或 Registry。
+
+## Web 服务 API
+
+### `askx ui`
+
+```bash
+askx ui [-p, --port <port>]
+```
+
+| 参数 | 必填 | 说明 |
+| --- | --- | --- |
+| `-p, --port <port>` | 否 | 指定监听端口。 |
+
+- 类型：前台进程。
+- 效果：在当前终端运行 Web 服务；`Ctrl+C` 停止。
+- 地址：只监听 `127.0.0.1`。
+
+### `askx ui start`
+
+```bash
+askx ui [-p, --port <port>] start [--json]
+```
+
+| 参数 | 必填 | 说明 |
+| --- | --- | --- |
+| `-p, --port <port>` | 否 | 指定监听端口；属于 `ui` 父命令。 |
+| `--json` | 否 | 输出运行状态、PID、端口和 URL JSON。 |
+
+- 类型：后台进程写入。
+- 效果：启动后台服务后退出当前命令；服务已运行时不重复启动。
+- 端口：开发环境固定 `4242`；发布版默认复用记录的生产端口。
+- 冲突：端口被占用时失败，不自动换端口或终止其他进程。
+
+### `askx ui stop`
+
+```bash
+askx ui stop [--json]
+```
+
+| 参数 | 必填 | 说明 |
+| --- | --- | --- |
+| `--json` | 否 | 输出停止结果 JSON。 |
+
+- 类型：后台进程写入。
+- 效果：停止 AskX 后台服务并释放端口；服务未运行时不影响其他进程。
+
+### `askx ui status`
+
+```bash
+askx ui status [--json]
+```
+
+| 参数 | 必填 | 说明 |
+| --- | --- | --- |
+| `--json` | 否 | 输出状态 JSON。 |
+
+- 类型：只读。
+- 输出：是否运行；运行时包含 PID、端口、启动时间和可点击 URL。
+
+### `askx ui restart`
+
+```bash
+askx ui [-p, --port <port>] restart [--json]
+```
+
+| 参数 | 必填 | 说明 |
+| --- | --- | --- |
+| `-p, --port <port>` | 否 | 指定重启后的端口；属于 `ui` 父命令。 |
+| `--json` | 否 | 输出新进程状态 JSON。 |
+
+- 类型：后台进程写入。
+- 效果：停止当前服务后重新启动；未指定端口时复用当前端口。
+- 会话：重启后 Token 可能变化，重新执行 `askx ui token`。
+
+### `askx ui token`
+
+```bash
+askx ui token
+```
+
+- 类型：只读。
+- 输出：可点击的 `http://127.0.0.1:<port>/?token=<token>` 快速登录地址，以及单独一行 Token。
+- 开发环境：检测到 `4242` 开发服务时使用 `askx-local-dev`。
+- 安全：Token 只用于建立本地 HttpOnly Cookie 会话，不应写入仓库或共享日志。
+
+## `askx uninstall`
+
+```bash
+askx uninstall
+```
+
+- 类型：进程与安装写入。
+- 效果：停止 Web 后台服务，再调用安装记录对应的 npm、pnpm、Yarn Classic 或 Bun 全局卸载命令。
+- 限制：源码目录运行时没有全局安装记录，不能执行自动卸载。
+
+## 安装 API
+
+需要 Node.js 22+。以下命令任选一个：
 
 ```bash
 npm install --global askagent-x
@@ -16,294 +181,20 @@ yarn global add askagent-x
 bun add --global askagent-x
 ```
 
-其中 `yarn global` 仅适用于 Yarn Classic（1.x）；Yarn Modern 不再提供全局安装，建议改用 npm、pnpm 或 Bun。安装后确认：
+| 包管理器 | 自动启动 Web | 卸载命令 |
+| --- | --- | --- |
+| npm | 允许生命周期脚本时自动启动 | `npm uninstall --global askagent-x` |
+| pnpm | 允许生命周期脚本时自动启动 | `pnpm remove --global askagent-x` |
+| Yarn Classic 1.x | 允许生命周期脚本时自动启动 | `yarn global remove askagent-x` |
+| Bun | 生命周期脚本可能被信任策略阻止 | `bun remove --global askagent-x` |
 
-首次在交互终端运行 `askx` 时，会先要求选择界面语言：
-
-- 简体中文
-- English
-
-确认后语言以独立的 `cliLocale` 写入共享配置文件，当前命令会立即使用所选语言继续执行。它不会修改 Web 的 `locale`，浏览器界面继续使用自己的语言设置。`--json`、安装生命周期和其他非交互调用不会弹出选择界面，也不会污染机器输出。
+安装后检查：
 
 ```bash
 askx --version
-askx --help
-```
-
-`askx --version` 输出当前安装版本。`askx --help` 显示一级命令：
-
-| 命令 | 作用 |
-| --- | --- |
-| `askx doctor` | 检测平台、Skills 路径和软链条件 |
-| `askx skills` | 查看和管理 Skill |
-| `askx ui` | 管理本地 Web 服务 |
-| `askx uninstall` | 停止 Web 服务并卸载 AskAgent X |
-
-查看任意命令的参数：
-
-```bash
-askx <command> --help
-askx skills <command> --help
-```
-
-## 2. 环境诊断
-
-```bash
-askx doctor
-askx doctor --json
-```
-
-诊断内容：
-
-- ChatGPT / Codex、Claude / Claude Code、Cursor 是否可识别。
-- CLI 版本、桌面客户端或用户配置目录。
-- 每个平台的默认 Skills 根目录。
-- 目录是否允许建立 AskX 受管软链。
-
-默认目录：
-
-| 平台 | Skills 根目录 |
-| --- | --- |
-| ChatGPT / Codex | `~/.codex/skills` |
-| Claude / Claude Code | `~/.claude/skills` |
-| Cursor | `~/.cursor/skills` |
-| Agents shared | `~/.agents/skills`，只参与只读发现 |
-
-`doctor` 只做检测，不会扫描 Skill 内容、创建统一源或修改平台目录。
-
-## 3. 通用参数与写入规则
-
-| 参数 | 作用 |
-| --- | --- |
-| `--json` | 输出机器可读 JSON，不混入终端装饰 |
-| `-y, --yes` | 授权已经展示和签名的写入计划，跳过交互确认 |
-
-AskX 写操作遵循：
-
-```text
-detect → plan → resolve → consent → apply → verify → rollback
-```
-
-交互终端会显示计划和计划 Hash，按 `Y` 确认，按 `N` 或 `Esc` 取消。非交互环境必须显式传入 `--yes`；该参数不会绕过计划签名、revision、冲突检测或写后验证。
-
-自动化示例：
-
-```bash
-askx doctor --json
-askx skills status --json
-askx skills scan --platform codex --json
-```
-
-## 4. 数据范围
-
-AskAgent X 默认只操作当前设备中的本地数据，不上传 Skill 内容，不采集后台 usage，不执行 Skill 附带脚本。
-
-主要本地目录：
-
-| 路径 | 内容 |
-| --- | --- |
-| `~/.askx/config.json` | AskX 内部状态与 Web 偏好 |
-| `~/.askx/skills` | AskX 统一 Skill 源 |
-| `~/.askx/install.json` | 全局安装使用的包管理器和包目录 |
-| `~/.askx/ui-session.json` | 本地 Web 后台会话信息 |
-| `~/.askx/ui-port.json` | 上次成功使用的生产 Web 端口，停止服务后继续保留 |
-| `~/.askx/ui.log` | 最近一次后台 Web 启动和运行日志 |
-
-Skills、备份和事务的详细规则见 [Skills 管理文档](./cli-skills.md)。
-
-## 5. 一键清空
-
-\`askx clear\` 是根级基础命令。无参数时默认清空用户 Skill 与全部受管软链配置；参数可以限制本次范围：
-
-\`\`\`bash
-askx clear
-askx clear --links
-askx clear --skills
-askx clear --links --skills --yes --json
-\`\`\`
-
-执行前会备份所选模块并展示不可变计划。清空软链时会恢复接入前目录并删除绑定配置；清空 Skill 时保留受保护的系统 Skill Manager。语言、主题、Web 服务、历史备份和 Registry 不在此命令范围内。
-
-## 6. Web 服务管理
-
-### 5.1 安装后自动启动
-
-包内提供 `postinstall` 启动入口。npm、pnpm 或 Yarn Classic 允许依赖生命周期脚本时，正常全局安装后会自动在后台启动 Web 服务，安装命令本身会正常退出。覆盖安装或升级时会先停止遗留服务，再使用当前安装包重新启动，避免旧进程继续加载已经替换的 Web 分块。
-
-```bash
-npm install --global askagent-x
-pnpm add --global askagent-x
-yarn global add askagent-x
-```
-
-确认状态：
-
-```bash
-askx ui status
-```
-
-如果包管理器禁用了依赖生命周期脚本，需要手动启动。常见情况包括 npm/pnpm 的 `--ignore-scripts`，以及 Bun 默认不信任依赖的生命周期脚本：
-
-```bash
-npm install --global --ignore-scripts askagent-x
-```
-
-自动启动会被跳过，需要手动执行：
-
-```bash
-askx ui start
-```
-
-### 5.2 服务边界
-
-- 只监听 `127.0.0.1`，不对局域网或公网开放。
-- 开发环境固定使用 `4242`；发布版首次启动选择可用的五位端口，之后复用上次成功使用的生产端口。
-- 每次启动生成新的本地会话 Token。
-- Token 不写入普通配置文件或业务日志。
-- 浏览器验证成功后使用 HttpOnly Cookie 保存会话。
-
-### 5.3 前台运行
-
-```bash
-askx ui
-askx ui --port 4300
-```
-
-作用：在当前终端以前台方式运行 Web 服务，适合临时使用和故障排查。
-
-效果：终端持续占用，按 `Ctrl+C` 停止。前台模式不由后台服务命令接管。
-
-### 5.4 后台启动
-
-```bash
-askx ui start
-askx ui start --port 4300
-askx ui start --json
-```
-
-作用：启动后台 Web 服务并让当前命令退出。
-
-输出：运行状态、PID、端口和访问地址。已有服务运行时不会重复启动。
-
-开发环境固定使用 `4242`。发布版不指定端口时，首次启动选择可用的五位端口并记住，后续启动复用该端口；记住的端口或显式指定端口被占用时启动失败，并提示先停止占用该端口的服务。AskX 不会自动改用其他端口，也不会擅自终止未知进程。
-
-### 5.5 查看状态
-
-```bash
-askx ui status
-askx ui status --json
-```
-
-显示后台服务是否运行、PID、监听端口和本地访问地址。该命令只读，不启动或停止服务。
-
-### 5.6 获取登录地址和 Token
-
-```bash
-askx ui token
-```
-
-输出：
-
-```text
-快速登录地址: http://127.0.0.1:<port>/?token=<token>
-Token: <token>
-```
-
-使用方式：
-
-1. 复制第一行完整地址到浏览器。
-2. Web 自动校验 URL 中的 Token。
-3. 验证成功后建立 Cookie 会话。
-4. Web 从地址栏移除 Token。
-
-如果登录页已经打开，可以复制第二行 Token 到页面完成验证。不要把 Token 写入仓库、截图、远程脚本或共享日志。
-
-支持 OSC 8 的终端会把第一行完整地址显示为可点击超链接；重定向输出或不支持超链接的终端仍显示可复制的普通 URL。
-
-### 5.7 停止服务
-
-```bash
-askx ui stop
-askx ui stop --json
-```
-
-作用：停止 AskX 后台进程并等待退出，释放监听端口并清理有效会话状态。服务未运行时不会影响其他进程。
-
-### 5.8 重启服务
-
-```bash
-askx ui restart
-askx ui restart --port 4300
-askx ui restart --json
-```
-
-作用：先停止当前后台服务，再启动新服务。PID 和 Token 可能变化；重启后应重新执行：
-
-```bash
-askx ui token
-```
-
-### 5.9 常见问题
-
-安装后无法打开页面：
-
-```bash
 askx ui status
 askx ui start
 askx ui token
 ```
 
-后台服务启动失败时，CLI 会提示 `~/.askx/ui.log`，其中保存最近一次后台启动的真实服务错误；每次重新启动会覆盖旧日志。
-
-Token 失效时获取当前服务的新 Token：
-
-```bash
-askx ui token
-```
-
-需要主动使用其他固定端口时可以显式指定：
-
-```bash
-askx ui restart --port 4301
-askx ui restart
-```
-
-### 5.10 安全卸载
-
-推荐命令：
-
-```bash
-askx uninstall
-```
-
-执行顺序：
-
-1. 检查后台服务。
-2. 停止服务并等待进程退出。
-3. 根据安装记录调用 npm、pnpm、Yarn Classic 或 Bun 的全局卸载命令。
-
-包管理器不能为这个场景提供一致、可靠的卸载前钩子。直接删除全局包可能先移除源文件，但已经运行的 Node 进程仍会继续占用端口。
-
-必须直接使用包管理器时，先停止服务，再执行安装时对应的卸载命令：
-
-```bash
-askx ui stop
-npm uninstall --global askagent-x
-pnpm remove --global askagent-x
-yarn global remove askagent-x
-bun remove --global askagent-x
-```
-
-如果包已被直接删除但进程仍在运行，可读取 `~/.askx/ui-session.json` 中记录的 PID，核对进程身份后手动停止。
-
-### 5.11 Web 服务 API 速查
-
-| 命令 | 作用效果 | JSON |
-| --- | --- | --- |
-| `askx ui` | 前台启动，终端退出时停止 | 不支持 |
-| `askx ui start` | 启动后台服务 | 支持 |
-| `askx ui stop` | 停止后台服务 | 支持 |
-| `askx ui status` | 只读查看状态 | 支持 |
-| `askx ui restart` | 停止并重新启动 | 支持 |
-| `askx ui token` | 只读输出当前登录凭据 | 不支持 |
-| `askx uninstall` | 停止服务并卸载全局包 | 不支持 |
+首次在交互终端执行 `askx` 时选择中文或 English；CLI 语言与 Web 浏览器语言相互独立。后台启动失败时查看 `~/.askx/ui.log`。

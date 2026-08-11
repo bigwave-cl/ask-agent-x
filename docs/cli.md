@@ -1,101 +1,40 @@
-# AskAgent X CLI 文档总览
+# AskAgent X CLI 命令索引
 
-本文档对应 AskAgent X `26.810.1`。CLI 文档按基础运行能力和 Skills 管理两个模块拆分，每份文档都可以独立阅读。
+本文档对应 AskAgent X `26.810.1`。这里按使用场景索引命令；参数和副作用以 API 文档为准。
 
+- [基础与 Web API](./cli-base.md)
+- [Skills API](./cli-skills.md)
 - [返回项目 README](../README.md)
 
-## 1. 文档模块
+## 按场景找命令
 
-| 模块 | 文档 | 适合解决的问题 |
+| 我需要…… | 命令 | API |
 | --- | --- | --- |
-| Base | [CLI 基础使用](./cli-base.md) | 如何安装、诊断平台、管理 Web 服务和安全卸载 |
-| Skills | [Skills 管理](./cli-skills.md) | 如何查看、扫描、验证、保存、关联、清理、恢复和统计 Skill |
+| 查看版本或帮助 | `askx --version`、`askx --help` | [基础 API](./cli-base.md#命令-api) |
+| 检查平台和目录环境 | `askx doctor` | [doctor](./cli-base.md#askx-doctor) |
+| 查看当前 Skill | `askx skills` | [skills](./cli-skills.md#askx-skills) |
+| 完整重新扫描 | `askx skills scan` | [scan](./cli-skills.md#askx-skills-scan) |
+| 从指定平台或文件夹导入 | `askx skills scan --platform claude` | [scan](./cli-skills.md#askx-skills-scan) |
+| 设置或恢复软链 | `askx skills link --platform claude` | [link](./cli-skills.md#askx-skills-link) |
+| 取消软链 | `askx skills unlink --platform claude` | [unlink](./cli-skills.md#askx-skills-unlink) |
+| 检查 Skill 和软链状态 | `askx skills status` | [status](./cli-skills.md#askx-skills-status) |
+| 在本地与共享范围间迁移 Skill | `askx skills scope my-skill --local` | [scope](./cli-skills.md#askx-skills-scope-skill-name) |
+| 查看统计 | `askx skills stats` | [stats](./cli-skills.md#askx-skills-stats) |
+| 记录一次 Skill 使用 | `askx skills usage record my-skill` | [usage](./cli-skills.md#askx-skills-usage-record-name-or-id) |
+| 查看或回滚事务 | `askx skills history list` | [事务 API](./cli-skills.md#事务与修复) |
+| 管理清空备份 | `askx skills backups list` | [备份 API](./cli-skills.md#备份管理) |
+| 清空 Skill 或软链配置 | `askx clear` | [clear](./cli-base.md#askx-clear) |
+| 启动 Web 后台服务 | `askx ui start` | [UI API](./cli-base.md#web-服务-api) |
+| 获取 Web 登录地址 | `askx ui token` | [token](./cli-base.md#askx-ui-token) |
+| 停止服务并卸载 | `askx uninstall` | [uninstall](./cli-base.md#askx-uninstall) |
 
-## 2. 首次使用顺序
+## 参数约定
 
-### 第一步：确认安装和环境
+| 参数 | 含义 |
+| --- | --- |
+| `--json` | 输出纯 JSON，适合脚本读取。 |
+| `-y, --yes` | 对已经生成并签名的写入计划确认执行；不会跳过检测、冲突校验或回滚保护。 |
+| `-p, --platform <platform>` | 平台标识：`codex`、`claude`、`cursor`；支持逗号分隔或重复传入。 |
+| `-d, --directory <path>` | 自定义绝对目录；支持重复传入。 |
 
-```bash
-askx --version
-askx doctor
-```
-
-### 第二步：完成 Skill 扫描和关联
-
-```bash
-askx skills
-askx skills scan
-```
-
-完整流程为：
-
-```text
-查看 Skill
-  → 选择平台或自定义来源
-  → 扫描并验证 Skill
-  → 保存到统一源
-  → 设置平台或文件夹软链
-  → 查看最终列表和统计
-```
-
-具体交互、命令效果和当前 CLI/Web 差异见 [Skills 管理](./cli-skills.md)。
-
-### 第三步：确认 Web 服务并登录
-
-```bash
-askx ui status
-askx ui token
-```
-
-使用 npm、pnpm 或 Yarn Classic 全局安装且生命周期脚本获准执行时，Web 服务会自动在后台启动；Bun 或禁用脚本的安装需要执行 `askx ui start`。复制 `ui token` 输出的快速登录地址到浏览器即可进入 Web。
-
-服务启动、停止、重启、端口、Token 和卸载说明见 [CLI 基础使用](./cli-base.md#7-web-服务管理)。
-
-## 3. 最常用命令
-
-```bash
-# 基础诊断
-askx doctor
-
-# Skills
-askx skills
-askx skills scan
-askx skills scan --platform codex
-askx skills link --platform codex
-askx skills stats
-
-# 基础清空：默认清空 Skill 与软链配置
-askx clear
-askx clear --links
-askx clear --skills
-
-# Web
-askx ui status
-askx ui token
-
-# 卸载
-askx uninstall
-```
-
-## 4. 命令关系
-
-| 命令范围 | 是否扫描 Skill | 是否修改 Skill | 是否修改软链 | 是否管理进程 |
-| --- | --- | --- | --- | --- |
-| `askx doctor` | 否 | 否 | 否 | 否 |
-| `askx skills scan/status/stats` | `scan` 先只读扫描 | `scan` 最终确认后会 | `scan` 最终确认后会 | 否 |
-| `askx clear` | 否 | 默认是，可用 `--links` 排除 | 默认是，可用 `--skills` 排除 | 否 |
-| `askx skills backups` | 否 | 恢复时会 | 否 | 否 |
-| `askx skills link/unlink` | 否 | 否 | 是 | 否 |
-| `askx ui/uninstall` | 否 | 否 | 否 | 是 |
-
-独立软链管理命令 `link/unlink` 不会隐式扫描或同步。交互式 `scan` 会在扫描和验证后进入软链选择，并且只在最终确认后统一写入；`scan --json` 始终只读。
-
-## 5. 获取帮助
-
-```bash
-askx --help
-askx <command> --help
-askx skills <command> --help
-```
-
-对外操作以这组文档和已安装版本的 `--help` 为准。本地开发命令、构建方式和发布前验证不属于用户 CLI 操作，分别见项目 README 与 [本地安装验证](./npm-local-preview.md)。
+所有写操作遵循 `detect → plan → resolve → consent → apply → verify → rollback`。交互中取消或中断时，本次计划作废。

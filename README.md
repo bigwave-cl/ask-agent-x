@@ -13,9 +13,9 @@ AskAgent X 是一个面向本地 Agent 的体验增强与扩展平台。当前�
 
 | 文档 | 内容 |
 | --- | --- |
-| [CLI 文档总览](./docs/cli.md) | CLI 模块关系、首次使用顺序和常用命令入口 |
-| [CLI 基础使用](./docs/cli-base.md) | 安装、诊断、Web 服务、Token 和安全卸载 |
-| [Skills 管理](./docs/cli-skills.md) | Skill 查看、扫描、验证、软链、管理、统计和完整 API |
+| [CLI 命令索引](./docs/cli.md) | 按使用场景快速定位命令和对应 API |
+| [基础与 Web API](./docs/cli-base.md) | 安装、诊断、清空、Web 服务、Token 和卸载命令 |
+| [Skills API](./docs/cli-skills.md) | 所有 Skills 命令、参数、副作用和示例 |
 | [本地安装验证](./docs/npm-local-preview.md) | 使用不同包管理器验证 tarball、持续观察、升级与卸载 |
 | [产品规划](./PLAN.md) | 产品边界、阶段目标和未来能力 |
 | [Agent 开发指南](./AGENTS.md) | 仓库结构、package 导航与开发约束 |

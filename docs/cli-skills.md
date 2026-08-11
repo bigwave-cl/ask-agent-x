@@ -1,562 +1,221 @@
-# AskAgent X CLI Skills 管理
+# AskAgent X Skills CLI API
 
-本文档对应 AskAgent X `26.810.1`，按照用户实际操作顺序说明如何查看、扫描、验证、关联、管理和统计 Skill，并提供完整的 Skills CLI API 参考。
+本文档对应 AskAgent X `26.810.1`。每个章节对应一个实际命令，按命令名即可快速查找。
 
-- [CLI 文档总览](./cli.md)
-- [CLI 基础使用](./cli-base.md)
+- [命令索引](./cli.md)
+- [基础与 Web API](./cli-base.md)
 
-## 1. 推荐操作流程
+## API 索引
 
-日常使用按以下顺序进行：
+| 命令 | 类型 | 作用 |
+| --- | --- | --- |
+| `askx skills` | 只读/首次交互 | 查看当前 Skill；未初始化时进入引导。 |
+| `askx skills scan` | 只读扫描 + 确认写入 | 完整扫描或定向导入。 |
+| `askx skills link` | 写入 | 设置或恢复平台、文件夹软链，不扫描 Skill。 |
+| `askx skills unlink` | 写入 | 取消平台、文件夹软链，不扫描 Skill。 |
+| `askx skills status` | 只读 | 检查当前扫描与软链健康状态。 |
+| `askx skills scope` | 写入 | 在共享与本地范围之间迁移已有 Skill。 |
+| `askx skills history list` | 只读 | 查看事务回执。 |
+| `askx skills rollback` | 写入 | 回滚指定事务。 |
+| `askx skills stats` | 只读 | 查看当前可用 Skill 的统计。 |
+| `askx skills usage record` | 写入 | 记录一次 Skill 使用。 |
+| `askx skills manager repair` | 写入 | 修复系统 Skill Manager。 |
+| `askx skills backups list` | 只读 | 查看清空备份。 |
+| `askx skills backups restore` | 写入 | 恢复清空备份。 |
+| `askx skills backups remove` | 写入 | 删除清空备份。 |
 
-1. 查看 Skill。
-2. 扫描 Skill，并验证扫描结果。
-3. 设置平台或自定义文件夹软链。
-4. 管理 Skill。
-5. 查看统计并配置需要纳管的 Skill。
-6. 管理 Web 服务或卸载 AskAgent X。
-
-### 1.1 查看 Skill
+## `askx skills`
 
 ```bash
 askx skills
 ```
 
-已完成初始化时，命令直接显示：
+- 类型：已初始化时只读；未初始化时进入交互引导。
+- 输出：统一源路径、已关联平台、共享与本地 Skill 列表，以及相关管理命令。
 
-- AskX 统一 Skill 文件夹，默认为 `~/.askx/skills`。
-- 当前已关联的平台。
-- 当前可用 Skill 列表和每个 Skill 的文件夹地址。
-- 软链管理、Skill 管理和统计相关命令提示。
+## `askx skills scan`
 
-首次使用且尚未建立统一 Skill 列表时，`askx skills` 会进入初始化引导。推荐先执行下一节的扫描流程，确认来源和处理结果后再保存。
+```bash
+askx skills scan [--platform <platform>]... [--directory <path>]... [--json]
+```
 
-### 1.2 扫描 Skill
+| 参数 | 必填 | 说明 |
+| --- | --- | --- |
+| `-p, --platform <platform>` | 否 | `codex`、`claude`、`cursor`；支持逗号分隔或重复传入。 |
+| `-d, --directory <path>` | 否 | 自定义 Skills 根目录；可重复传入，保存上限为 3 个。 |
+| `--json` | 否 | 只读输出扫描报告，不进入选择、计划或写入。 |
 
-交互终端直接运行：
+### 无参数模式
 
 ```bash
 askx skills scan
 ```
 
-当前版本会打开平台多选，可选择：
+- 模式：完整重新扫描（`replace`）。
+- 交互：选择来源 → 验证和选择 Skill → 选择软链目标 → 确认计划 → 保存。
+- 配置：以本次来源和软链选择重新整理当前配置；未选择的旧绑定无损暂停。
 
-- ChatGPT / Codex
-- Claude / Claude Code
-- Cursor
-
-选择平台后，可以继续输入一个或多个自定义 Skills 文件夹；如果只扫描平台，直接回车即可。也可以取消全部平台勾选，仅输入自定义文件夹。
-
-需要只导入某个平台或自定义文件夹时，可以直接传入来源参数：
+### 带参数模式
 
 ```bash
-askx skills scan --directory /absolute/path/to/skills
-```
-
-平台和自定义文件夹可以一起扫描：
-
-```bash
-askx skills scan --platform codex,claude --directory /absolute/path/to/skills
-```
-
-扫描和选择阶段只读取目录，不复制 Skill、不修改源文件夹，也不建立软链。
-
-如果导入根目录的第一层存在名为 `local` 的子目录，AskX 会把 `local` 下每个 Skill 默认标记为“本地”，其余第一层 Skill 默认标记为“共享”。例如 `skills/local/private-skill` 会进入 `~/.askx/local-skills`，不会进入平台软链；`skills/shared-skill` 会进入 `~/.askx/skills`。验证列表中可按 `L` 在“共享/本地”之间切换，Web 也提供相同的范围选择。
-
-无参数 `scan` 是完整重新扫描：从来源选择开始，保存时以本次选择重新整理扫描来源和软链状态，未再次选择的旧绑定会无损停用。带 `--platform` 或 `--directory` 是定向导入：跳过来源选择，直接进入 Skill 验证，只处理参数指定的软链目标，保存时与当前配置合并，不影响其他平台和文件夹。
-
-#### 扫描后的验证
-
-扫描完成后，逐项检查输出：
-
-| 状态 | 含义 | 保存行为 |
-| --- | --- | --- |
-| 可接管 | 只有一个有效来源 | 可以保存到统一源 |
-| 可合并 | 多个来源内容一致 | 合并为一个 Skill |
-| 内容冲突 | 同名 Skill 内容不同 | 进入独立冲突向导，由用户选择保留、统一来源或改名导入 |
-| 无效 Skill | 缺少必要元数据或目录结构不符合要求 | 不保存 |
-| 失效软链 | 链接目标不存在 | 不保存，并提示修复来源 |
-
-交互终端中的 `askx skills scan` 会在展示扫描结果后继续进入完整向导：
-
-1. 选择需要同步的 Skill，并按需切换每个 Skill 的“共享/本地”范围；冲突项会明确标记，但不作为普通安全项直接勾选。
-2. 存在冲突时逐项选择保持现状、指定一个来源作为统一版本，或使用新名称导入，并确认冲突处理摘要。
-3. 选择需要设置软链的平台。
-4. 输入需要设置软链的自定义文件夹。
-5. 展示完整保存计划，并等待最终确认。
-6. 确认后保存，最后输出当前 Skill 列表和管理命令。
-
-冲突向导默认选择“保持现状”，不会自动覆盖。选择统一版本时，自定义扫描目录只作为只读来源，不会被 AskX 回写；需要替换的平台副本会进入最终计划并在执行前备份。任意冲突处理阶段按 `Esc` 或 `Q` 会放弃整次扫描命令，不会保存已经选择的部分决策。
-
-任一阶段按 `Esc`、`Q` 或中断命令都会放弃本次向导，最终确认前不会写入配置或 Skill。`askx skills scan --json` 保持只读，只输出扫描报告，适合自动化调用。
-
-在 macOS 上扫描 `Desktop`、`Documents` 或 `Downloads` 等受保护目录时，如果系统返回应用级 `EPERM`，交互式命令会自动打开“隐私与安全性 → 文件与文件夹”。为当前终端宿主开启目录权限后，返回原终端按回车即可重试本次扫描，不需要重新输入命令。部分终端可以进入深层工作目录，但不能从 Desktop 根目录枚举同一路径；此时 AskX 会同时输出 `cd` 到来源上级目录、再通过相对路径扫描的可复制命令。授权后仍被阻止时，也可以完全退出并重新打开宿主应用，或者把来源移动到 `~/Skills` 等非受保护目录。该授权由 macOS 管理，AskX 不读取系统密码；普通 Unix `EACCES` 仍保留为文件权限错误，不会错误地请求隐私授权。
-
-自定义扫描文件夹最多保存 3 个。无参数完整扫描以本次确认的列表为准；带参数定向导入会与历史来源合并，合并后超过上限则在计划阶段拒绝。自定义软链目录同样在写入前校验上限，不会先修改文件系统再报错。
-
-软链设置阶段始终允许选择平台。最终计划会根据当前状态明确标注并执行：未绑定的平台新建关联，已经绑定的平台直接跳过，之前取消绑定的平台恢复关联；三种情况共用最后一次确认和保存，不需要中途退出后再执行其他命令。
-
-第三步的默认选择严格继承第一步：只有第一步选中的平台默认勾选，其他平台保持未选；第一步添加的自定义文件夹默认作为软链目录勾选。用户仍可在第三步增删平台和文件夹，再进入最终确认。
-
-最终确认统一使用 `回车` 执行，使用 `Esc` 或 `Q` 放弃；不再要求输入 `Y/N`。
-
-### 1.3 设置和管理软链
-
-Skill 保存到统一源后，再设置软链。软链操作只改变平台或文件夹与统一源的绑定关系，不会重新扫描或同步 Skill。
-
-#### 关联平台
-
-```bash
-askx skills link --platform codex
-askx skills link --platform claude,cursor
-```
-
-命令会显示：
-
-- 平台原 Skills 文件夹。
-- AskX 统一 Skill 文件夹。
-- 原文件夹保护方式。
-- 将创建或恢复的目录软链。
-
-命令会以“关联软链”展示计划，并询问“确定要关联吗？”。确认后平台通过软链读取 AskX 统一 Skill 列表，结果显示“已关联”。
-
-如果平台已经存在有效关联，结果会显示“已存在关联，本次不处理”，不会使用容易误解的“已跳过”，也不会重新创建软链。
-
-平台和自定义软链文件夹使用相同的结果语义：新建或恢复成功显示“已关联”，已有有效关联显示“已存在关联，本次不处理”。
-
-软链命令只展示来源目录、统一源目标和软链动作，不扫描或展示目录中的 Skill，也不修改上一次扫描记录和扫描来源配置。
-
-#### 取消平台绑定
-
-```bash
-askx skills unlink --platform codex
-askx skills unlink --directory /absolute/path/to/agent-skills
-```
-
-命令会以“取消软链配置”展示计划，并询问“确定要取消吗？”。确认后恢复关联前的平台目录，结果显示“已取消软链设置”；不存在可取消的关联时，不再请求确认，直接显示“不存在关联数据，本次不处理”。命令不会删除 AskX 统一源，也不会把统一源内容复制回平台。
-
-#### 恢复平台绑定
-
-```bash
-askx skills link --platform codex
-```
-
-对已经取消绑定的平台再次执行 `link`，会恢复受管软链，不触发 Skill 扫描。
-
-#### 关联自定义文件夹
-
-```bash
-askx skills link --directory /absolute/path/to/agent-skills
-```
-
-自定义路径必须是希望绑定到统一源的 Skills 根目录，而不是某一个 Skill 的子目录。
-
-再次执行 `link --directory` 会恢复已经取消的文件夹绑定；执行 `unlink --directory` 只取消该文件夹软链。两者都不会扫描、同步或修改 Skill 列表。
-
-#### 检查软链状态
-
-```bash
-askx skills status
-```
-
-该命令只读检查当前目录中的内容冲突、无效 Skill 和失效软链。
-
-### 1.4 管理 Skill
-
-#### 添加 Skill
-
-CLI 通过带参数的定向扫描添加 Skill：
-
-```bash
-askx skills scan --directory /absolute/path/to/skills
-askx skills scan --platform codex
-```
-
-同步遵守扫描、计划、确认、写入和验证链路，不会静默覆盖同名冲突。
-
-#### 调整已有 Skill 的范围
-
-```bash
-askx skills scope my-skill --local
-askx skills scope my-skill --shared
-```
-
-`--local` 把已有共享 Skill 移入 `~/.askx/local-skills`，并停止通过平台根目录软链共享；`--shared` 把已有本地 Skill 移回 `~/.askx/skills`。命令会展示来源、目标和计划 Hash，确认后执行并校验。目标中已有同名 Skill 时会拒绝，不会覆盖。
-
-#### 导出 Skill
-
-当前 CLI 尚未提供 `askx skills export`。请在 Web 的 Skill 资源管理页面选择 Skill 后使用“导出 Skill”。
-
-CLI 后续增加导出命令时，应只读取当前统一源并输出到用户指定位置，不改变 Skill、软链或统计数据。
-
-#### 清空全部受管数据
-
-```bash
-askx clear
-askx clear --links
-askx clear --skills
-```
-
-`askx clear` 是根级基础命令，不属于 `skills` 子命令。无参数时同时清空用户 Skill 和软链配置；`--links` 只清空软链配置，`--skills` 只清空用户 Skill。命令会先展示影响数量、备份版本和计划 Hash。
-
-执行结果会分别展示“软链绑定”和“SKILL”。完全没有数据时，两项均显示“无数据”；有数据时会展示各软链的备份状态、Skill 成功/失败数量、备份标识和绝对路径。选择软链模块时会取消受管软链、恢复接入前目录并删除绑定配置。
-
-清空不会静默删除：
-
-- 平台或自定义文件夹中的非 AskX 管理内容。
-- Skill Manager Registry。
-- 事务历史。
-- 已创建的长期备份。
-
-清空后检查：
-
-```bash
-askx skills
-askx skills stats
-askx skills backups list
-```
-
-#### 恢复清空前的 Skill
-
-```bash
-askx skills backups list
-askx skills backups restore <backup-version>
-askx skills
-```
-
-确认不再需要备份时：
-
-```bash
-askx skills backups remove <backup-version>
-```
-
-### 1.5 查看统计并配置纳管 Skill
-
-```bash
-askx skills stats
-```
-
-统计页面显示：
-
-- 当前可用 Skill 数量。
-- 每个 Skill 的版本。
-- 显式 usage 次数。
-- 已关联目标及健康状态。
-- 已纳入和未纳入版本管理的 Skill。
-
-统计只显示当前统一源中仍然可用的 Skill。已清空或移除的 Skill 不继续占用当前统计，但 Registry 中的历史 usage 会保留，以便恢复同一 Skill 后继续累计。
-
-需要调整 Skill 的版本管理状态时，在 Web 统计页中选择对应 Skill。CLI 不再通过扫描命令混合处理版本管理配置。
-
-记录一次明确使用：
-
-```bash
-askx skills usage record <skill-name-or-id>
-```
-
-> 当前 CLI 没有独立的 `skills stats manage` 子命令；Web 可以在统计页直接调整单个 Skill 的管理状态。
-
-### 1.6 保存后的常用命令
-
-完成同步和软链设置后，建议终端提示并使用以下命令：
-
-```bash
-# 查看当前 Skill
-askx skills
-
-# 软链管理
-askx skills link --platform <platform>
-askx skills unlink --platform <platform>
-askx skills unlink --directory <absolute-path>
-askx skills status
-
-# Skill 管理
-askx skills scan --platform <platform>
-askx clear
-askx skills backups list
-
-# Skill 统计
-askx skills stats
-askx skills usage record <skill-name-or-id>
-```
-
-### 1.7 完成后进入 Web
-
-完成 Skill 配置后，可打开本地 Web 查看相同数据：
-
-```bash
-askx ui status
-askx ui token
-```
-
-完整的启动、Token、停止和卸载说明见 [CLI 基础使用](./cli-base.md#7-web-服务管理)。
-
-## 2. Skills CLI API 参考
-
-本节覆盖当前 `askx skills --help` 中的全部命令。
-
-### 2.1 通用参数
-
-| 参数 | 适用命令 | 效果 |
-| --- | --- | --- |
-| `--json` | 支持该参数的查询和写命令 | 输出机器可读 JSON，不混入终端装饰 |
-| `-y, --yes` | 写命令 | 授权已经生成的不可变计划，跳过终端确认 |
-| `-p, --platform <platform>` | `scan/link/unlink` | 指定 `codex`、`claude` 或 `cursor`；可重复或逗号分隔 |
-| `-d, --directory <path>` | `scan/link/unlink` | 增加自定义扫描来源，或绑定/取消自定义软链根目录 |
-
-非交互环境执行写命令时必须使用 `--yes`。参数不会绕过计划签名、revision、冲突检测和写后验证。
-
-### 2.2 `askx skills`
-
-```bash
-askx skills
-```
-
-作用：查看当前 Skill 列表；未初始化时进入平台扫描与关联引导。
-
-读取：manifest、统一源、平台绑定状态。
-
-写入：仅在首次引导中确认保存计划后写入。
-
-不会：执行 Skill 附带脚本或静默覆盖冲突。
-
-### 2.3 `askx skills scan`
-
-```bash
-askx skills scan
 askx skills scan --platform codex,claude
 askx skills scan --directory /absolute/path/to/skills
-askx skills scan --platform cursor --directory /absolute/path/to/skills --json
+askx skills scan --platform cursor --directory /absolute/path/to/skills
 ```
 
-作用：无参数时完整重新扫描并进入四阶段保存向导；带来源参数时定向扫描并从 Skill 验证阶段开始，最终增量合并。
+- 模式：定向导入（`merge`）。
+- 交互：跳过来源选择，直接验证本次 Skill → 选择本次软链目标 → 确认计划 → 保存。
+- 配置：只合并参数指定的来源和目标，不移除其他历史平台、目录或绑定。
 
-读取：来源目录、Skill 元数据、软链目标和内容指纹。
+### 扫描规则
 
-写入：仅在交互向导最终回车确认后写入统一源、绑定和配置；`--json` 始终只读。
+- 扫描与选择阶段只读，最终确认前不修改文件和配置。
+- 根目录第一层的 `local/` 子目录自动作为本地 Skill 来源；验证列表可按 `L` 切换共享/本地范围。
+- 同名不同内容必须在冲突向导中选择保持现状、指定来源或改名导入；默认不覆盖。
+- 任一阶段按 `Esc`、`Q` 或中断会放弃整次命令。
+- macOS 返回 `EPERM` 时按终端提示为当前终端宿主授权，或进入来源的可访问上级目录后使用相对路径。
 
-不会：在最终确认前写入；定向导入不会移除未传入的历史来源或绑定；`--json` 不修改任何状态。
-
-范围规则：导入根目录第一层的 `local/` 子目录默认映射为本地 Skill，其余 Skill 默认共享；交互中可修改。最终计划按选择分别写入 `~/.askx/local-skills` 和 `~/.askx/skills`。
-
-### 2.4 `askx skills link`
+## `askx skills link`
 
 ```bash
-askx skills link --platform codex
-askx skills link --platform claude,cursor
-askx skills link --directory /absolute/path/to/agent-skills
-askx skills link --platform codex --yes --json
+askx skills link [--platform <platform>]... [--directory <path>]... [-y] [--json]
 ```
 
-作用：把平台或自定义 Skills 根目录绑定到 AskX 统一源，或恢复之前停用的平台绑定。
-
-交互计划标题为“关联软链”，确认文案为“确定要关联吗？”，成功结果显示“已关联”。已存在有效关联的平台只显示“已存在关联，本次不处理”。
-
-写入：受管目录软链、平台绑定记录、必要的原目录保护数据。
-
-不会：扫描或同步新的 Skill。
-
-### 2.5 `askx skills unlink`
-
-```bash
-askx skills unlink --platform codex
-askx skills unlink --platform claude,cursor --yes --json
-askx skills unlink --directory /absolute/path/to/agent-skills
-```
-
-作用：无损停用平台软链，并恢复关联前的平台目录。
-
-存在关联时，交互确认使用“确定要取消吗？”，成功结果显示“已取消软链设置”。不存在关联时直接显示“不存在关联数据，本次不处理”。
-
-写入：平台绑定状态和平台 Skills 根目录。
-
-不会：删除统一源、复制统一源内容或扫描 Skill。
-
-传入 `--directory` 时只取消指定文件夹的软链绑定；不存在绑定时显示“不存在关联数据，本次不处理”。不会触发 Skill 扫描或同步。
-
-### 2.6 `askx skills status`
-
-```bash
-askx skills status
-askx skills status --json
-```
-
-作用：只读检查当前 Skill 冲突、无效内容和失效软链。
-
-写入：无。
-
-### 2.7 `askx clear`
-
-```bash
-askx clear
-askx clear --yes --json
-askx clear --links
-askx clear --skills
-```
-
-作用：默认清空用户 Skill 和全部软链配置；通过参数只清空指定模块，并创建可追溯的长期备份。
-
-写入：统一源、manifest、包含软链配置快照的备份，以及带成功/失败数量和绝对路径的事务回执。
-
-不会：删除长期备份、Registry 或未受 AskX 管理的外部文件。
-
-### 2.8 `askx skills scope <skill-name>`
-
-```bash
-askx skills scope my-skill --local
-askx skills scope my-skill --shared --yes --json
-```
-
-作用：在共享与本地范围之间迁移一个已有 Skill。
-
-写入：Skill 目录、manifest、管理声明和 Registry 目标。
-
-安全：目标存在同名 Skill、内容或 revision 在确认前变化时拒绝执行；失败时恢复来源、目标与索引。
-
-### 2.8 `askx skills history list`
-
-```bash
-askx skills history list
-askx skills history list --json
-```
-
-作用：按时间倒序列出已完成的 Skills 事务和回执 ID。
-
-写入：无。
-
-### 2.9 `askx skills rollback <receipt-id>`
-
-```bash
-askx skills rollback <receipt-id>
-askx skills rollback <receipt-id> --yes --json
-```
-
-作用：回滚最新且当前文件状态未变化的事务。
-
-校验：回执、manifest revision、计划指纹和当前文件状态。
-
-拒绝条件：目标事务不是最新事务，或事务后发生外部修改。
-
-### 2.10 `askx skills stats`
-
-```bash
-askx skills stats
-askx skills stats --json
-```
-
-作用：显示当前可用 Skill 的版本、usage、目标健康状态和版本管理覆盖情况。
-
-读取：manifest、Skill Manager Registry 和目标绑定状态。
-
-写入：无。
-
-### 2.11 `askx skills usage record <name-or-id>`
-
-```bash
-askx skills usage record my-skill
-askx skills usage record skill_26_805_example --yes --json
-```
-
-作用：为指定已纳管 Skill 记录一次明确使用。
-
-写入：`usage_count`、`last_used_at` 和 Registry revision。
-
-不会：修改 Skill 内容、业务 Hash 或版本号。
-
-### 2.12 `askx skills manager repair`
-
-```bash
-askx skills manager repair
-askx skills manager repair --yes --json
-```
-
-作用：修复缺失、损坏或过期的内置 `askx-skill-manager`。
-
-恢复规则：优先保留有效 Registry；Registry 无效时尝试从 AskX 自有备份恢复最新有效快照。
-
-不会：执行 Skill 附带脚本。
-
-### 2.13 `askx skills backups list`
-
-```bash
-askx skills backups list
-askx skills backups list --json
-```
-
-作用：列出清空统一源时创建的长期备份及版本号。
-
-写入：无。
-
-### 2.14 `askx skills backups restore <backup-version>`
-
-```bash
-askx skills backups restore <backup-version>
-askx skills backups restore <backup-version> --yes --json
-```
-
-作用：校验并恢复指定长期备份。
-
-写入：统一源、manifest 和事务记录。
-
-不会：改变现有平台软链关系。
-
-### 2.15 `askx skills backups remove <backup-version>`
-
-```bash
-askx skills backups remove <backup-version>
-askx skills backups remove <backup-version> --yes --json
-```
-
-作用：永久删除指定长期备份。
-
-影响：删除后不能再通过 AskAgent X 恢复该备份。
-
-## 3. 当前 CLI 与 Web 对齐状态
-
-| 能力 | CLI | Web |
+| 参数 | 必填 | 说明 |
 | --- | --- | --- |
-| 查看当前 Skill | 已支持 | 已支持 |
-| 选择平台扫描 | 已支持 | 已支持 |
-| 自定义文件夹扫描 | 通过 `--directory` | 通过文件夹选择器 |
-| 扫描结果验证 | 已支持 | 已支持 |
-| 平台软链新增、取消、恢复 | 已支持 | 已支持 |
-| 自定义文件夹软链新增 | 已支持 | 已支持 |
-| 自定义文件夹软链取消、恢复、删除 | 尚未支持 | 已支持 |
-| 添加 Skill | 通过带参数的 `scan` | 已支持 |
-| 导入时设置共享/本地范围 | `L` 切换 | 已支持 |
-| 已有 Skill 在共享/本地间迁移 | `skills scope` | 已支持 |
-| 导出 Skill | 尚未支持 | 已支持 |
-| 一键清空 | 已支持 | 已支持 |
-| Skill 统计 | 已支持 | 已支持 |
-| 动态配置纳管 Skill | 当前仅 Web | 统计页直接管理 |
+| `-p, --platform <platform>` | 条件必填 | 要设置或恢复软链的平台。 |
+| `-d, --directory <path>` | 条件必填 | 要设置或恢复软链的自定义目录。 |
+| `-y, --yes` | 否 | 确认执行计划。 |
+| `--json` | 否 | 输出执行结果 JSON。 |
 
-## 4. 常用命令速查
+- 类型：写入。
+- 效果：新目标执行关联，已暂停目标执行恢复，已关联目标提示已存在、本次不处理。
+- 不会：扫描、导入、复制或改写 Skill。
+- 交互：未传平台和目录时选择平台；非交互环境必须明确传目标。
+
+## `askx skills unlink`
 
 ```bash
-# 查看
-askx skills
+askx skills unlink [--platform <platform>]... [--directory <path>]... [-y] [--json]
+```
 
-# 扫描和验证
-askx skills scan
-askx skills scan --directory /absolute/path/to/skills
+- 类型：写入。
+- 效果：取消受管软链，恢复接入前目录并保留可恢复绑定；不存在关联数据时提示本次不处理。
+- 不会：扫描、删除或修改统一源 Skill。
+- 参数：与 `link` 相同；未传目标时交互选择平台。
 
-# 定向扫描并添加 Skill
-askx skills scan --platform codex
-askx skills scan --directory /absolute/path/to/skills
+## `askx skills status`
 
-# 软链管理
-askx skills link --platform codex
-askx skills unlink --platform codex
-askx skills status
+```bash
+askx skills status [--json]
+```
 
-# Skill 管理
-askx clear
-askx skills scope my-skill --local
-askx skills scope my-skill --shared
-askx skills backups list
-askx skills backups restore <backup-version>
+- 类型：只读。
+- 输出：当前配置平台的扫描状态、内容冲突、无效 Skill、失效链接、指纹及初始化信息。
 
-# 统计和 usage
-askx skills stats
-askx skills usage record my-skill
+## `askx skills scope <skill-name>`
+
+```bash
+askx skills scope <skill-name> (--local | --shared) [-y] [--json]
+```
+
+| 参数 | 必填 | 说明 |
+| --- | --- | --- |
+| `<skill-name>` | 是 | 已有 Skill 名称。 |
+| `--local` | 二选一 | 从共享统一源迁移到 `~/.askx/local-skills`。 |
+| `--shared` | 二选一 | 从本地目录迁移到 `~/.askx/skills`。 |
+| `-y, --yes` | 否 | 确认执行迁移计划。 |
+| `--json` | 否 | 输出回执 JSON。 |
+
+- 类型：写入。
+- 效果：迁移已有 Skill 的范围；不会同时保留两份副本。
+
+## 事务与修复
+
+### `askx skills history list`
+
+```bash
+askx skills history list [--json]
+```
+
+- 类型：只读。
+- 输出：可追踪和可回滚的 Skills 批次回执。
+
+### `askx skills rollback <receipt-id>`
+
+```bash
+askx skills rollback <receipt-id> [-y] [--json]
+```
+
+- 类型：写入。
+- 效果：根据事务回执生成回滚计划，确认后恢复该批次管理的路径。
+
+### `askx skills manager repair`
+
+```bash
+askx skills manager repair [-y] [--json]
+```
+
+- 类型：写入。
+- 效果：检测并修复缺失、损坏或版本过期的受保护系统 Skill Manager。
+- 限制：只有确认计划后写入，不会静默修复。
+
+## 统计与使用记录
+
+### `askx skills stats`
+
+```bash
+askx skills stats [--json]
+```
+
+- 类型：只读。
+- 输出：以当前可用 Skill 为准的共享/本地数量、usage 和纳管统计；已清空或不存在的 Skill 不输出。
+
+### `askx skills usage record <name-or-id>`
+
+```bash
+askx skills usage record <name-or-id> [-y] [--json]
+```
+
+- 类型：写入。
+- 效果：为指定 Skill 生成 usage 计划，确认后把使用次数写入系统 Skill Manager registry。
+
+## 备份管理
+
+### `askx skills backups list`
+
+```bash
+askx skills backups list [--json]
+```
+
+- 类型：只读。
+- 输出：`askx clear` 产生的长期备份版本、名称、时间和路径。
+
+### `askx skills backups restore <backup-version>`
+
+```bash
+askx skills backups restore <backup-version> [-y] [--json]
+```
+
+- 类型：写入。
+- 效果：确认后用指定备份恢复统一源和受管 Skill 数据；失败时恢复操作前状态。
+
+### `askx skills backups remove <backup-version>`
+
+```bash
+askx skills backups remove <backup-version> [-y] [--json]
+```
+
+- 类型：不可恢复写入。
+- 效果：确认后永久删除指定长期备份，不影响当前统一源。
+
+## 自动化示例
+
+```bash
+askx skills scan --platform codex --json
+askx skills status --json
+askx skills stats --json
+askx skills link --platform claude --yes --json
+askx skills unlink --directory /absolute/path/to/skills --yes --json
+askx skills usage record my-skill --yes --json
 ```

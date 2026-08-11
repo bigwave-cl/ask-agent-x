@@ -18,12 +18,13 @@ askx --help
 
 运行 `askx skills` 可直接查看当前 Skill 列表；首次运行会依次选择扫描平台、展示文件夹与待处理 Skill、选择软链平台并确认保存。使用 `askx skills stats` 查看版本、使用次数和关联目标统计。
 
-使用 `askx clear` 按计划清空当前 Skill 列表并创建可恢复备份；使用 `askx skills backups list|restore|remove` 管理清理后的备份。
+使用 `askx clear` 交互选择清空范围、是否备份和备份名称；也可通过 `--backup-name <名称>` 或 `--no-backup` 提前指定。使用 `askx skills backups list|restore|remove` 管理清理后的备份。
 
-## 使用文档
+## 命令 API 文档
 
-- [CLI 基础使用](https://github.com/bigwave-cl/ask-agent-x/blob/main/docs/cli-base.md)：安装、诊断、Web 服务、Token 和安全卸载
-- [Skills 管理](https://github.com/bigwave-cl/ask-agent-x/blob/main/docs/cli-skills.md)：查看、扫描、验证、软链、管理、统计和完整 API
+- [CLI 命令索引](https://github.com/bigwave-cl/ask-agent-x/blob/main/docs/cli.md)：按使用场景快速定位命令
+- [基础与 Web API](https://github.com/bigwave-cl/ask-agent-x/blob/main/docs/cli-base.md)：安装、诊断、清空、Web 服务、Token 和卸载
+- [Skills API](https://github.com/bigwave-cl/ask-agent-x/blob/main/docs/cli-skills.md)：所有 Skills 命令、参数、副作用和示例
 
 ## 卸载
 
