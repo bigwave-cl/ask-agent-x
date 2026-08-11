@@ -1,13 +1,11 @@
 <script setup lang="ts">
 import type { ResponsiveSelectOption } from '../responsive-select/types'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import ResponsiveOverlayDrawer from '../responsive-overlay/Drawer.vue'
 import { useResponsiveOverlayViewport } from '../responsive-overlay/useResponsiveOverlayViewport'
 import ResponsiveSelectTriggerButton from '../responsive-select/TriggerButton.vue'
-import { responsiveSelectTriggerClass } from '../responsive-select/triggerStyles'
 
 defineOptions({ name: 'ResponsiveMultiSelect' })
 
@@ -48,7 +46,7 @@ function toggle(value: string, checked: boolean | 'indeterminate') {
     :placeholder="placeholder"
     :title="title"
     :size="size"
-    :trigger-class="cn(responsiveSelectTriggerClass, triggerClass)"
+    :trigger-class="triggerClass"
     :value-slot-props="{ isMobile: true, open, option: selectedOptions[0] ?? null, placeholder, value: selectedOptions[0]?.value }"
     @click="open = true"
   >
@@ -66,7 +64,19 @@ function toggle(value: string, checked: boolean | 'indeterminate') {
   </ResponsiveOverlayDrawer>
 
   <Popover v-else v-model:open="open">
-    <PopoverTrigger as-child><Button variant="outline" size="40" :disabled="disabled" class="w-full justify-between" :class="triggerClass"><span class="truncate">{{ summary }}</span><Icon name="askx-navigation:chevron-right" :class="open ? 'rotate-90' : ''" /></Button></PopoverTrigger>
+    <PopoverTrigger as-child>
+      <ResponsiveSelectTriggerButton
+        :disabled="disabled"
+        :open="open"
+        :placeholder="placeholder"
+        :title="title"
+        :size="size"
+        :trigger-class="triggerClass"
+        :value-slot-props="{ isMobile: false, open, option: selectedOptions[0] ?? null, placeholder, value: selectedOptions[0]?.value }"
+      >
+        <template #value><span class="truncate">{{ summary }}</span></template>
+      </ResponsiveSelectTriggerButton>
+    </PopoverTrigger>
     <PopoverContent align="start" class="w-[var(--reka-popover-trigger-width)] p-2" :class="contentClass">
       <p v-if="options.length === 0" class="px-3 py-6 text-center text-sm text-muted-foreground">{{ emptyText }}</p>
       <label v-for="option in options" v-else :key="option.value" class="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-sm hover:bg-muted" :class="option.disabled ? 'cursor-not-allowed opacity-50' : ''">
