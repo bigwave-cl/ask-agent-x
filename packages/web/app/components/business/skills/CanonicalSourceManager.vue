@@ -6,8 +6,6 @@ import type {
   CanonicalSourceMutationReceipt,
   ClearModule,
 } from '@askx/module-skills/canonical-source-manager'
-import { h } from 'vue'
-import { useConfirm } from '@/composables/useConfirm'
 import ResponsiveMultiSelect from '@/components/common/responsive-multi-select/index.vue'
 
 /** 统一源备份管理组件属性。 */
@@ -35,6 +33,12 @@ const pendingPlan = ref<CanonicalSourceMutationPlan | null>(null)
 const clearReceipt = ref<CanonicalSourceMutationReceipt | null>(null)
 /** 用户在清空表单中选择的基础模块。 */
 const selectedClearModules = ref<ClearModule[]>(['links', 'skills'])
+/** 清空前是否创建长期备份。 */
+const backupBeforeClear = ref(true)
+/** 用户设置的备份名称。 */
+const backupLabel = ref('')
+/** 是否正在读取默认备份名称。 */
+const loadingBackupLabel = ref(false)
 /** 是否正在读取备份。 */
 const loadingBackups = ref(false)
 /** 是否正在生成计划。 */
@@ -53,6 +57,7 @@ const confirmTitle = computed(() => {
 const confirmDescription = computed(() => {
   if (pendingPlan.value?.action === 'restore') return t('skills.restoreCanonicalBackupDescription')
   if (pendingPlan.value?.action === 'delete-backup') return t('skills.deleteCanonicalBackupDescription')
+  if (pendingPlan.value && !pendingPlan.value.backupRequested) return t('skills.clearCanonicalSourceWithoutBackupDescription')
   return t(pendingPlan.value?.backupRequired ? 'skills.clearCanonicalSourceWithBackupDescription' : 'skills.clearCanonicalSourceEmptyDescription')
 })
 
@@ -65,11 +70,6 @@ const confirmLabel = computed(() => {
 
 /** 当前确认按钮图标。 */
 const confirmIcon = computed(() => pendingPlan.value?.action === 'restore' ? 'askx-actions:refresh' : 'askx-actions:delete')
-
-/** 清空模块多选框当前摘要。 */
-const clearModuleSummary = computed(() => selectedClearModules.value.length === 2
-  ? t('skills.clearModuleAll')
-  : selectedClearModules.value.includes('links') ? t('skills.clearModuleLinks') : t('skills.clearModuleSkills'))
 
 /** 清空配置使用的多选项。 */
 const clearModuleOptions = computed(() => [
@@ -91,6 +91,11 @@ const SOURCE_ACTION_ERROR_TOAST_ID = 'canonical-source-action-error'
 function formatTime(value?: string): string {
   if (!value) return t('skills.invalidCanonicalBackup')
   return new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+}
+
+/** 将软链摘要格式化为平台或文件夹名称。 */
+function formatLinkNames(links: NonNullable<CanonicalSourceMutationReceipt['clearBackupSummary']>['linkSummary']['cleared'] | undefined): string {
+  return links?.map(link => link.name).join('、') || t('skills.clearResultNoData')
 }
 
 /** 加载长期备份列表。 */
@@ -115,55 +120,66 @@ async function openManager(): Promise<void> {
  * 生成二次操作计划，再展示用户确认。
  * @param action 清空、恢复或永久删除。
  * @param backupVersion 恢复或删除的目标备份版本。
+ * @param clearModules 清空操作指定的模块范围。
+ * @param createBackup 是否在清空前创建长期备份。
+ * @param selectedBackupLabel 用户设置的备份名称。
  */
-async function prepareAction(action: CanonicalSourceAction, backupVersion?: string, clearModules?: ClearModule[]): Promise<void> {
+async function prepareAction(action: CanonicalSourceAction, backupVersion?: string, clearModules?: ClearModule[], createBackup?: boolean, selectedBackupLabel?: string): Promise<void> {
   preparing.value = true
   toast.dismiss(SOURCE_ACTION_ERROR_TOAST_ID)
   try {
     pendingPlan.value = await $fetch<CanonicalSourceMutationPlan>('/api/skills/canonical-source/plan', {
       method: 'POST',
-      body: { action, ...(backupVersion ? { backupVersion } : {}), ...(clearModules ? { clearModules } : {}) },
+      body: {
+        action,
+        ...(backupVersion ? { backupVersion } : {}),
+        ...(clearModules ? { clearModules } : {}),
+        ...(createBackup === undefined ? {} : { createBackup }),
+        ...(selectedBackupLabel ? { backupLabel: selectedBackupLabel } : {}),
+      },
     })
     managerOpen.value = false
-    if (pendingPlan.value.action === 'clear') openClearPlanConfirm(pendingPlan.value)
-    else confirmOpen.value = true
+    confirmOpen.value = true
   } catch {
-    toast.error(t('skills.canonicalSourceActionFailed'), { id: SOURCE_ACTION_ERROR_TOAST_ID })
+    toast.error(t(action === 'clear' ? 'skills.canonicalClearPlanFailed' : 'skills.canonicalSourceActionFailed'), { id: SOURCE_ACTION_ERROR_TOAST_ID })
   } finally {
     preparing.value = false
   }
 }
 
-/** 使用统一 Confirm 展示清空计划并执行最终确认。 */
-function openClearPlanConfirm(plan: CanonicalSourceMutationPlan): void {
-  const scope = plan.clearModules.map(module => t(module === 'links' ? 'skills.clearModuleLinks' : 'skills.clearModuleSkills')).join('、')
-  useConfirm({
-    title: t('skills.clearCanonicalSourceTitle'),
-    desc: h('div', { class: 'grid gap-3 text-sm' }, [
-      h('p', { class: 'leading-6 text-muted-foreground' }, t('skills.canonicalSourcePlanRevalidate')),
-      h('div', { class: 'rounded-xl border bg-muted/30 p-3' }, [
-        h('strong', { class: 'block' }, `${t('skills.clearPlanModules')}：${scope}`),
-        h('span', { class: 'mt-1 block text-xs text-muted-foreground' }, `${t('skills.currentCanonicalSkills')}：${plan.currentSkillCount}`),
-      ]),
-    ]),
-    actionLayout: 'compact',
-    cancelText: t('skills.cancelCanonicalSourceAction'),
-    okText: t('skills.confirmCanonicalClear'),
-    okVariant: 'destructive',
-    onCancel: () => { pendingPlan.value = null },
-    onOk: async done => { await applyAction(done) },
-  })
+/** 读取当前尚未占用的默认备份名称。 */
+async function loadSuggestedBackupLabel(): Promise<void> {
+  loadingBackupLabel.value = true
+  try {
+    const suggestion = await $fetch<{ label: string }>('/api/skills/canonical-source/backup-label')
+    backupLabel.value = suggestion.label
+  } catch {
+    backupLabel.value = ''
+    toast.error(t('skills.canonicalBackupRequestFailed'), { id: SOURCE_ACTION_ERROR_TOAST_ID })
+  } finally {
+    loadingBackupLabel.value = false
+  }
 }
 
 /** 打开基础清空模块选择表单。 */
-function openClearConfiguration(): void {
+async function openClearConfiguration(): Promise<void> {
   selectedClearModules.value = ['links', 'skills']
+  backupBeforeClear.value = true
+  backupLabel.value = ''
   pendingPlan.value = null
   confirmOpen.value = true
+  await loadSuggestedBackupLabel()
+}
+
+/** 更新清空前的备份选择。 */
+async function updateBackupBeforeClear(value: boolean | 'indeterminate'): Promise<void> {
+  if (typeof value !== 'boolean') return
+  backupBeforeClear.value = value
+  if (value && !backupLabel.value) await loadSuggestedBackupLabel()
 }
 
 /** 应用当前用户已经查看并确认的计划。 */
-async function applyAction(done?: () => void): Promise<void> {
+async function applyAction(): Promise<void> {
   if (!pendingPlan.value) return
   applying.value = true
   toast.dismiss(SOURCE_ACTION_ERROR_TOAST_ID)
@@ -178,7 +194,6 @@ async function applyAction(done?: () => void): Promise<void> {
     })
     confirmOpen.value = false
     pendingPlan.value = null
-    done?.()
     emit('updated')
     if (receipt.action === 'restore') toast.success(t('skills.canonicalBackupRestored'))
     else if (receipt.action === 'delete-backup') toast.success(t('skills.canonicalBackupDeleted'))
@@ -191,7 +206,8 @@ async function applyAction(done?: () => void): Promise<void> {
       await loadBackups()
     }
   } catch {
-    toast.error(t('skills.canonicalSourceActionFailed'), { id: SOURCE_ACTION_ERROR_TOAST_ID })
+    if (plan.action === 'clear') pendingPlan.value = null
+    toast.error(t(plan.action === 'clear' ? 'skills.canonicalClearPlanExpired' : 'skills.canonicalSourceActionFailed'), { id: SOURCE_ACTION_ERROR_TOAST_ID })
   } finally {
     applying.value = false
   }
@@ -244,9 +260,10 @@ function cancelConfirmation(): void {
         </span>
         <div class="min-w-0 flex-1">
           <div class="flex flex-wrap items-center gap-2">
-            <strong class="font-mono text-sm">{{ backup.version }}</strong>
+            <strong class="text-sm">{{ backup.label }}</strong>
             <Badge :variant="backup.valid ? 'secondary' : 'destructive'">{{ backup.valid ? t('skills.canonicalBackupAvailable') : t('skills.invalidCanonicalBackup') }}</Badge>
           </div>
+          <p class="mt-1 font-mono text-[11px] text-muted-foreground">{{ backup.version }}</p>
           <p class="mt-1 text-xs text-muted-foreground">{{ formatTime(backup.createdAt) }}<template v-if="backup.skillCount !== undefined"> · {{ t('skills.canonicalBackupSkills', { count: backup.skillCount }) }}</template></p>
           <code class="mt-1 block truncate font-mono text-[10px] text-muted-foreground" :title="backup.path">{{ backup.path }}</code>
           <p v-if="backup.issue" class="mt-1 text-xs text-destructive">{{ backup.issue }}</p>
@@ -281,12 +298,32 @@ function cancelConfirmation(): void {
         :model-value="selectedClearModules"
         :options="clearModuleOptions"
         :title="t('skills.clearModuleLabel')"
-        :placeholder="clearModuleSummary"
+        :placeholder="t('skills.clearModuleRequired')"
         :close-label="t('skills.cancelCanonicalSourceAction')"
         :empty-text="t('skills.clearModuleRequired')"
+        size="40"
         @update:model-value="selectedClearModules = $event as ClearModule[]"
       />
       <p v-if="!selectedClearModules.length" class="text-xs text-destructive">{{ t('skills.clearModuleRequired') }}</p>
+      <label class="flex cursor-pointer items-start gap-3 rounded-xl border bg-muted/20 p-3">
+        <Checkbox :model-value="backupBeforeClear" class="mt-0.5" @update:model-value="updateBackupBeforeClear" />
+        <span class="min-w-0">
+          <strong class="block text-sm font-medium">{{ t('skills.clearCreateBackup') }}</strong>
+          <span class="mt-1 block text-xs leading-5 text-muted-foreground">{{ t('skills.clearCreateBackupDescription') }}</span>
+        </span>
+      </label>
+      <div v-if="backupBeforeClear" class="grid gap-2">
+        <label for="canonical-backup-label" class="text-sm font-medium">{{ t('skills.clearBackupName') }}</label>
+        <Input
+          id="canonical-backup-label"
+          v-model="backupLabel"
+          maxlength="80"
+          :disabled="loadingBackupLabel"
+          :placeholder="loadingBackupLabel ? t('skills.loadingBackupName') : t('skills.clearBackupNamePlaceholder')"
+          autocomplete="off"
+        />
+        <p class="text-xs text-muted-foreground">{{ t('skills.clearBackupNameDescription') }}</p>
+      </div>
     </div>
     <div v-if="pendingPlan" class="overflow-hidden rounded-2xl border bg-muted/20">
       <div class="flex items-start gap-3 border-b p-4">
@@ -295,17 +332,19 @@ function cancelConfirmation(): void {
       </div>
       <dl class="grid gap-3 p-4 text-xs sm:grid-cols-2">
         <div v-if="pendingPlan.action === 'clear'" class="sm:col-span-2"><dt class="text-muted-foreground">{{ t('skills.clearPlanModules') }}</dt><dd class="mt-1 font-semibold">{{ pendingClearModuleSummary }}</dd></div>
+        <div v-if="pendingPlan.backupLabel" class="sm:col-span-2"><dt class="text-muted-foreground">{{ t('skills.clearBackupName') }}</dt><dd class="mt-1 font-semibold">{{ pendingPlan.backupLabel }}</dd></div>
         <div><dt class="text-muted-foreground">{{ t('skills.currentCanonicalSkills') }}</dt><dd class="mt-1 font-semibold">{{ pendingPlan.currentSkillCount }}</dd></div>
         <div><dt class="text-muted-foreground">{{ t('skills.currentCanonicalEntries') }}</dt><dd class="mt-1 font-semibold">{{ pendingPlan.currentEntryCount }}</dd></div>
         <div v-if="pendingPlan.backupVersion" class="sm:col-span-2"><dt class="text-muted-foreground">{{ pendingPlan.action === 'clear' ? t('skills.backupToCreate') : t('skills.targetCanonicalBackup') }}</dt><dd class="mt-1 font-mono font-semibold">{{ pendingPlan.backupVersion }}</dd></div>
+        <div v-if="pendingPlan.action === 'clear' && pendingPlan.backupPath" class="sm:col-span-2"><dt class="text-muted-foreground">{{ t('skills.clearResultBackupPath') }}</dt><dd class="mt-1 break-all font-mono font-semibold">{{ pendingPlan.backupPath }}</dd></div>
       </dl>
     </div>
     <template #footer>
-      <Button variant="outline" :disabled="applying" @click="cancelConfirmation">{{ t('skills.cancelCanonicalSourceAction') }}</Button>
-      <Button v-if="!pendingPlan" variant="destructive" :disabled="preparing || !selectedClearModules.length" @click="prepareAction('clear', undefined, selectedClearModules)">
+      <Button variant="outline" size="40" :disabled="applying" @click="cancelConfirmation">{{ t('skills.cancelCanonicalSourceAction') }}</Button>
+      <Button v-if="!pendingPlan" variant="destructive" size="40" :disabled="preparing || loadingBackupLabel || !selectedClearModules.length || (backupBeforeClear && !backupLabel.trim())" @click="prepareAction('clear', undefined, selectedClearModules, backupBeforeClear, backupLabel.trim())">
         <Icon name="askx-actions:delete" />{{ preparing ? t('skills.applyingCanonicalSourceAction') : t('skills.createCanonicalClearPlan') }}
       </Button>
-      <Button v-else variant="destructive" :disabled="applying" @click="applyAction">
+      <Button v-else variant="destructive" size="40" :disabled="applying" @click="applyAction">
         <Icon :name="confirmIcon" :class="{ 'animate-spin': applying && pendingPlan?.action === 'restore' }" />
         {{ applying ? t('skills.applyingCanonicalSourceAction') : confirmLabel }}
       </Button>
@@ -322,22 +361,25 @@ function cancelConfirmation(): void {
     <div class="overflow-hidden rounded-2xl border bg-muted/20 text-sm">
       <section class="border-b p-4">
         <strong>{{ t('skills.clearResultLinks') }}</strong>
-        <p v-if="!clearReceipt?.clearBackupSummary?.links.length" class="mt-2 text-muted-foreground">{{ t('skills.clearResultNoData') }}</p>
-        <ul v-else class="mt-2 grid gap-2">
-          <li v-for="link in clearReceipt.clearBackupSummary.links" :key="`${link.kind}:${link.id}`" class="flex items-center gap-2">
-            <Icon :name="link.status === 'backed-up' ? 'askx-status:success' : 'askx-status:error'" :class="link.status === 'backed-up' ? 'text-success' : 'text-destructive'" />
-            <span class="font-medium">{{ link.name }}</span>
-            <span class="text-muted-foreground">{{ t(link.status === 'backed-up' ? 'skills.clearResultBackedUp' : 'skills.clearResultFailed') }}</span>
-          </li>
-        </ul>
+        <dl class="mt-3 grid gap-2 text-xs sm:grid-cols-[auto_1fr]">
+          <dt class="text-muted-foreground">{{ t('skills.clearResultCleared') }}</dt><dd class="font-medium">{{ formatLinkNames(clearReceipt?.clearBackupSummary?.linkSummary.cleared) }}</dd>
+          <dt class="text-muted-foreground">{{ t('skills.clearResultNotCleared') }}</dt><dd class="font-medium">{{ formatLinkNames(clearReceipt?.clearBackupSummary?.linkSummary.notCleared) }}</dd>
+          <dt class="text-muted-foreground">{{ t('skills.clearResultBackedUp') }}</dt><dd class="font-medium">{{ formatLinkNames(clearReceipt?.clearBackupSummary?.linkSummary.backedUp) }}</dd>
+          <dt class="text-muted-foreground">{{ t('skills.clearResultNotBackedUp') }}</dt><dd class="font-medium">{{ formatLinkNames(clearReceipt?.clearBackupSummary?.linkSummary.notBackedUp) }}</dd>
+        </dl>
       </section>
       <section class="grid gap-2 p-4">
         <strong>{{ t('skills.clearResultSkills') }}</strong>
-        <p v-if="!clearReceipt?.clearBackupSummary || (clearReceipt.clearBackupSummary.skills.backedUp === 0 && clearReceipt.clearBackupSummary.skills.failed === 0)" class="text-muted-foreground">{{ t('skills.clearResultNoData') }}</p>
-        <p v-else>{{ t('skills.clearResultSkillCounts', { success: clearReceipt.clearBackupSummary.skills.backedUp, failed: clearReceipt.clearBackupSummary.skills.failed }) }}</p>
+        <dl v-if="clearReceipt?.clearBackupSummary" class="grid gap-2 text-xs sm:grid-cols-[auto_1fr]">
+          <dt class="text-muted-foreground">{{ t('skills.clearResultCleared') }}</dt><dd class="font-medium">{{ clearReceipt.clearBackupSummary.skills.cleared }} {{ t('skills.clearResultSkillUnit') }}</dd>
+          <dt class="text-muted-foreground">{{ t('skills.clearResultNotCleared') }}</dt><dd class="font-medium">{{ clearReceipt.clearBackupSummary.skills.notCleared }} {{ t('skills.clearResultSkillUnit') }}</dd>
+          <dt class="text-muted-foreground">{{ t('skills.clearResultBackedUp') }}</dt><dd class="font-medium">{{ clearReceipt.clearBackupSummary.skills.backedUp }} {{ t('skills.clearResultSkillUnit') }}</dd>
+          <dt class="text-muted-foreground">{{ t('skills.clearResultNotBackedUp') }}</dt><dd class="font-medium">{{ clearReceipt.clearBackupSummary.skills.notBackedUp }} {{ t('skills.clearResultSkillUnit') }}</dd>
+        </dl>
         <dl v-if="clearReceipt?.clearBackupSummary?.backupVersion" class="mt-2 grid gap-2 border-t pt-3 text-xs sm:grid-cols-[auto_1fr]">
           <dt class="text-muted-foreground">{{ t('skills.clearResultBackupIdentifier') }}</dt><dd class="font-mono font-semibold">{{ clearReceipt.clearBackupSummary.backupVersion }}</dd>
-          <dt class="text-muted-foreground">{{ t('skills.clearResultBackupPath') }}</dt><dd class="break-all font-mono">{{ clearReceipt.clearBackupSummary.backupPath }}</dd>
+          <dt class="text-muted-foreground">{{ t('skills.clearBackupName') }}</dt><dd class="font-semibold">{{ clearReceipt.clearBackupSummary.backupLabel }}</dd>
+          <dt class="text-muted-foreground">{{ t('skills.clearResultBackupPath') }}</dt><dd class="min-w-0"><CsLocalPathOpener v-if="clearReceipt.clearBackupSummary.backupPath" :path="clearReceipt.clearBackupSummary.backupPath" display="path" /></dd>
         </dl>
       </section>
     </div>

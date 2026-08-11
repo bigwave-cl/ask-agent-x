@@ -16,7 +16,17 @@ const styleReset = '\u001B[0m'
  * @param interactive 当前输出是否连接交互终端。
  * @returns 支持时包含 OSC 8 控制序列，否则返回普通 URL。
  */
+export function terminalLink(url: string, label = url, interactive = Boolean(process.stdout.isTTY)): string {
+  if (!interactive || /[\u0000-\u001F\u007F]/u.test(url) || /[\u0000-\u001F\u007F]/u.test(label)) return label
+  return `${osc8Open(url)}${linkStyle}${label}${styleReset}${osc8Close}`
+}
+
+/**
+ * 将 URL 本身格式化为可点击的终端超链接。
+ * @param url 需要显示和打开的完整 URL。
+ * @param interactive 当前输出是否连接交互终端。
+ * @returns 支持时包含 OSC 8 控制序列，否则返回普通 URL。
+ */
 export function terminalUrl(url: string, interactive = Boolean(process.stdout.isTTY)): string {
-  if (!interactive || /[\u0000-\u001F\u007F]/u.test(url)) return url
-  return `${osc8Open(url)}${linkStyle}${url}${styleReset}${osc8Close}`
+  return terminalLink(url, url, interactive)
 }

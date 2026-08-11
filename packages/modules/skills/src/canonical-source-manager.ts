@@ -17,6 +17,8 @@ const BACKUP_SOURCE_DIRECTORY = 'source'
 const BACKUP_METADATA_FILE = 'backup.json'
 /** 年月日与当日次数组成的备份版本格式。 */
 const BACKUP_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}-\d{2,}$/
+/** 用户自定义备份名称的最大长度。 */
+const BACKUP_LABEL_MAX_LENGTH = 80
 
 /** 统一源支持的二次操作。 */
 export const canonicalSourceActionSchema = z.enum(['clear', 'restore', 'delete-backup'])
@@ -47,9 +49,33 @@ export interface CanonicalClearBackupSummary {
   /** 已记录的软链绑定及其备份状态。 */
   links: Array<CanonicalLinkBackupItem & { status: 'backed-up' | 'failed', issue?: string | undefined }>
   /** 用户 Skill 的备份数量。 */
-  skills: { backedUp: number, failed: number }
+  skills: {
+    /** 已成功清空的用户 Skill 数量。 */
+    cleared: number
+    /** 本次保留、未清空的用户 Skill 数量。 */
+    notCleared: number
+    /** 已写入长期备份的用户 Skill 数量。 */
+    backedUp: number
+    /** 未写入长期备份的用户 Skill 数量。 */
+    notBackedUp: number
+    /** 兼容旧回执的备份失败数量。 */
+    failed: number
+  }
+  /** 软链设置的清空与备份结果。 */
+  linkSummary: {
+    /** 已清空软链设置。 */
+    cleared: CanonicalLinkBackupItem[]
+    /** 本次保留、未清空的软链设置。 */
+    notCleared: CanonicalLinkBackupItem[]
+    /** 已写入长期备份的软链设置。 */
+    backedUp: CanonicalLinkBackupItem[]
+    /** 未写入长期备份的软链设置。 */
+    notBackedUp: CanonicalLinkBackupItem[]
+  }
   /** 备份目录名称。 */
   backupVersion?: string | undefined
+  /** 用户设置的备份名称。 */
+  backupLabel?: string | undefined
   /** 备份目录绝对路径。 */
   backupPath?: string | undefined
 }
@@ -58,6 +84,8 @@ export interface CanonicalClearBackupSummary {
 export interface CanonicalSkillsBackup {
   /** 年月日与当日次数组成的稳定版本。 */
   version: string
+  /** 用户设置的备份名称。 */
+  label: string
   /** 本机备份目录。 */
   path: string
   /** 备份是否完整且可恢复。 */
@@ -96,10 +124,14 @@ export interface CanonicalSourceMutationPlan {
   currentSkillCount: number
   /** 清空前需要记录的有效软链绑定。 */
   linkBindings: CanonicalLinkBackupItem[]
+  /** 用户是否要求在清空前创建长期备份。 */
+  backupRequested: boolean
   /** 清空前是否会创建长期备份。 */
   backupRequired: boolean
   /** 将创建、恢复或永久删除的备份版本。 */
   backupVersion?: string | undefined
+  /** 清空前创建的备份名称。 */
+  backupLabel?: string | undefined
   /** 将创建、恢复或永久删除的备份绝对路径。 */
   backupPath?: string | undefined
   /** 用户授权对应的稳定计划指纹。 */
@@ -136,6 +168,8 @@ interface CanonicalBackupMetadata {
   version: 1
   /** 用户可见的备份版本。 */
   backupVersion: string
+  /** 用户设置的备份名称；旧备份缺失时使用版本号。 */
+  backupLabel?: string | undefined
   /** 备份创建时间。 */
   createdAt: string
   /** 备份时的统一源内容指纹。 */
@@ -182,6 +216,7 @@ export interface CanonicalSourceManagerContext {
 const canonicalBackupMetadataSchema = z.object({
   version: z.literal(1),
   backupVersion: z.string().regex(BACKUP_VERSION_PATTERN),
+  backupLabel: z.string().min(1).max(BACKUP_LABEL_MAX_LENGTH).optional(),
   createdAt: z.string().datetime(),
   sourceFingerprint: z.string().min(1),
   entryCount: z.number().int().nonnegative(),
@@ -212,8 +247,10 @@ export const canonicalSourceMutationPlanSchema = z.object({
     path: z.string().min(1),
     kind: z.enum(['platform', 'custom']),
   })),
+  backupRequested: z.boolean(),
   backupRequired: z.boolean(),
   backupVersion: z.string().regex(BACKUP_VERSION_PATTERN).optional(),
+  backupLabel: z.string().min(1).max(BACKUP_LABEL_MAX_LENGTH).optional(),
   backupPath: z.string().min(1).optional(),
   hash: z.string().min(1),
 }).superRefine((plan, context) => {
@@ -222,6 +259,18 @@ export const canonicalSourceMutationPlanSchema = z.object({
   }
   if (plan.action !== 'clear' && plan.backupRequired) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['backupRequired'], message: '只有清空操作会创建长期备份。' })
+  }
+  if (plan.action !== 'clear' && plan.backupRequested) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['backupRequested'], message: '只有清空操作可以请求创建长期备份。' })
+  }
+  if (plan.backupRequired && !plan.backupRequested) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['backupRequired'], message: '未请求备份时不能创建长期备份。' })
+  }
+  if (plan.backupRequired && !plan.backupLabel) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['backupLabel'], message: '创建长期备份时必须指定备份名称。' })
+  }
+  if (!plan.backupRequired && plan.backupLabel) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['backupLabel'], message: '不创建长期备份时不能设置备份名称。' })
   }
   if (plan.action === 'clear' && !plan.clearModules.length) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['clearModules'], message: '清空操作至少需要选择一个模块。' })
@@ -347,6 +396,40 @@ async function createNextBackupVersion(context: CanonicalSourceManagerContext, d
   return `${datePrefix}${String(sequence).padStart(2, '0')}`
 }
 
+/**
+ * 规范化并校验用户设置的备份名称。
+ * @param value 用户输入的备份名称。
+ * @returns 可写入元数据的规范名称。
+ */
+function normalizeBackupLabel(value: string): string {
+  const label = value.trim().normalize('NFC')
+  if (!label) throw new Error('请输入备份名称。')
+  if (label.length > BACKUP_LABEL_MAX_LENGTH) throw new Error(`备份名称不能超过 ${BACKUP_LABEL_MAX_LENGTH} 个字符。`)
+  if (/[\u0000-\u001F\u007F/\\]/.test(label)) throw new Error('备份名称不能包含控制字符、斜杠或反斜杠。')
+  return label
+}
+
+/**
+ * 获取下一备份标识，可用于表单默认名称。
+ * @param context 统一源管理上下文。
+ * @param now 当前时间。
+ * @returns 尚未占用的年月日次数标识。
+ */
+export function suggestCanonicalBackupLabel(context: CanonicalSourceManagerContext, now = new Date()): Promise<string> {
+  return createNextBackupVersion(context, now)
+}
+
+/**
+ * 确认备份名称当前未被其他备份使用。
+ * @param context 统一源管理上下文。
+ * @param label 待校验的规范名称。
+ */
+async function assertBackupLabelAvailable(context: CanonicalSourceManagerContext, label: string): Promise<void> {
+  const normalizedKey = label.toLocaleLowerCase()
+  const backups = await listCanonicalSkillsBackups(context)
+  if (backups.some(backup => backup.label.toLocaleLowerCase() === normalizedKey)) throw new Error(`备份名称已存在：${label}`)
+}
+
 /** 读取并按需完整校验一份长期备份。 */
 async function readBackupState(context: CanonicalSourceManagerContext, version: string, verifyContent = true): Promise<CanonicalBackupState> {
   const backupPath = resolveBackupPath(context, version)
@@ -357,7 +440,7 @@ async function readBackupState(context: CanonicalSourceManagerContext, version: 
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error(`统一源备份不存在：${version}`)
     throw error
   }
-  const baseSummary: CanonicalSkillsBackup = { version, path: backupPath, valid: false }
+  const baseSummary: CanonicalSkillsBackup = { version, label: version, path: backupPath, valid: false }
   try {
     const metadata = canonicalBackupMetadataSchema.parse(JSON.parse(await readFile(join(backupPath, BACKUP_METADATA_FILE), 'utf8'))) as CanonicalBackupMetadata
     if (metadata.backupVersion !== version) throw new Error('备份版本与目录名称不一致。')
@@ -374,6 +457,7 @@ async function readBackupState(context: CanonicalSourceManagerContext, version: 
     return {
       summary: {
         ...baseSummary,
+        label: metadata.backupLabel ?? metadata.backupVersion,
         valid: true,
         createdAt: metadata.createdAt,
         skillCount: metadata.skills.filter((skill) => skill.kind !== 'system').length,
@@ -419,8 +503,19 @@ async function createDetectionState(context: CanonicalSourceManagerContext, mani
   }
 }
 
-/** 为清空、恢复或永久删除备份生成确认计划。 */
-export async function createCanonicalSourceMutationPlan(context: CanonicalSourceManagerContext, action: CanonicalSourceAction, backupVersion?: string, now = new Date(), clearModules: ClearModule[] = ['links', 'skills']): Promise<CanonicalSourceMutationPlan> {
+/**
+ * 为清空、恢复或永久删除备份生成确认计划。
+ *
+ * @param context 统一源管理上下文。
+ * @param action 二次操作类型。
+ * @param backupVersion 恢复或删除的备份版本。
+ * @param now 计划创建时间。
+ * @param clearModules 清空操作选择的模块。
+ * @param createBackup 是否在清空前创建长期备份。
+ * @param backupLabel 用户设置的备份名称。
+ * @returns 经过签名的统一源操作计划。
+ */
+export async function createCanonicalSourceMutationPlan(context: CanonicalSourceManagerContext, action: CanonicalSourceAction, backupVersion?: string, now = new Date(), clearModules: ClearModule[] = ['links', 'skills'], createBackup = true, backupLabel?: string): Promise<CanonicalSourceMutationPlan> {
   const manifest = await context.manifestStore.read()
   if (!manifest?.initializedAt) throw new Error('Skills 管理尚未初始化。')
   let selectedBackupVersion = backupVersion
@@ -437,8 +532,14 @@ export async function createCanonicalSourceMutationPlan(context: CanonicalSource
   const selectedClearModules = action === 'clear' ? [...new Set(clearModules)].sort() as ClearModule[] : []
   const linkBindings = action === 'clear' && selectedClearModules.includes('links') ? collectLinkBindings(manifest) : []
   const clearSkills = selectedClearModules.includes('skills')
-  const backupRequired = action === 'clear' && ((clearSkills && (userEntryCount > 0 || currentSkillCount > 0)) || linkBindings.length > 0)
-  if (backupRequired) selectedBackupVersion = await createNextBackupVersion(context, now)
+  const backupRequested = action === 'clear' && createBackup
+  const backupRequired = backupRequested && ((clearSkills && (userEntryCount > 0 || currentSkillCount > 0)) || linkBindings.length > 0)
+  let selectedBackupLabel: string | undefined
+  if (backupRequired) {
+    selectedBackupVersion = await createNextBackupVersion(context, now)
+    selectedBackupLabel = normalizeBackupLabel(backupLabel ?? selectedBackupVersion)
+    await assertBackupLabelAvailable(context, selectedBackupLabel)
+  }
   const unsigned: UnsignedCanonicalSourceMutationPlan = {
     id: randomUUID(),
     createdAt: now.toISOString(),
@@ -449,8 +550,10 @@ export async function createCanonicalSourceMutationPlan(context: CanonicalSource
     currentEntryCount: detection.source.entryCount,
     currentSkillCount,
     linkBindings,
+    backupRequested,
     backupRequired,
     ...(selectedBackupVersion ? { backupVersion: selectedBackupVersion } : {}),
+    ...(selectedBackupLabel ? { backupLabel: selectedBackupLabel } : {}),
     ...(selectedBackupVersion ? { backupPath: resolveBackupPath(context, selectedBackupVersion) } : {}),
   }
   return canonicalSourceMutationPlanSchema.parse({ ...unsigned, hash: stableHash(unsigned) })
@@ -458,9 +561,10 @@ export async function createCanonicalSourceMutationPlan(context: CanonicalSource
 
 /** 原子创建一份清空前的长期备份。 */
 async function createPersistentBackup(context: CanonicalSourceManagerContext, plan: CanonicalSourceMutationPlan, manifest: SkillsManifest, source: CanonicalSourceSnapshot): Promise<CanonicalSkillsBackup> {
-  if (!plan.backupVersion) throw new Error('清空计划缺少备份版本。')
+  if (!plan.backupVersion || !plan.backupLabel) throw new Error('清空计划缺少备份版本或名称。')
   const finalPath = resolveBackupPath(context, plan.backupVersion)
   if (await pathExists(finalPath)) throw new Error('计划中的备份版本已被占用，请重新操作。')
+  await assertBackupLabelAvailable(context, plan.backupLabel)
   const backupRoot = resolveBackupRoot(context)
   const temporaryPath = join(backupRoot, `.creating-${plan.id}`)
   await mkdir(backupRoot, { recursive: true, mode: 0o700 })
@@ -477,6 +581,7 @@ async function createPersistentBackup(context: CanonicalSourceManagerContext, pl
     const metadata: CanonicalBackupMetadata = {
       version: 1,
       backupVersion: plan.backupVersion,
+      backupLabel: plan.backupLabel,
       createdAt: plan.createdAt,
       sourceFingerprint: source.fingerprint,
       entryCount: source.entryCount,
@@ -572,10 +677,33 @@ async function applyClearPlan(context: CanonicalSourceManagerContext, plan: Cano
   const userSkillCount = manifest.skills.filter((skill) => skill.kind !== 'system').length
   const clearSkills = plan.clearModules.includes('skills')
   const clearLinks = plan.clearModules.includes('links')
+  const allLinkBindings = collectLinkBindings(manifest)
+  /** 创建当前执行状态对应的结构化清空摘要。 */
+  const createClearSummary = (createdBackup?: CanonicalSkillsBackup): CanonicalClearBackupSummary => {
+    const backedUpLinks = createdBackup && clearLinks ? allLinkBindings : []
+    const backedUpSkills = createdBackup && clearSkills ? userSkillCount : 0
+    return {
+      links: backedUpLinks.map(binding => ({ ...binding, status: 'backed-up' as const })),
+      skills: {
+        cleared: clearSkills ? userSkillCount : 0,
+        notCleared: clearSkills ? 0 : userSkillCount,
+        backedUp: backedUpSkills,
+        notBackedUp: userSkillCount - backedUpSkills,
+        failed: 0,
+      },
+      linkSummary: {
+        cleared: clearLinks ? allLinkBindings : [],
+        notCleared: clearLinks ? [] : allLinkBindings,
+        backedUp: backedUpLinks,
+        notBackedUp: allLinkBindings.filter(binding => !backedUpLinks.some(backedUp => backedUp.kind === binding.kind && backedUp.id === binding.id)),
+      },
+      ...(createdBackup ? { backupVersion: createdBackup.version, backupPath: createdBackup.path, backupLabel: createdBackup.label } : {}),
+    }
+  }
   if ((!clearSkills || (source.entryCount === 1 && userSkillCount === 0)) && (!clearLinks || plan.linkBindings.length === 0)) {
     return {
       id: randomUUID(), planHash: plan.hash, action: plan.action, status: 'skipped', appliedAt, manifestRevision: manifest.revision,
-      clearBackupSummary: { links: [], skills: { backedUp: 0, failed: 0 } },
+      clearBackupSummary: createClearSummary(),
     }
   }
   let createdBackup: CanonicalSkillsBackup | undefined
@@ -624,11 +752,7 @@ async function applyClearPlan(context: CanonicalSourceManagerContext, plan: Cano
       appliedAt,
       manifestRevision: savedManifest?.revision ?? manifest.revision,
       ...(createdBackup ? { createdBackup } : {}),
-      clearBackupSummary: {
-        links: plan.linkBindings.map((binding) => ({ ...binding, status: 'backed-up' })),
-        skills: { backedUp: clearSkills ? userSkillCount : 0, failed: 0 },
-        ...(createdBackup ? { backupVersion: createdBackup.version, backupPath: createdBackup.path } : {}),
-      },
+      clearBackupSummary: createClearSummary(createdBackup),
     }
   } catch (error) {
     const rollbackErrors: unknown[] = []

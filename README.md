@@ -29,6 +29,8 @@ pnpm askx doctor
 pnpm askx clear
 pnpm askx clear --links
 pnpm askx clear --skills
+pnpm askx clear --backup-name "调整配置前"
+pnpm askx clear --no-backup
 pnpm askx skills scan
 pnpm askx skills scan --platform codex --platform claude --json
 pnpm askx skills scan --platform claude

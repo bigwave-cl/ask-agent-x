@@ -21,6 +21,7 @@ import {
   applyCanonicalSourceMutationPlan,
   createCanonicalSourceMutationPlan,
   listCanonicalSkillsBackups,
+  suggestCanonicalBackupLabel,
   type CanonicalSkillsBackup,
   type ClearModule,
   type CanonicalSourceAction,
@@ -471,9 +472,16 @@ export class SkillsManager {
    * @param action 二次操作类型。
    * @param backupVersion 要恢复或永久删除的备份版本。
    * @param clearModules 清空操作选择的基础模块。
+   * @param createBackup 是否在清空前创建长期备份。
+   * @param backupLabel 用户设置的备份名称。
    */
-  planCanonicalSource(action: CanonicalSourceAction, backupVersion?: string, clearModules?: ClearModule[]): Promise<CanonicalSourceMutationPlan> {
-    return createCanonicalSourceMutationPlan({ manifestStore: this.manifestStore }, action, backupVersion, new Date(), clearModules)
+  planCanonicalSource(action: CanonicalSourceAction, backupVersion?: string, clearModules?: ClearModule[], createBackup = true, backupLabel?: string): Promise<CanonicalSourceMutationPlan> {
+    return createCanonicalSourceMutationPlan({ manifestStore: this.manifestStore }, action, backupVersion, new Date(), clearModules, createBackup, backupLabel)
+  }
+
+  /** 获取清空表单默认使用的备份名称。 */
+  suggestCanonicalBackupLabel(): Promise<string> {
+    return suggestCanonicalBackupLabel({ manifestStore: this.manifestStore })
   }
 
   /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { terminalUrl } from './terminal-link.js'
+import { terminalLink, terminalUrl } from './terminal-link.js'
 
 describe('终端 URL', () => {
   it('在交互终端中生成可点击的 OSC 8 链接', () => {
@@ -16,4 +16,15 @@ describe('终端 URL', () => {
     const unsafeUrl = 'http://127.0.0.1/\u001B]8;;unsafe'
     expect(terminalUrl(unsafeUrl, true)).toBe(unsafeUrl)
   })
+
+  it('支持使用本地路径作为文件链接的展示文本', () => {
+    const url = 'file:///Users/example/backup'
+    const label = '/Users/example/backup'
+    expect(terminalLink(url, label, true)).toContain(`${osc8OpenForTest(url)}\u001B[36m\u001B[4m${label}`)
+  })
 })
+
+/** 创建测试断言使用的 OSC 8 起始标记。 */
+function osc8OpenForTest(url: string): string {
+  return `\u001B]8;;${url}\u001B\\`
+}
