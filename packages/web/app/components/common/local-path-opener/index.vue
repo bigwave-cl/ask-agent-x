@@ -7,9 +7,11 @@ interface Props {
   path: string
   /** 主按钮使用的打开方式。 */
   defaultTarget?: LocalOpenTarget
+  /** 操作按钮组或完整路径链接。 */
+  display?: 'actions' | 'path'
 }
 
-const props = withDefaults(defineProps<Props>(), { defaultTarget: 'system' })
+const props = withDefaults(defineProps<Props>(), { defaultTarget: 'system', display: 'actions' })
 const emit = defineEmits<{
   /** 路径成功交给本机程序处理。 */
   opened: [result: LocalOpenResult]
@@ -109,7 +111,19 @@ watch(selectionOpen, (open) => {
 </script>
 
 <template>
-  <div class="inline-flex max-w-full items-stretch" role="group" :aria-label="t('common.openLocationActions')">
+  <button
+    v-if="display === 'path'"
+    type="button"
+    class="inline-flex max-w-full cursor-pointer items-start gap-1.5 break-all text-left font-mono text-primary underline decoration-primary/45 underline-offset-4 transition-colors hover:text-primary/80 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait disabled:opacity-60"
+    :disabled="opening"
+    :title="path"
+    :aria-label="`${t('common.openLocation')}：${path}`"
+    @click="openPath"
+  >
+    <Icon :name="opening ? 'askx-status:loading' : 'askx-objects:folder-open'" class="mt-0.5 size-3.5 shrink-0" :class="opening && 'animate-spin'" aria-hidden="true" />
+    <span class="min-w-0 break-all">{{ path }}</span>
+  </button>
+  <div v-else class="inline-flex max-w-full items-stretch" role="group" :aria-label="t('common.openLocationActions')">
     <Button variant="outline" size="36" class="min-w-0 rounded-r-none pr-3" :disabled="opening" @click="openPath">
       <Icon :name="opening ? 'askx-status:loading' : selectedIcon" class="size-4 shrink-0" :class="opening && 'animate-spin'" aria-hidden="true" />
       <span class="truncate">{{ opening ? t('common.openingLocation') : selectedLabel }}</span>
