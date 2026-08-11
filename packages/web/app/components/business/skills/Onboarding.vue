@@ -64,6 +64,8 @@ const busy = ref(false)
 /** 系统原生目录窗口是否正在等待用户选择。 */
 const pickingDirectories = ref(false)
 const setupOpen = ref(false)
+/** 当前是否为不扫描 Skill 的快捷软链设置流程。 */
+const linkOnlyFlow = ref(false)
 /** 当前等待用户确认的平台软链计划。 */
 const platformLinkPlan = ref<PlatformLinkPlan | null>(null)
 /** 平台软链确认弹层是否打开。 */
@@ -80,17 +82,21 @@ const selectedCustomLinkTotal = computed(() => new Set([
 
 /** 当前向导步骤位置。 */
 const activeStep = computed(() => {
+  if (linkOnlyFlow.value) return 0
   if (state.value === 'platforms') return 0
   if (state.value === 'scan') return 1
   if (flowMode.value === 'connect' && state.value === 'links') return 2
   return flowMode.value === 'connect' ? 3 : 2
 })
 /** 顶部步骤文案。 */
-const stepLabels = computed(() => flowMode.value === 'connect'
-  ? [t('skills.stepSource'), t('skills.stepScan'), t('skills.stepLink'), t('skills.stepConfirm')]
-  : [t('skills.stepSource'), t('skills.stepScan'), t('skills.stepConfirm')])
+const stepLabels = computed(() => linkOnlyFlow.value
+  ? [t('skills.stepLinkConfirm')]
+  : flowMode.value === 'connect'
+    ? [t('skills.stepSource'), t('skills.stepScan'), t('skills.stepLink'), t('skills.stepConfirm')]
+    : [t('skills.stepSource'), t('skills.stepScan'), t('skills.stepConfirm')])
 /** 当前引导弹层标题。 */
 const setupTitle = computed(() => {
+  if (linkOnlyFlow.value) return t('skills.bindPlatformLinkTitle')
   if (state.value === 'result') return t(flowMode.value === 'sync' ? 'skills.syncResultTitle' : 'skills.resultTitle')
   return t(flowMode.value === 'sync' ? 'skills.syncDialogTitle' : 'skills.setupDialogTitle')
 })
@@ -344,6 +350,7 @@ async function applyPlan(): Promise<void> {
 /** 结束向导并进入正常管理页。 */
 async function complete(): Promise<void> {
   setupOpen.value = false
+  linkOnlyFlow.value = false
   state.value = 'dashboard'
 }
 
@@ -385,6 +392,7 @@ async function rescanForManagement(): Promise<void> {
 
 /** 从列表页打开初始化或重新扫描流程。 */
 function openSetup(): void {
+  linkOnlyFlow.value = false
   flowMode.value = 'connect'
   configurationStrategy.value = 'replace'
   selectedPlatforms.value = [...(props.settings?.skills.platforms ?? [])]
@@ -405,6 +413,7 @@ function openSetup(): void {
  * @param platform 要重试或首次导入的平台。
  */
 async function openPlatformImport(platform: SkillPlatformId): Promise<void> {
+  linkOnlyFlow.value = false
   busy.value = true
   clearRequestError()
   selectedPlatforms.value = [platform]
@@ -425,33 +434,56 @@ async function openPlatformImport(platform: SkillPlatformId): Promise<void> {
 }
 
 /**
- * 扫描一个平台并进入只更新统一源的同步流程。
- * @param platform 要同步到 AskX 统一源的平台。
+ * 为未接入平台生成只设置根目录软链的确认计划。
+ * @param platform 要接入统一源的平台。
  */
-async function openPlatformSync(platform: SkillPlatformId): Promise<void> {
+async function openPlatformBind(platform: SkillPlatformId): Promise<void> {
+  if (!props.settings) return
   busy.value = true
   clearRequestError()
-  selectedPlatforms.value = [platform]
+  selectedPlatforms.value = []
   selectedDirectories.value = []
-  selectedLinkPlatforms.value = []
+  selectedLinkPlatforms.value = [platform]
   selectedLinkDirectories.value = []
   linkSelectionInitialized.value = false
-  flowMode.value = 'sync'
+  decisions.value = []
+  managementChoices.value = []
+  flowMode.value = 'connect'
   configurationStrategy.value = 'preserve'
   plan.value = null
   receipt.value = null
+  linkOnlyFlow.value = true
   try {
-    await scan(true)
-    setupOpen.value = true
+    report.value = await $fetch<SkillsScanReport>('/api/skills/scan', {
+      method: 'POST',
+      body: { platforms: [], customRoots: [] },
+    })
+    await preparePlan()
+    if (plan.value) setupOpen.value = true
+    else linkOnlyFlow.value = false
   } catch (error) {
-    notifyRequestError(error)
+    linkOnlyFlow.value = false
+    notifyRequestError(error, 'platformLinkActionFailed')
   } finally {
     busy.value = false
   }
 }
 
+/** 从最终确认返回或放弃当前流程。 */
+function backFromConfirmation(): void {
+  if (linkOnlyFlow.value) {
+    setupOpen.value = false
+    linkOnlyFlow.value = false
+    plan.value = null
+    state.value = 'dashboard'
+    return
+  }
+  state.value = flowMode.value === 'connect' ? 'links' : 'scan'
+}
+
 /** 从决策页返回平台选择，并切换回平台接入流程。 */
 function backToPlatformSelection(): void {
+  linkOnlyFlow.value = false
   flowMode.value = 'connect'
   configurationStrategy.value = 'replace'
   selectedPlatforms.value = [...(props.settings?.skills.platforms ?? [])]
@@ -602,6 +634,7 @@ async function applyCustomLinkAction(): Promise<void> {
 /** 关闭引导后回到稳定的列表页状态。 */
 function handleSetupClose(): void {
   setupOpen.value = false
+  linkOnlyFlow.value = false
   if (bootstrap.value?.initialized) state.value = 'dashboard'
 }
 
@@ -630,7 +663,7 @@ onMounted(loadBootstrap)
         :busy="busy"
         @action="openSetup"
         @platform-action="openPlatformImport"
-        @platform-sync="openPlatformSync"
+        @platform-bind="openPlatformBind"
         @platform-link-action="preparePlatformLinkAction"
         @custom-link-action="prepareCustomLinkAction"
       />
@@ -649,7 +682,7 @@ onMounted(loadBootstrap)
       <CsResponsiveOverlayDialogDrawer
         v-model:open="setupOpen"
         :title="setupTitle"
-        :description="t(flowMode === 'sync' ? 'skills.syncDialogDescription' : 'skills.setupDialogDescription')"
+        :description="t(linkOnlyFlow ? 'skills.bindPlatformLinkDescription' : flowMode === 'sync' ? 'skills.syncDialogDescription' : 'skills.setupDialogDescription')"
         :dismissible="!busy"
         :show-header="state !== 'result'"
         :close-disabled="busy"
@@ -724,7 +757,7 @@ onMounted(loadBootstrap)
           </template>
 
           <template v-else-if="state === 'confirm'">
-            <Button variant="ghost" size="48" :disabled="busy" @click="state = flowMode === 'connect' ? 'links' : 'scan'"><Icon name="askx-navigation:arrow-left" />{{ t('skills.back') }}</Button>
+            <Button variant="ghost" size="48" :disabled="busy" @click="backFromConfirmation"><Icon name="askx-navigation:arrow-left" />{{ t(linkOnlyFlow ? 'common.cancel' : 'skills.back') }}</Button>
             <Button size="48" :disabled="busy" @click="applyPlan"><Icon name="askx-status:loading" :class="{ 'animate-spin': busy }" />{{ busy ? t(flowMode === 'sync' ? 'skills.syncApplying' : 'skills.applying') : t(flowMode === 'sync' ? 'skills.saveSyncResult' : 'skills.apply') }}</Button>
           </template>
 

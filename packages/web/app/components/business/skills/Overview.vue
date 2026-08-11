@@ -19,8 +19,8 @@ const emit = defineEmits<{
   action: []
   /** 只扫描并导入指定平台。 */
   'platform-action': [platform: SkillPlatformId]
-  /** 将指定平台的 Skill 同步到 AskX 统一源。 */
-  'platform-sync': [platform: SkillPlatformId]
+  /** 为尚未接入的平台创建受管根目录软链。 */
+  'platform-bind': [platform: SkillPlatformId]
   /** 停用或恢复指定平台的受管根目录软链。 */
   'platform-link-action': [platform: SkillPlatformId, action: PlatformLinkAction]
   /** 取消、恢复或删除指定自定义目录软链。 */
@@ -112,24 +112,17 @@ function customLinkAction(binding: ManagedCustomLinkBinding): Exclude<CustomLink
             <div class="mt-1 flex min-w-0 items-center gap-1.5"><Badge :variant="isConnected(platform.id) || connectionStatus(platform.id) === 'suspended' ? 'secondary' : ['failed', 'broken'].includes(connectionStatus(platform.id)) ? 'destructive' : 'outline'" class="shrink-0">{{ connectionLabel(platform.id) }}</Badge><code class="block min-w-0 truncate font-mono text-[9px] text-muted-foreground" :title="platform.skillsDir">{{ platform.skillsDir }}</code></div>
           </div>
           <div v-if="bootstrap.initialized" class="flex shrink-0 items-center gap-1.5">
-            <TooltipProvider :delay-duration="150">
-              <Tooltip>
-                <TooltipTrigger as-child>
-                  <Button size="36" variant="outline" class="shrink-0" :disabled="busy" @click="emit('platform-sync', platform.id)">
-                    <Icon name="askx-actions:flip-vertical" :class="['size-3.5', { 'animate-pulse': busy }]" />
-                    {{ t('skills.syncPlatformSkills') }}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top" :side-offset="8" class="max-w-[280px]">{{ t('skills.syncPlatformSkillsTip') }}</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <Button v-if="isConnected(platform.id) || connectionStatus(platform.id) === 'suspended'" size="36" variant="outline" class="shrink-0" :disabled="busy" @click="emit('platform-link-action', platform.id, platformLinkAction(platform.id))">
+            <Button size="36" variant="outline" class="shrink-0" :disabled="busy" @click="emit('platform-action', platform.id)">
+              <Icon name="askx-actions:refresh" :class="['size-3.5', { 'animate-spin': busy }]" />
+              {{ platformActionLabel(platform.id) }}
+            </Button>
+            <Button v-if="isConfigured(platform.id)" size="36" variant="outline" class="shrink-0" :disabled="busy" @click="emit('platform-link-action', platform.id, platformLinkAction(platform.id))">
               <Icon :name="connectionStatus(platform.id) === 'suspended' ? 'askx-actions:refresh' : 'askx-status:prohibited'" class="size-3.5" />
               {{ connectionStatus(platform.id) === 'suspended' ? t('skills.resumePlatformLink') : t('skills.suspendPlatformLink') }}
             </Button>
-            <Button v-else size="36" variant="outline" class="shrink-0" :disabled="busy" @click="emit('platform-action', platform.id)">
-              <Icon name="askx-actions:refresh" :class="['size-3.5', { 'animate-spin': busy }]" />
-              {{ platformActionLabel(platform.id) }}
+            <Button v-else size="36" variant="outline" class="shrink-0" :disabled="busy" @click="emit('platform-bind', platform.id)">
+              <Icon name="askx-objects:file-link" class="size-3.5" />
+              {{ t('skills.bindPlatformLink') }}
             </Button>
           </div>
           <span v-else class="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"><Icon name="askx-status:info" class="size-3.5" /></span>

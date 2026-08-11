@@ -4,7 +4,7 @@ import { settingsStore } from '../../utils/settings.js'
 import { skillsManager, throwSkillsApiError } from '../../utils/skills.js'
 
 const requestSchema = z.object({
-  platforms: z.array(skillPlatformIdSchema).min(1),
+  platforms: z.array(skillPlatformIdSchema).max(3),
   customRoots: z.array(z.string().min(1)).max(MAX_CUSTOM_SKILL_DIRECTORIES).default([]),
   detectionFingerprint: z.string().min(1),
   settingsRevision: z.number().int().nonnegative(),
@@ -14,6 +14,10 @@ const requestSchema = z.object({
   configurationStrategy: z.enum(['replace', 'merge', 'preserve']).default('replace'),
   linkPlatforms: z.array(skillPlatformIdSchema).max(3).default([]),
   linkCustomRoots: z.array(z.string().min(1)).max(MAX_CUSTOM_SKILL_DIRECTORIES).default([]),
+}).superRefine((input, context) => {
+  if (!input.platforms.length && !input.customRoots.length && !input.linkPlatforms.length && !input.linkCustomRoots.length) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['platforms'], message: '扫描来源或软链目标至少需要一项。' })
+  }
 })
 
 export default defineEventHandler(async (event) => {
