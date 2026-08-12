@@ -1,9 +1,9 @@
 /** Demo Section 滚动定位参数。 */
 export interface DemoSectionScrollOptions {
-  /** 目标与滚动视口顶部保留的距离。 */
-  offset?: number
-  /** 浏览器滚动行为。 */
-  behavior?: ScrollBehavior
+    /** 目标与滚动视口顶部保留的距离。 */
+    offset?: number
+    /** 浏览器滚动行为。 */
+    behavior?: ScrollBehavior
 }
 
 /**
@@ -15,7 +15,7 @@ export interface DemoSectionScrollOptions {
  * @returns 不小于零的视口滚动距离。
  */
 export function resolveDemoSectionScrollTop(viewportScrollTop: number, viewportTop: number, elementTop: number, offset = 20): number {
-  return Math.max(0, viewportScrollTop + elementTop - viewportTop - offset)
+    return Math.max(0, viewportScrollTop + elementTop - viewportTop - offset)
 }
 
 /**
@@ -25,15 +25,15 @@ export function resolveDemoSectionScrollTop(viewportScrollTop: number, viewportT
  * @param options 顶部偏移和滚动行为。
  */
 export function scrollDemoSectionIntoView(viewport: HTMLElement | null, element: HTMLElement, options: DemoSectionScrollOptions = {}): void {
-  const { behavior = 'auto', offset = 20 } = options
-  if (!viewport) {
-    element.scrollIntoView({ block: 'start', behavior })
-    return
-  }
-  const viewportRect = viewport.getBoundingClientRect()
-  const elementRect = element.getBoundingClientRect()
-  viewport.scrollTo({
-    top: resolveDemoSectionScrollTop(viewport.scrollTop, viewportRect.top, elementRect.top, offset),
-    behavior,
-  })
+    const { behavior = 'auto', offset = 20 } = options
+    if (!viewport) {
+        element.scrollIntoView({ block: 'start', behavior })
+        return
+    }
+    const viewportRect = viewport.getBoundingClientRect()
+    const elementRect = element.getBoundingClientRect()
+    viewport.scrollTo({
+        top: resolveDemoSectionScrollTop(viewport.scrollTop, viewportRect.top, elementRect.top, offset),
+        behavior,
+    })
 }

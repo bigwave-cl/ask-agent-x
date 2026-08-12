@@ -11,20 +11,20 @@ import { cn } from '@/lib/utils'
 type ToggleGroupVariants = VariantProps<typeof toggleVariants>
 
 const props = withDefaults(defineProps<ToggleGroupRootProps & {
-  class?: HTMLAttributes['class']
-  variant?: ToggleGroupVariants['variant']
-  size?: ToggleGroupVariants['size']
-  spacing?: number
+    class?: HTMLAttributes['class']
+    variant?: ToggleGroupVariants['variant']
+    size?: ToggleGroupVariants['size']
+    spacing?: number
 }>(), {
-  spacing: 0,
+    spacing: 0,
 })
 
 const emits = defineEmits<ToggleGroupRootEmits>()
 
 provide('toggleGroup', {
-  variant: props.variant,
-  size: props.size,
-  spacing: props.spacing,
+    variant: props.variant,
+    size: props.size,
+    spacing: props.spacing,
 })
 
 const delegatedProps = reactiveOmit(props, 'class', 'size', 'variant')
@@ -32,18 +32,18 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
 </script>
 
 <template>
-  <ToggleGroupRoot
-    v-slot="slotProps"
-    data-slot="toggle-group"
-    :data-size="size"
-    :data-variant="variant"
-    :data-spacing="spacing"
-    :style="{
-      '--gap': spacing,
-    }"
-    v-bind="forwarded"
-    :class="cn('rounded-lg data-[size=sm]:rounded-[min(var(--radius-md),10px)] group/toggle-group flex w-fit flex-row items-center gap-[--spacing(var(--gap))] data-vertical:flex-col data-vertical:items-stretch', props.class)"
-  >
-    <slot v-bind="slotProps" />
-  </ToggleGroupRoot>
+    <ToggleGroupRoot
+        v-slot="slotProps"
+        data-slot="toggle-group"
+        :data-size="size"
+        :data-variant="variant"
+        :data-spacing="spacing"
+        :style="{
+            '--gap': spacing,
+        }"
+        v-bind="forwarded"
+        :class="cn('rounded-lg data-[size=sm]:rounded-[min(var(--radius-md),10px)] group/toggle-group flex w-fit flex-row items-center gap-[--spacing(var(--gap))] data-vertical:flex-col data-vertical:items-stretch', props.class)"
+    >
+        <slot v-bind="slotProps" />
+    </ToggleGroupRoot>
 </template>

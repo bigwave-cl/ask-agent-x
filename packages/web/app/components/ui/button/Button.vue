@@ -7,30 +7,30 @@ import { cn } from '@/lib/utils'
 import { buttonVariants } from '.'
 
 interface Props extends PrimitiveProps {
-  variant?: ButtonVariants['variant']
-  size?: ButtonVariants['size']
-  shape?: ButtonVariants['shape']
-  square?: ButtonVariants['square']
-  class?: HTMLAttributes['class']
+    variant?: ButtonVariants['variant']
+    size?: ButtonVariants['size']
+    shape?: ButtonVariants['shape']
+    square?: ButtonVariants['square']
+    class?: HTMLAttributes['class']
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  as: 'button',
-  variant: 'primary',
+    as: 'button',
+    variant: 'primary',
 })
 </script>
 
 <template>
-  <Primitive
-    data-slot="button"
-    :data-variant="variant"
-    :data-size="size"
-    :data-shape="shape"
-    :data-square="square"
-    :as="as"
-    :as-child="asChild"
-    :class="cn(buttonVariants({ variant, size, shape, square }), props.class)"
-  >
-    <slot />
-  </Primitive>
+    <Primitive
+        data-slot="button"
+        :data-variant="variant"
+        :data-size="size"
+        :data-shape="shape"
+        :data-square="square"
+        :as="as"
+        :as-child="asChild"
+        :class="cn(buttonVariants({ variant, size, shape, square }), props.class)"
+    >
+        <slot />
+    </Primitive>
 </template>

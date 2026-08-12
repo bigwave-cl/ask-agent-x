@@ -7,10 +7,10 @@ defineOptions({ name: 'WorkspacePageNav' })
 
 /** 工作台页面顶部导览属性。 */
 interface WorkspacePageNavProps {
-  /** 当前页面标识图标。 */
-  icon: AskxIconName
-  /** 当前页面标识文案。 */
-  label: string
+    /** 当前页面标识图标。 */
+    icon: AskxIconName
+    /** 当前页面标识文案。 */
+    label: string
 }
 
 /** 工作台页面顶部导览属性。 */
@@ -22,19 +22,37 @@ const { t } = useI18n()
 </script>
 
 <template>
-  <div class="mb-4 flex flex-wrap items-center gap-2">
-    <Button as-child variant="ghost" size="40" shape="pill" class="text-ds-text-secondary">
-      <NuxtLink :to="localePath('/')">
-        <Icon name="askx-navigation:arrow-left" data-icon="inline-start" />
-        {{ t('layout.backToHome') }}
-      </NuxtLink>
-    </Button>
+    <div class="mb-4 flex flex-wrap items-center gap-2">
+        <Button
+            as-child
+            variant="ghost"
+            :size="40"
+            shape="pill"
+            class="text-ds-text-secondary"
+        >
+            <NuxtLink :to="localePath('/')">
+                <Icon
+                    name="askx-navigation:arrow-left"
+                    data-icon="inline-start"
+                />
+                {{ t('layout.backToHome') }}
+            </NuxtLink>
+        </Button>
 
-    <span class="h-4 w-px bg-ds-border-subtle-10" aria-hidden="true" />
+        <span
+            class="h-4 w-px bg-ds-border-subtle-10"
+            aria-hidden="true"
+        />
 
-    <Badge variant="secondary" class="text-primary">
-      <Icon :name="icon" data-icon="inline-start" />
-      {{ label }}
-    </Badge>
-  </div>
+        <Badge
+            variant="secondary"
+            class="text-primary"
+        >
+            <Icon
+                :name="icon"
+                data-icon="inline-start"
+            />
+            {{ label }}
+        </Badge>
+    </div>
 </template>

@@ -1,5 +1,5 @@
 export default defineAppConfig({
-  icon: {
-    mode: 'svg',
-  },
+    icon: {
+        mode: 'svg',
+    },
 })

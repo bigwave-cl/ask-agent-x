@@ -20,10 +20,10 @@ const textExtensions = new Set(['csv', 'txt'])
 
 /** 提取文件真实语义扩展名。 */
 function resolveExtension(name: string): string {
-  const normalizedName = name.toLowerCase()
-  const templateSuffix = templateSuffixes.find((suffix) => normalizedName.endsWith(suffix))
-  const semanticName = templateSuffix ? normalizedName.slice(0, -templateSuffix.length) : normalizedName
-  return semanticName.includes('.') ? semanticName.slice(semanticName.lastIndexOf('.') + 1) : ''
+    const normalizedName = name.toLowerCase()
+    const templateSuffix = templateSuffixes.find(suffix => normalizedName.endsWith(suffix))
+    const semanticName = templateSuffix ? normalizedName.slice(0, -templateSuffix.length) : normalizedName
+    return semanticName.includes('.') ? semanticName.slice(semanticName.lastIndexOf('.') + 1) : ''
 }
 
 /**
@@ -35,20 +35,20 @@ function resolveExtension(name: string): string {
  * @returns 对应的 AskX 本地图标名称。
  */
 export function resolveSkillTreeIcon(name: string, kind: ManagedSkillTreeNode['kind'], expanded = false): AskxIconName {
-  if (kind === 'directory') return expanded ? 'askx-objects:folder-open' : 'askx-objects:folder'
-  if (kind === 'symlink') return 'askx-objects:file-link'
+    if (kind === 'directory') return expanded ? 'askx-objects:folder-open' : 'askx-objects:folder'
+    if (kind === 'symlink') return 'askx-objects:file-link'
 
-  const normalizedName = name.toLowerCase()
-  const extension = resolveExtension(normalizedName)
-  if (normalizedName === '.gitignore' || normalizedName === '.npmignore' || normalizedName.startsWith('.env')) return 'askx-objects:file-config'
-  if (extension === 'md' || extension === 'mdx') return 'askx-objects:file-markdown'
-  if (extension === 'json' || extension === 'jsonc') return 'askx-objects:file-json'
-  if (codeExtensions.has(extension)) return 'askx-objects:file-code'
-  if (configExtensions.has(extension)) return 'askx-objects:file-config'
-  if (htmlExtensions.has(extension)) return extension === 'svg' ? 'askx-objects:file-image' : 'askx-objects:file-html'
-  if (imageExtensions.has(extension)) return 'askx-objects:file-image'
-  if (shellExtensions.has(extension)) return 'askx-objects:file-shell'
-  if (styleExtensions.has(extension)) return 'askx-objects:file-style'
-  if (textExtensions.has(extension)) return 'askx-objects:file-text'
-  return 'askx-objects:file'
+    const normalizedName = name.toLowerCase()
+    const extension = resolveExtension(normalizedName)
+    if (normalizedName === '.gitignore' || normalizedName === '.npmignore' || normalizedName.startsWith('.env')) return 'askx-objects:file-config'
+    if (extension === 'md' || extension === 'mdx') return 'askx-objects:file-markdown'
+    if (extension === 'json' || extension === 'jsonc') return 'askx-objects:file-json'
+    if (codeExtensions.has(extension)) return 'askx-objects:file-code'
+    if (configExtensions.has(extension)) return 'askx-objects:file-config'
+    if (htmlExtensions.has(extension)) return extension === 'svg' ? 'askx-objects:file-image' : 'askx-objects:file-html'
+    if (imageExtensions.has(extension)) return 'askx-objects:file-image'
+    if (shellExtensions.has(extension)) return 'askx-objects:file-shell'
+    if (styleExtensions.has(extension)) return 'askx-objects:file-style'
+    if (textExtensions.has(extension)) return 'askx-objects:file-text'
+    return 'askx-objects:file'
 }

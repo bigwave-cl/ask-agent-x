@@ -4,51 +4,55 @@ import type { ResponsiveSelectValueSlotProps } from './types'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
-  responsiveSelectTriggerClass,
-  responsiveSelectTriggerSizeClass,
-  responsiveSelectTriggerIconClass,
-  responsiveSelectTriggerLabelClass,
+    responsiveSelectTriggerClass,
+    responsiveSelectTriggerSizeClass,
+    responsiveSelectTriggerIconClass,
+    responsiveSelectTriggerLabelClass,
 } from './triggerStyles'
 
 defineOptions({ name: 'ResponsiveSelectTriggerButton', inheritAttrs: false })
 
-const props = defineProps<{
-  disabled: boolean
-  open: boolean
-  placeholder: string
-  title: string
-  triggerClass?: ResponsiveOverlayClass
-  size?: '36' | '40' | '48'
-  valueSlotProps: ResponsiveSelectValueSlotProps
+defineProps<{
+    disabled: boolean
+    open: boolean
+    placeholder: string
+    title: string
+    triggerClass?: ResponsiveOverlayClass
+    size?: '36' | '40' | '48'
+    valueSlotProps: ResponsiveSelectValueSlotProps
 }>()
 
 defineSlots<{
-  value?: (props: ResponsiveSelectValueSlotProps) => unknown
+    value?: (props: ResponsiveSelectValueSlotProps) => unknown
 }>()
 </script>
 
 <template>
-  <Button
-    v-bind="$attrs"
-    type="button"
-    variant="outline"
-    size="default"
-    :disabled="disabled"
-    :class="cn(responsiveSelectTriggerClass, responsiveSelectTriggerSizeClass[size ?? '36'], 'w-full justify-between', triggerClass)"
-    :aria-label="title"
-    :aria-expanded="open"
-    :data-state="open ? 'open' : 'closed'"
-    data-slot="responsive-select-trigger"
-  >
-    <span :class="responsiveSelectTriggerLabelClass">
-      <slot name="value" v-bind="valueSlotProps">
-        <span :class="valueSlotProps.option ? 'text-inherit' : 'text-ds-text-secondary'">
-          {{ valueSlotProps.option?.label ?? placeholder }}
+    <Button
+        v-bind="$attrs"
+        type="button"
+        variant="outline"
+        size="default"
+        :disabled="disabled"
+        :class="cn(responsiveSelectTriggerClass, responsiveSelectTriggerSizeClass[size ?? '36'], 'w-full justify-between', triggerClass)"
+        :aria-label="title"
+        :aria-expanded="open"
+        :data-state="open ? 'open' : 'closed'"
+        data-slot="responsive-select-trigger"
+    >
+        <span :class="responsiveSelectTriggerLabelClass">
+            <slot
+                name="value"
+                v-bind="valueSlotProps"
+            >
+                <span :class="valueSlotProps.option ? 'text-inherit' : 'text-ds-text-secondary'">
+                    {{ valueSlotProps.option?.label ?? placeholder }}
+                </span>
+            </slot>
         </span>
-      </slot>
-    </span>
-    <Icon name="askx-navigation:chevron-right"
-      :class="cn(responsiveSelectTriggerIconClass, open && 'rotate-90 text-ds-text-secondary')"
-    />
-  </Button>
+        <Icon
+            name="askx-navigation:chevron-right"
+            :class="cn(responsiveSelectTriggerIconClass, open && 'rotate-90 text-ds-text-secondary')"
+        />
+    </Button>
 </template>

@@ -8,30 +8,30 @@ export type SpecialButtonTone = 'theme' | 'ice'
 
 /** 特殊主题按钮属性。 */
 export interface SpecialButtonProps {
-  /** 默认文案；未提供默认插槽时使用。 */
-  label?: string
-  /** 悬停后切换的文案；缺省时继续使用默认文案。 */
-  activeLabel?: string
-  /** 本地图标；传入 null 时不显示默认图标。 */
-  icon?: AskxIconName | null
-  /** 按钮尺寸。 */
-  size?: SpecialButtonSize
-  /** 按钮色调预设。 */
-  tone?: SpecialButtonTone
-  /** 自定义基础颜色；提供后覆盖色调预设。 */
-  color?: string
-  /** 原生按钮类型。 */
-  type?: 'button' | 'submit' | 'reset'
-  /** 是否禁用按钮。 */
-  disabled?: boolean
+    /** 默认文案；未提供默认插槽时使用。 */
+    label?: string
+    /** 悬停后切换的文案；缺省时继续使用默认文案。 */
+    activeLabel?: string
+    /** 本地图标；传入 null 时不显示默认图标。 */
+    icon?: AskxIconName | null
+    /** 按钮尺寸。 */
+    size?: SpecialButtonSize
+    /** 按钮色调预设。 */
+    tone?: SpecialButtonTone
+    /** 自定义基础颜色；提供后覆盖色调预设。 */
+    color?: string
+    /** 原生按钮类型。 */
+    type?: 'button' | 'submit' | 'reset'
+    /** 是否禁用按钮。 */
+    disabled?: boolean
 }
 
 /** 特殊主题按钮文字状态。 */
 export interface SpecialButtonLabels {
-  /** 默认状态字符。 */
-  primary: string[]
-  /** 交互状态字符。 */
-  active: string[]
+    /** 默认状态字符。 */
+    primary: string[]
+    /** 交互状态字符。 */
+    active: string[]
 }
 
 /**
@@ -41,7 +41,7 @@ export interface SpecialButtonLabels {
  * @returns 可用于逐字动画的字符数组。
  */
 export function splitSpecialButtonLabel(label: string) {
-  return Array.from(label)
+    return Array.from(label)
 }
 
 /**
@@ -52,10 +52,10 @@ export function splitSpecialButtonLabel(label: string) {
  * @returns 默认状态与交互状态字符。
  */
 export function resolveSpecialButtonLabels(label = '', activeLabel?: string): SpecialButtonLabels {
-  return {
-    primary: splitSpecialButtonLabel(label),
-    active: splitSpecialButtonLabel(activeLabel || label),
-  }
+    return {
+        primary: splitSpecialButtonLabel(label),
+        active: splitSpecialButtonLabel(activeLabel || label),
+    }
 }
 
 /**
@@ -66,5 +66,5 @@ export function resolveSpecialButtonLabels(label = '', activeLabel?: string): Sp
  * @returns 存在插槽或默认图标时返回 true。
  */
 export function shouldRenderSpecialButtonIcon(hasIconSlot: boolean, icon: AskxIconName | null) {
-  return hasIconSlot || icon !== null
+    return hasIconSlot || icon !== null
 }

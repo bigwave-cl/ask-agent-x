@@ -5,5 +5,5 @@ defineOptions({ name: 'LocalDemoPage' })
 </script>
 
 <template>
-  <LocalDemoShell />
+    <LocalDemoShell />
 </template>

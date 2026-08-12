@@ -7,14 +7,14 @@ defineOptions({ name: 'SpecialButton' })
 
 /** 特殊主题按钮属性。 */
 const props = withDefaults(defineProps<SpecialButtonProps>(), {
-  label: '',
-  activeLabel: undefined,
-  icon: 'askx-navigation:arrow-right',
-  size: 'default',
-  tone: 'theme',
-  color: undefined,
-  type: 'button',
-  disabled: false,
+    label: '',
+    activeLabel: undefined,
+    icon: 'askx-navigation:arrow-right',
+    size: 'default',
+    tone: 'theme',
+    color: undefined,
+    type: 'button',
+    disabled: false,
 })
 /** 当前组件插槽。 */
 const slots = useSlots()
@@ -26,14 +26,14 @@ const labels = computed(() => resolveSpecialButtonLabels(props.label, props.acti
 const hasIcon = computed(() => shouldRenderSpecialButtonIcon(Boolean(slots.icon), props.icon))
 /** 自定义颜色生成的按钮调色变量。 */
 const customColorStyle = computed(() => props.color
-  ? {
-      '--special-highlight': `color-mix(in srgb, ${props.color} 24%, white)`,
-      '--special-light': `color-mix(in srgb, ${props.color} 48%, white)`,
-      '--special-mid': props.color,
-      '--special-deep': `color-mix(in srgb, ${props.color} 68%, black)`,
-      '--special-shadow': `color-mix(in srgb, ${props.color} 44%, black)`,
+    ? {
+        '--special-highlight': `color-mix(in srgb, ${props.color} 24%, white)`,
+        '--special-light': `color-mix(in srgb, ${props.color} 48%, white)`,
+        '--special-mid': props.color,
+        '--special-deep': `color-mix(in srgb, ${props.color} 68%, black)`,
+        '--special-shadow': `color-mix(in srgb, ${props.color} 44%, black)`,
     } as CSSProperties
-  : undefined)
+    : undefined)
 
 /**
  * 生成逐字动画延迟变量。
@@ -42,59 +42,131 @@ const customColorStyle = computed(() => props.color
  * @returns 字符动画使用的 CSS 变量。
  */
 function getCharacterStyle(index: number) {
-  return { '--special-char-index': index } as CSSProperties
+    return { '--special-char-index': index } as CSSProperties
 }
 </script>
 
 <template>
-  <button
-    data-slot="special-button"
-    :data-size="props.size"
-    :data-tone="props.tone"
-    :type="props.type"
-    :disabled="props.disabled"
-    :style="customColorStyle"
-    class="special-button group/special-button relative isolate h-20 w-[220px] max-w-full cursor-pointer border-0 bg-transparent p-0 text-[1.15rem] font-semibold tracking-[-0.035em] outline-none select-none disabled:pointer-events-none disabled:opacity-50"
-  >
-    <span class="special-button__shadow absolute inset-0 rounded-[1.125rem]" aria-hidden="true" />
+    <button
+        data-slot="special-button"
+        :data-size="props.size"
+        :data-tone="props.tone"
+        :type="props.type"
+        :disabled="props.disabled"
+        :style="customColorStyle"
+        class="special-button group/special-button relative isolate h-20 w-[220px] max-w-full cursor-pointer border-0 bg-transparent p-0 text-[1.15rem] font-semibold tracking-[-0.035em] outline-none select-none disabled:pointer-events-none disabled:opacity-50"
+    >
+        <span
+            class="special-button__shadow absolute inset-0 rounded-[1.125rem]"
+            aria-hidden="true"
+        />
 
-    <svg class="special-button__splash pointer-events-none absolute left-1/2 top-1/2 z-3 h-[208px] w-[342px] -translate-x-1/2 -translate-y-1/2 overflow-visible" viewBox="0 0 342 208" fill="none" aria-hidden="true">
-      <path pathLength="60" d="M54.1 99.8S40.1 90.8 26.7 97.6 1.5 97.6 1.5 97.6M285.3 99.8s14-9 27.4-2.1 27.4-2.1 27.4-2.1" />
-      <path pathLength="60" opacity=".35" d="M281.1 65s6.8-15.2 21.8-16.8c15-1.5 16.8-11.7 16.8-11.7M281.1 139s6.8 15.2 21.8 16.7c15 1.6 16.8 11.8 16.8 11.8" />
-      <path pathLength="60" d="M230.6 57.4s-4.8-15.9 5.5-26.9c10.2-11 8.6-17.5 8.6-17.5M230.6 150.5s-4.8 16 5.5 27c10.2 11 8.6 17.5 8.6 17.5" />
-      <path pathLength="60" opacity=".35" d="M170.4 57s3.5-14.9-.8-27.5 0-27.4 0-27.4M170.4 151s3.5 14.8-.8 27.4 0 27.5 0 27.5" />
-      <path pathLength="60" d="M112.6 57.4s4.8-15.9-5.5-26.9C96.9 19.5 98.5 13 98.5 13M112.6 150.5s4.8 16-5.5 27c-10.2 11-8.6 17.5-8.6 17.5" />
-      <path pathLength="60" opacity=".35" d="M62.3 65s-6.8-15.2-21.8-16.8C25.5 46.7 23.7 36.5 23.7 36.5M62.3 146s-6.8 15.2-21.8 16.7c-15 1.6-16.8 11.8-16.8 11.8" />
-    </svg>
+        <svg
+            class="special-button__splash pointer-events-none absolute left-1/2 top-1/2 z-3 h-[208px] w-[342px] -translate-x-1/2 -translate-y-1/2 overflow-visible"
+            viewBox="0 0 342 208"
+            fill="none"
+            aria-hidden="true"
+        >
+            <path
+                pathLength="60"
+                d="M54.1 99.8S40.1 90.8 26.7 97.6 1.5 97.6 1.5 97.6M285.3 99.8s14-9 27.4-2.1 27.4-2.1 27.4-2.1"
+            />
+            <path
+                pathLength="60"
+                opacity=".35"
+                d="M281.1 65s6.8-15.2 21.8-16.8c15-1.5 16.8-11.7 16.8-11.7M281.1 139s6.8 15.2 21.8 16.7c15 1.6 16.8 11.8 16.8 11.8"
+            />
+            <path
+                pathLength="60"
+                d="M230.6 57.4s-4.8-15.9 5.5-26.9c10.2-11 8.6-17.5 8.6-17.5M230.6 150.5s-4.8 16 5.5 27c10.2 11 8.6 17.5 8.6 17.5"
+            />
+            <path
+                pathLength="60"
+                opacity=".35"
+                d="M170.4 57s3.5-14.9-.8-27.5 0-27.4 0-27.4M170.4 151s3.5 14.8-.8 27.4 0 27.5 0 27.5"
+            />
+            <path
+                pathLength="60"
+                d="M112.6 57.4s4.8-15.9-5.5-26.9C96.9 19.5 98.5 13 98.5 13M112.6 150.5s4.8 16-5.5 27c-10.2 11-8.6 17.5-8.6 17.5"
+            />
+            <path
+                pathLength="60"
+                opacity=".35"
+                d="M62.3 65s-6.8-15.2-21.8-16.8C25.5 46.7 23.7 36.5 23.7 36.5M62.3 146s-6.8 15.2-21.8 16.7c-15 1.6-16.8 11.8-16.8 11.8"
+            />
+        </svg>
 
-    <span class="special-button__frame absolute inset-0 z-1 overflow-hidden rounded-[1.125rem] p-[3px]">
-      <span class="special-button__outline pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit] opacity-0" aria-hidden="true" />
-      <svg class="special-button__path pointer-events-none absolute inset-0 z-2 size-full overflow-visible" viewBox="0 0 221 80" fill="none" preserveAspectRatio="none" aria-hidden="true">
-        <path pathLength="480" d="M182.7 2H203c8.8 0 16 7.2 16 16v44c0 8.8-7.2 16-16 16H18C9.2 78 2 70.8 2 62V18C2 9.2 9.2 2 18 2h29.9" />
-      </svg>
+        <span class="special-button__frame absolute inset-0 z-1 overflow-hidden rounded-[1.125rem] p-[3px]">
+            <span
+                class="special-button__outline pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit] opacity-0"
+                aria-hidden="true"
+            />
+            <svg
+                class="special-button__path pointer-events-none absolute inset-0 z-2 size-full overflow-visible"
+                viewBox="0 0 221 80"
+                fill="none"
+                preserveAspectRatio="none"
+                aria-hidden="true"
+            >
+                <path
+                    pathLength="480"
+                    d="M182.7 2H203c8.8 0 16 7.2 16 16v44c0 8.8-7.2 16-16 16H18C9.2 78 2 70.8 2 62V18C2 9.2 9.2 2 18 2h29.9"
+                />
+            </svg>
 
-      <span class="special-button__content relative z-1 flex size-full items-center justify-center gap-4 overflow-hidden rounded-[0.95rem] px-5 text-ds-text-white">
-        <span v-if="hasCustomContent" class="special-button__custom relative z-2 flex min-w-0 items-center justify-center">
-          <slot />
+            <span class="special-button__content relative z-1 flex size-full items-center justify-center gap-4 overflow-hidden rounded-[0.95rem] px-5 text-ds-text-white">
+                <span
+                    v-if="hasCustomContent"
+                    class="special-button__custom relative z-2 flex min-w-0 items-center justify-center"
+                >
+                    <slot />
+                </span>
+                <span
+                    v-else-if="props.label"
+                    class="special-button__words relative z-2 grid min-w-0 place-items-center"
+                    :aria-label="props.label"
+                >
+                    <span class="sr-only">{{ props.label }}</span>
+                    <span
+                        class="special-button__word special-button__word--primary col-start-1 row-start-1 flex"
+                        aria-hidden="true"
+                    >
+                        <span
+                            v-for="(character, index) in labels.primary"
+                            :key="`primary-${index}`"
+                            class="special-button__character"
+                            :style="getCharacterStyle(index)"
+                        >{{ character === ' ' ? '\u00A0' : character }}</span>
+                    </span>
+                    <span
+                        class="special-button__word special-button__word--active col-start-1 row-start-1 flex"
+                        aria-hidden="true"
+                    >
+                        <span
+                            v-for="(character, index) in labels.active"
+                            :key="`active-${index}`"
+                            class="special-button__character"
+                            :style="getCharacterStyle(index)"
+                        >{{ character === ' ' ? '\u00A0' : character }}</span>
+                    </span>
+                </span>
+
+                <span
+                    v-if="hasIcon"
+                    class="special-button__icon relative z-2 grid shrink-0 place-items-center"
+                    aria-hidden="true"
+                >
+                    <slot name="icon">
+                        <Icon
+                            v-if="props.icon"
+                            :name="props.icon"
+                            class="size-5"
+                        />
+                    </slot>
+                </span>
+            </span>
         </span>
-        <span v-else-if="props.label" class="special-button__words relative z-2 grid min-w-0 place-items-center" :aria-label="props.label">
-          <span class="sr-only">{{ props.label }}</span>
-          <span class="special-button__word special-button__word--primary col-start-1 row-start-1 flex" aria-hidden="true">
-            <span v-for="(character, index) in labels.primary" :key="`primary-${index}`" class="special-button__character" :style="getCharacterStyle(index)">{{ character === ' ' ? '\u00A0' : character }}</span>
-          </span>
-          <span class="special-button__word special-button__word--active col-start-1 row-start-1 flex" aria-hidden="true">
-            <span v-for="(character, index) in labels.active" :key="`active-${index}`" class="special-button__character" :style="getCharacterStyle(index)">{{ character === ' ' ? '\u00A0' : character }}</span>
-          </span>
-        </span>
-
-        <span v-if="hasIcon" class="special-button__icon relative z-2 grid shrink-0 place-items-center" aria-hidden="true">
-          <slot name="icon">
-            <Icon v-if="props.icon" :name="props.icon" class="size-5" />
-          </slot>
-        </span>
-      </span>
-    </span>
-  </button>
+    </button>
 </template>
 
 <style scoped>

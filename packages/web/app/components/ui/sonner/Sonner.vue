@@ -6,42 +6,42 @@ import 'vue-sonner/style.css'
 import { cn } from '@/lib/utils'
 
 const props = withDefaults(defineProps<ToasterProps>(), {
-  position: 'top-right',
-  closeButton: true,
-  richColors: true,
-  duration: 3600,
-  offset: 18,
-  mobileOffset: 12,
+    position: 'top-right',
+    closeButton: true,
+    richColors: true,
+    duration: 3600,
+    offset: 18,
+    mobileOffset: 12,
 })
 
 const toasterStyle = computed<CSSProperties>(() => ({
-  '--normal-bg': 'var(--popover)',
-  '--normal-bg-hover': 'var(--muted)',
-  '--normal-text': 'var(--popover-foreground)',
-  '--normal-border': 'var(--border)',
-  '--normal-border-hover': 'var(--input)',
-  '--success-bg': 'color-mix(in srgb, var(--ds-color-success-default) 12%, var(--popover))',
-  '--success-border': 'color-mix(in srgb, var(--ds-color-success-default) 30%, var(--border))',
-  '--success-text': 'color-mix(in srgb, var(--ds-color-success-default) 82%, var(--foreground))',
-  '--info-bg': 'color-mix(in srgb, var(--ds-color-brand-default) 12%, var(--popover))',
-  '--info-border': 'color-mix(in srgb, var(--ds-color-brand-default) 32%, var(--border))',
-  '--info-text': 'var(--ds-color-text-brand)',
-  '--warning-bg': 'color-mix(in srgb, var(--ds-color-warning-default) 14%, var(--popover))',
-  '--warning-border': 'color-mix(in srgb, var(--ds-color-warning-default) 34%, var(--border))',
-  '--warning-text': 'color-mix(in srgb, var(--ds-color-warning-default) 72%, var(--foreground))',
-  '--error-bg': 'color-mix(in srgb, var(--ds-color-danger-default) 11%, var(--popover))',
-  '--error-border': 'color-mix(in srgb, var(--ds-color-danger-default) 30%, var(--border))',
-  '--error-text': 'color-mix(in srgb, var(--ds-color-danger-default) 84%, var(--foreground))',
-  ...props.style,
+    '--normal-bg': 'var(--popover)',
+    '--normal-bg-hover': 'var(--muted)',
+    '--normal-text': 'var(--popover-foreground)',
+    '--normal-border': 'var(--border)',
+    '--normal-border-hover': 'var(--input)',
+    '--success-bg': 'color-mix(in srgb, var(--ds-color-success-default) 12%, var(--popover))',
+    '--success-border': 'color-mix(in srgb, var(--ds-color-success-default) 30%, var(--border))',
+    '--success-text': 'color-mix(in srgb, var(--ds-color-success-default) 82%, var(--foreground))',
+    '--info-bg': 'color-mix(in srgb, var(--ds-color-brand-default) 12%, var(--popover))',
+    '--info-border': 'color-mix(in srgb, var(--ds-color-brand-default) 32%, var(--border))',
+    '--info-text': 'var(--ds-color-text-brand)',
+    '--warning-bg': 'color-mix(in srgb, var(--ds-color-warning-default) 14%, var(--popover))',
+    '--warning-border': 'color-mix(in srgb, var(--ds-color-warning-default) 34%, var(--border))',
+    '--warning-text': 'color-mix(in srgb, var(--ds-color-warning-default) 72%, var(--foreground))',
+    '--error-bg': 'color-mix(in srgb, var(--ds-color-danger-default) 11%, var(--popover))',
+    '--error-border': 'color-mix(in srgb, var(--ds-color-danger-default) 30%, var(--border))',
+    '--error-text': 'color-mix(in srgb, var(--ds-color-danger-default) 84%, var(--foreground))',
+    ...props.style,
 }))
 </script>
 
 <template>
-  <Sonner
-    v-bind="props"
-    :class="cn('askx-toaster pointer-events-auto', props.class)"
-    :style="toasterStyle"
-  />
+    <Sonner
+        v-bind="props"
+        :class="cn('askx-toaster pointer-events-auto', props.class)"
+        :style="toasterStyle"
+    />
 </template>
 
 <style>

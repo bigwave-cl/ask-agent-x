@@ -5,4 +5,8 @@ import { cn } from '@/lib/utils'
 const props = defineProps<{ class?: HTMLAttributes['class'] }>()
 </script>
 
-<template><div :class="cn('grid gap-2 text-left', props.class)"><slot /></div></template>
+<template>
+    <div :class="cn('grid gap-2 text-left', props.class)">
+        <slot />
+    </div>
+</template>

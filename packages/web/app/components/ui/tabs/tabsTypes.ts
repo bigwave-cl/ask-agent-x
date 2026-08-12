@@ -12,16 +12,16 @@ export type TabsShape = 'regular' | 'pill'
 
 /** AskX TabsList 对外属性。 */
 export interface AskxTabsListProps extends TabsListProps {
-  /** 根节点样式。 */
-  class?: HTMLAttributes['class']
-  /** 标签栏视觉形态。 */
-  variant?: TabsVariant
-  /** 单个标签高度。 */
-  size?: TabsSize
-  /** 标签圆角形态。 */
-  shape?: TabsShape
-  /** 内容溢出时是否允许横向滚动。 */
-  scrollable?: boolean
+    /** 根节点样式。 */
+    class?: HTMLAttributes['class']
+    /** 标签栏视觉形态。 */
+    variant?: TabsVariant
+    /** 单个标签高度。 */
+    size?: TabsSize
+    /** 标签圆角形态。 */
+    shape?: TabsShape
+    /** 内容溢出时是否允许横向滚动。 */
+    scrollable?: boolean
 }
 
 /** 默认标签栏形态。 */

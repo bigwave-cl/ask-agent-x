@@ -8,24 +8,24 @@ import { nanoid } from 'nanoid'
 import { assertUiPortAvailable, selectAvailableUiPort } from './ui-port.js'
 
 export interface UiServerOptions {
-  /** 指定生产服务端口；缺省时复用上次端口，首次启动时自动选择。 */
-  port?: number
-  /** 本地服务固定只允许监听回环地址。 */
-  host?: '127.0.0.1'
-  /** 是否让服务脱离当前终端并在后台持续运行。 */
-  detached?: boolean
+    /** 指定生产服务端口；缺省时复用上次端口，首次启动时自动选择。 */
+    port?: number
+    /** 本地服务固定只允许监听回环地址。 */
+    host?: '127.0.0.1'
+    /** 是否让服务脱离当前终端并在后台持续运行。 */
+    detached?: boolean
 }
 
 /** 当前本地 UI 后台进程的会话信息。 */
 export interface UiSessionRecord {
-  /** 用于建立本地浏览器会话的一次性凭证。 */
-  token: string
-  /** Nuxt 服务进程 ID。 */
-  pid: number
-  /** Nuxt 服务监听端口。 */
-  port: number
-  /** 服务启动时间。 */
-  createdAt: string
+    /** 用于建立本地浏览器会话的一次性凭证。 */
+    token: string
+    /** Nuxt 服务进程 ID。 */
+    pid: number
+    /** Nuxt 服务监听端口。 */
+    port: number
+    /** 服务启动时间。 */
+    createdAt: string
 }
 
 const sessionPath = join(defaultContext().dataDir, 'ui-session.json')
@@ -36,72 +36,77 @@ const uiLogPath = join(defaultContext().dataDir, 'ui.log')
 
 /** 解析源码构建或 npm 包内的 Nuxt 生产入口。 */
 async function resolveUiEntry(currentDir: string): Promise<string> {
-  const candidates = [
-    join(currentDir, 'web', '.output', 'server', 'index.mjs'),
-    join(currentDir, '..', '..', '.output', 'server', 'index.mjs'),
-  ]
-  for (const candidate of candidates) {
-    try {
-      await access(candidate)
-      return candidate
-    } catch {
-      // 当前候选不存在时继续检查另一种运行目录布局。
+    const candidates = [
+        join(currentDir, 'web', '.output', 'server', 'index.mjs'),
+        join(currentDir, '..', '..', '.output', 'server', 'index.mjs'),
+    ]
+    for (const candidate of candidates) {
+        try {
+            await access(candidate)
+            return candidate
+        }
+        catch {
+            // 当前候选不存在时继续检查另一种运行目录布局。
+        }
     }
-  }
-  throw new Error('找不到 AskAgent X Web 生产入口，请重新构建或安装完整 npm 包。')
+    throw new Error('找不到 AskAgent X Web 生产入口，请重新构建或安装完整 npm 包。')
 }
 
 async function writeSession(record: UiSessionRecord): Promise<void> {
-  await mkdir(dirname(sessionPath), { recursive: true, mode: 0o700 })
-  await writeFile(sessionPath, `${JSON.stringify(record, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
+    await mkdir(dirname(sessionPath), { recursive: true, mode: 0o700 })
+    await writeFile(sessionPath, `${JSON.stringify(record, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
 }
 
 /** @returns 上次成功启动的生产 UI 端口，不存在或无效时返回 null。 */
 async function readRememberedUiPort(): Promise<number | null> {
-  try {
-    const record = JSON.parse(await readFile(uiPortPath, 'utf8')) as { port?: number }
-    return Number.isInteger(record.port) && record.port! >= 1 && record.port! <= 65_535 ? record.port! : null
-  } catch {
-    return null
-  }
+    try {
+        const record = JSON.parse(await readFile(uiPortPath, 'utf8')) as { port?: number }
+        return Number.isInteger(record.port) && record.port! >= 1 && record.port! <= 65_535 ? record.port! : null
+    }
+    catch {
+        return null
+    }
 }
 
 /** 记住生产 UI 成功启动时使用的端口。 */
 async function writeRememberedUiPort(port: number): Promise<void> {
-  await mkdir(dirname(uiPortPath), { recursive: true, mode: 0o700 })
-  await writeFile(uiPortPath, `${JSON.stringify({ port }, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
+    await mkdir(dirname(uiPortPath), { recursive: true, mode: 0o700 })
+    await writeFile(uiPortPath, `${JSON.stringify({ port }, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
 }
 
 async function clearSession(token: string): Promise<void> {
-  try {
-    const current = JSON.parse(await readFile(sessionPath, 'utf8')) as UiSessionRecord
-    if (current.token === token) await unlink(sessionPath)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return
-  }
+    try {
+        const current = JSON.parse(await readFile(sessionPath, 'utf8')) as UiSessionRecord
+        if (current.token === token) await unlink(sessionPath)
+    }
+    catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return
+    }
 }
 
 /** @returns 仍在运行的本地 UI 会话，不存在时返回 null。 */
 export async function readUiSession(): Promise<UiSessionRecord | null> {
-  try {
-    const session = JSON.parse(await readFile(sessionPath, 'utf8')) as UiSessionRecord
-    if (!session.token || !Number.isInteger(session.pid) || !Number.isInteger(session.port)) return null
     try {
-      process.kill(session.pid, 0)
-      return session
-    } catch {
-      await clearSession(session.token)
-      return null
+        const session = JSON.parse(await readFile(sessionPath, 'utf8')) as UiSessionRecord
+        if (!session.token || !Number.isInteger(session.pid) || !Number.isInteger(session.port)) return null
+        try {
+            process.kill(session.pid, 0)
+            return session
+        }
+        catch {
+            await clearSession(session.token)
+            return null
+        }
     }
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
-    return null
-  }
+    catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+        return null
+    }
 }
 
 /** @returns 当前活动 UI 的 token，不存在时返回 null。 */
 export async function readUiSessionToken(): Promise<string | null> {
-  return (await readUiSession())?.token ?? null
+    return (await readUiSession())?.token ?? null
 }
 
 /**
@@ -109,82 +114,84 @@ export async function readUiSessionToken(): Promise<string | null> {
  * @returns 是否发现并停止了活动服务。
  */
 export async function stopUi(): Promise<boolean> {
-  const session = await readUiSession()
-  if (!session) return false
-  process.kill(session.pid, 'SIGTERM')
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    try {
-      process.kill(session.pid, 0)
-    } catch {
-      await clearSession(session.token)
-      return true
+    const session = await readUiSession()
+    if (!session) return false
+    process.kill(session.pid, 'SIGTERM')
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+        try {
+            process.kill(session.pid, 0)
+        }
+        catch {
+            await clearSession(session.token)
+            return true
+        }
+        await new Promise(resolve => setTimeout(resolve, 50))
     }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Timed out stopping the Nuxt UI process (${session.pid})`)
+    throw new Error(`Timed out stopping the Nuxt UI process (${session.pid})`)
 }
 
-export async function startUi(options: UiServerOptions = {}): Promise<{ url: string; close: () => Promise<void> }> {
-  const host = options.host ?? '127.0.0.1'
-  const rememberedPort = options.port === undefined ? await readRememberedUiPort() : null
-  const port = options.port ?? rememberedPort ?? await selectAvailableUiPort(host)
-  await assertUiPortAvailable(port, host)
-  const token = nanoid()
-  const currentDir = dirname(fileURLToPath(import.meta.url))
-  const entry = await resolveUiEntry(currentDir)
-  const detached = options.detached ?? false
-  let logHandle: Awaited<ReturnType<typeof open>> | undefined
-  if (detached) {
-    await mkdir(dirname(uiLogPath), { recursive: true, mode: 0o700 })
-    logHandle = await open(uiLogPath, 'w', 0o600)
-  }
-  const child = spawn(process.execPath, [entry], {
-    env: {
-      ...process.env,
-      HOST: host,
-      PORT: String(port),
-      NITRO_HOST: host,
-      NITRO_PORT: String(port),
-      NUXT_ASKX_SESSION_TOKEN: token,
-    },
-    detached,
-    stdio: detached ? ['ignore', logHandle!.fd, logHandle!.fd] : ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
-  })
-  await logHandle?.close()
-  if (!detached) child.stderr?.pipe(process.stderr)
-
-  const url = `http://${host}:${port}/?token=${token}`
-  const healthUrl = `http://${host}:${port}/api/health?token=${token}`
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (child.exitCode !== null) {
-      const logHint = detached ? `，日志：${uiLogPath}` : ''
-      throw new Error(`Nuxt UI exited before becoming ready (${child.exitCode})${logHint}`)
+export async function startUi(options: UiServerOptions = {}): Promise<{ url: string, close: () => Promise<void> }> {
+    const host = options.host ?? '127.0.0.1'
+    const rememberedPort = options.port === undefined ? await readRememberedUiPort() : null
+    const port = options.port ?? rememberedPort ?? await selectAvailableUiPort(host)
+    await assertUiPortAvailable(port, host)
+    const token = nanoid()
+    const currentDir = dirname(fileURLToPath(import.meta.url))
+    const entry = await resolveUiEntry(currentDir)
+    const detached = options.detached ?? false
+    let logHandle: Awaited<ReturnType<typeof open>> | undefined
+    if (detached) {
+        await mkdir(dirname(uiLogPath), { recursive: true, mode: 0o700 })
+        logHandle = await open(uiLogPath, 'w', 0o600)
     }
-    try {
-      const response = await fetch(healthUrl)
-      if (response.ok) break
-    } catch {
-      if (attempt === 99) {
-        child.kill('SIGTERM')
-        throw new Error('Timed out waiting for the Nuxt UI')
-      }
+    const child = spawn(process.execPath, [entry], {
+        env: {
+            ...process.env,
+            HOST: host,
+            PORT: String(port),
+            NITRO_HOST: host,
+            NITRO_PORT: String(port),
+            NUXT_ASKX_SESSION_TOKEN: token,
+        },
+        detached,
+        stdio: detached ? ['ignore', logHandle!.fd, logHandle!.fd] : ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+    })
+    await logHandle?.close()
+    if (!detached) child.stderr?.pipe(process.stderr)
+
+    const url = `http://${host}:${port}/?token=${token}`
+    const healthUrl = `http://${host}:${port}/api/health?token=${token}`
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+        if (child.exitCode !== null) {
+            const logHint = detached ? `，日志：${uiLogPath}` : ''
+            throw new Error(`Nuxt UI exited before becoming ready (${child.exitCode})${logHint}`)
+        }
+        try {
+            const response = await fetch(healthUrl)
+            if (response.ok) break
+        }
+        catch {
+            if (attempt === 99) {
+                child.kill('SIGTERM')
+                throw new Error('Timed out waiting for the Nuxt UI')
+            }
+        }
+        await new Promise(resolve => setTimeout(resolve, 50))
     }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
 
-  await writeRememberedUiPort(port)
-  await writeSession({ token, pid: child.pid ?? process.pid, port, createdAt: new Date().toISOString() })
-  child.once('exit', () => void clearSession(token))
-  if (detached) child.unref()
+    await writeRememberedUiPort(port)
+    await writeSession({ token, pid: child.pid ?? process.pid, port, createdAt: new Date().toISOString() })
+    child.once('exit', () => void clearSession(token))
+    if (detached) child.unref()
 
-  return {
-    url,
-    close: async () => {
-      if (child.exitCode !== null) return
-      child.kill('SIGTERM')
-      await once(child, 'exit')
-      await clearSession(token)
-    },
-  }
+    return {
+        url,
+        close: async () => {
+            if (child.exitCode !== null) return
+            child.kill('SIGTERM')
+            await once(child, 'exit')
+            await clearSession(token)
+        },
+    }
 }

@@ -4,5 +4,5 @@ useHead(() => ({ title: t('meta.login') }))
 </script>
 
 <template>
-  <WorkspaceApp login />
+    <WorkspaceApp login />
 </template>

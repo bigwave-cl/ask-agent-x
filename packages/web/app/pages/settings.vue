@@ -5,5 +5,5 @@ useHead(() => ({ title: t('meta.settings') }))
 </script>
 
 <template>
-  <WorkspaceApp view="settings" />
+    <WorkspaceApp view="settings" />
 </template>

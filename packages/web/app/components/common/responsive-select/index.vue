@@ -2,69 +2,69 @@
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
 } from '@/components/ui/select'
 import ResponsiveOverlayDrawer from '../responsive-overlay/Drawer.vue'
 import { useResponsiveOverlayViewport } from '../responsive-overlay/useResponsiveOverlayViewport'
 import ResponsiveSelectOptionContent from './OptionContent.vue'
 import ResponsiveSelectTriggerButton from './TriggerButton.vue'
 import {
-  responsiveSelectClearClass,
-  responsiveSelectDefaultIconClass,
-  responsiveSelectTriggerSizeClass,
-  responsiveSelectTriggerClass,
-  responsiveSelectTriggerIconClass,
+    responsiveSelectClearClass,
+    responsiveSelectDefaultIconClass,
+    responsiveSelectTriggerSizeClass,
+    responsiveSelectTriggerClass,
+    responsiveSelectTriggerIconClass,
 } from './triggerStyles'
 import type {
-  ResponsiveSelectChangeEvent,
-  ResponsiveSelectItemSlotProps,
-  ResponsiveSelectOption,
-  ResponsiveSelectProps,
-  ResponsiveSelectValueSlotProps,
+    ResponsiveSelectChangeEvent,
+    ResponsiveSelectItemSlotProps,
+    ResponsiveSelectOption,
+    ResponsiveSelectProps,
+    ResponsiveSelectValueSlotProps,
 } from './types'
 import {
-  findResponsiveSelectOption,
-  getResponsiveSelectDrawerOptions,
-  resolveResponsiveSelectCommit,
+    findResponsiveSelectOption,
+    getResponsiveSelectDrawerOptions,
+    resolveResponsiveSelectCommit,
 } from './types'
 
 defineOptions({ name: 'ResponsiveSelect', inheritAttrs: false })
 
 const props = withDefaults(defineProps<ResponsiveSelectProps>(), {
-  clearable: false,
-  clearValue: undefined,
-  contentClass: undefined,
-  description: undefined,
-  desktopQuery: '(min-width: 768px)',
-  disabled: false,
-  drawer: undefined,
-  name: undefined,
-  triggerClass: undefined,
-  size: '36',
-  theme: 'light',
-  variant: 'default',
-  shape: 'regular',
-  square: false,
+    clearable: false,
+    clearValue: undefined,
+    contentClass: undefined,
+    description: undefined,
+    desktopQuery: '(min-width: 768px)',
+    disabled: false,
+    drawer: undefined,
+    name: undefined,
+    triggerClass: undefined,
+    size: '36',
+    theme: 'light',
+    variant: 'default',
+    shape: 'regular',
+    square: false,
 })
 const modelValue = defineModel<string | undefined>()
 const open = defineModel<boolean>('open', { default: false })
 
 const emit = defineEmits<{
-  change: [event: ResponsiveSelectChangeEvent]
+    change: [event: ResponsiveSelectChangeEvent]
 }>()
 
 defineSlots<{
-  item?: (props: ResponsiveSelectItemSlotProps) => unknown
-  value?: (props: ResponsiveSelectValueSlotProps) => unknown
+    item?: (props: ResponsiveSelectItemSlotProps) => unknown
+    value?: (props: ResponsiveSelectValueSlotProps) => unknown
 }>()
 
 type RekaSelectEvent = CustomEvent<{
-  originalEvent: Event
-  value: string
+    originalEvent: Event
+    value: string
 }>
 
 const attrs = useAttrs()
@@ -74,88 +74,68 @@ const accessibleDescription = computed(() => props.description ?? props.placehol
 const selectDrawerOptions = computed(() => getResponsiveSelectDrawerOptions(props.drawer))
 const { isMobile, isPending } = useResponsiveOverlayViewport(() => props.desktopQuery)
 const resolvedTriggerClass = computed(() => cn(
-  props.shape === 'pill' ? 'rounded-full' : 'rounded-lg',
-  props.square ? 'aspect-square min-w-0 w-auto justify-center px-0 [&>svg]:hidden *:data-[slot=select-value]:!flex-none *:data-[slot=select-value]:!justify-center *:data-[slot=select-value]:text-center' : '',
-  props.variant === 'transparent' ? 'border-transparent bg-transparent hover:border-ds-border-subtle-5 hover:bg-ds-fill-bw-transparent-5' : '',
-  props.variant === 'brand' ? 'border-ds-brand-default/20 bg-ds-brand-default/10 text-ds-brand-default hover:bg-ds-brand-default/15' : '',
-  props.theme === 'dark' ? 'dark bg-ds-bg-inverse text-ds-text-primary' : '',
+    props.shape === 'pill' ? 'rounded-full' : 'rounded-lg',
+    props.square ? 'aspect-square min-w-0 w-auto justify-center px-0 [&>svg]:hidden *:data-[slot=select-value]:!flex-none *:data-[slot=select-value]:!justify-center *:data-[slot=select-value]:text-center' : '',
+    props.variant === 'transparent' ? 'border-transparent bg-transparent hover:border-ds-border-subtle-5 hover:bg-ds-fill-bw-transparent-5' : '',
+    props.variant === 'brand' ? 'border-ds-brand-default/20 bg-ds-brand-default/10 text-ds-brand-default hover:bg-ds-brand-default/15' : '',
+    props.theme === 'dark' ? 'dark bg-ds-bg-inverse text-ds-text-primary' : '',
 ))
 const valueSlotProps = (isMobile: boolean): ResponsiveSelectValueSlotProps => ({
-  isMobile,
-  open: open.value,
-  option: selectedOption.value,
-  placeholder: props.placeholder,
-  value: modelValue.value,
+    isMobile,
+    open: open.value,
+    option: selectedOption.value,
+    placeholder: props.placeholder,
+    value: modelValue.value,
 })
 
 function commitValue(
-  value: string | undefined,
-  source: 'clear' | 'select',
-  originalEvent: Event,
+    value: string | undefined,
+    source: 'clear' | 'select',
+    originalEvent: Event,
 ) {
-  const result = resolveResponsiveSelectCommit(props.options, value, source, props.disabled)
-  if (!result.accepted) return
+    const result = resolveResponsiveSelectCommit(props.options, value, source, props.disabled)
+    if (!result.accepted) return
 
-  modelValue.value = result.value
-  emit('change', {
-    originalEvent,
-    value: result.value,
-    option: result.option,
-  })
-  open.value = false
+    modelValue.value = result.value
+    emit('change', {
+        originalEvent,
+        value: result.value,
+        option: result.option,
+    })
+    open.value = false
 }
 
 function emitDesktopChange(option: ResponsiveSelectOption, event: RekaSelectEvent) {
-  const result = resolveResponsiveSelectCommit(props.options, option.value, 'select', props.disabled)
-  if (!result.accepted) return
+    const result = resolveResponsiveSelectCommit(props.options, option.value, 'select', props.disabled)
+    if (!result.accepted) return
 
-  emit('change', {
-    originalEvent: event.detail.originalEvent,
-    value: result.value,
-    option: result.option,
-  })
+    emit('change', {
+        originalEvent: event.detail.originalEvent,
+        value: result.value,
+        option: result.option,
+    })
 }
 
 function selectMobileOption(option: ResponsiveSelectOption, event: MouseEvent) {
-  commitValue(option.value, 'select', event)
+    commitValue(option.value, 'select', event)
 }
 
 function clearSelection(event: MouseEvent) {
-  event.stopPropagation()
-  commitValue(props.clearValue, 'clear', event)
+    event.stopPropagation()
+    commitValue(props.clearValue, 'clear', event)
 }
 </script>
 
 <template>
-  <input v-if="name" type="hidden" :name="name" :value="modelValue ?? ''">
+    <input
+        v-if="name"
+        type="hidden"
+        :name="name"
+        :value="modelValue ?? ''"
+    >
 
-  <ResponsiveSelectTriggerButton
-    v-if="isPending"
-    v-bind="attrs"
-    :disabled="disabled"
-    :open="open"
-    :placeholder="placeholder"
-    :title="title"
-    :size="size"
-    :trigger-class="cn(triggerClass, resolvedTriggerClass)"
-    :value-slot-props="valueSlotProps(true)"
-  >
-    <template v-if="$slots.value" #value="slotProps">
-      <slot name="value" v-bind="slotProps" />
-    </template>
-  </ResponsiveSelectTriggerButton>
-
-  <ResponsiveOverlayDrawer
-    v-else-if="isMobile"
-    v-model:open="open"
-    :title="title"
-    :description="accessibleDescription"
-    :drawer="selectDrawerOptions"
-    :close-label="closeLabel"
-    :show-header="true"
-  >
-    <template #trigger>
-      <ResponsiveSelectTriggerButton
+    <ResponsiveSelectTriggerButton
+        v-if="isPending"
         v-bind="attrs"
         :disabled="disabled"
         :open="open"
@@ -164,107 +144,190 @@ function clearSelection(event: MouseEvent) {
         :size="size"
         :trigger-class="cn(triggerClass, resolvedTriggerClass)"
         :value-slot-props="valueSlotProps(true)"
-      >
-        <template v-if="$slots.value" #value="slotProps">
-          <slot name="value" v-bind="slotProps" />
-        </template>
-      </ResponsiveSelectTriggerButton>
-    </template>
-
-    <div :class="cn('grid gap-1 p-1', contentClass)" data-slot="responsive-select-mobile-options">
-      <Button
-        v-if="clearable && hasValue"
-        type="button"
-        variant="ghost"
-        size="40"
-        class="w-full justify-start text-muted-foreground"
-        @click="clearSelection"
-      >
-        <Icon name="askx-actions:close" />
-        {{ clearLabel }}
-      </Button>
-
-      <p v-if="options.length === 0" class="px-3 py-8 text-center text-sm text-muted-foreground">
-        {{ emptyText }}
-      </p>
-      <Button
-        v-for="option in options"
-        :key="option.value"
-        type="button"
-        variant="ghost"
-        size="48"
-        class="h-auto min-h-12 w-full justify-start whitespace-normal px-3 py-2.5"
-        :class="option.value === modelValue ? 'bg-accent text-accent-foreground' : ''"
-        :disabled="option.disabled"
-        :aria-pressed="option.value === modelValue"
-        @click="selectMobileOption(option, $event)"
-      >
-        <span class="grid size-5 shrink-0 place-items-center">
-          <Icon name="askx-status:check" v-if="option.value === modelValue" class="text-primary" />
-        </span>
-        <slot name="item" :option="option" :selected="option.value === modelValue" :is-mobile="true">
-          <ResponsiveSelectOptionContent :option="option" />
-        </slot>
-      </Button>
-    </div>
-  </ResponsiveOverlayDrawer>
-
-  <div v-else class="group/responsive-select relative w-full">
-    <Select v-model="modelValue" v-model:open="open" :disabled="disabled">
-      <SelectTrigger
-        v-bind="attrs"
-        :class="cn(responsiveSelectTriggerClass, responsiveSelectTriggerSizeClass[props.size], responsiveSelectDefaultIconClass, 'w-full', resolvedTriggerClass, triggerClass)"
-        :aria-label="title"
-        data-slot="responsive-select-trigger"
-      >
-        <SelectValue v-if="$slots.value" :placeholder="placeholder">
-          <slot name="value" v-bind="valueSlotProps(false)" />
-        </SelectValue>
-        <SelectValue v-else :placeholder="placeholder" />
-        <Icon name="askx-navigation:chevron-right"
-          :class="cn(
-            responsiveSelectTriggerIconClass,
-            open && 'rotate-90 text-ds-text-secondary',
-            clearable && hasValue ? 'group-hover/responsive-select:opacity-0' : '',
-          )"
-        />
-      </SelectTrigger>
-
-      <SelectContent position="popper" :class="cn('min-w-40 rounded-xl border border-ds-border-subtle-5 bg-ds-bg-inverse p-1.5 text-ds-text-primary shadow-[0_4px_12px_color-mix(in_srgb,var(--ds-color-fill-bb-transparent-5)_100%,transparent),0_8px_32px_color-mix(in_srgb,var(--ds-color-fill-bb-transparent-5)_100%,transparent)]', props.theme === 'dark' ? 'dark' : '', contentClass)">
-        <div v-if="title.trim()" class="flex h-6 shrink-0 items-center px-1.5 py-0.5 text-[11px] font-medium leading-[15px] text-ds-text-tertiary">
-          <span class="truncate">{{ title }}</span>
-        </div>
-        <div v-if="options.length === 0" class="px-2 py-6 text-center text-sm text-muted-foreground">
-          {{ emptyText }}
-        </div>
-        <SelectItem
-          v-for="option in options"
-          :key="option.value"
-          :value="option.value"
-          :disabled="option.disabled"
-          :text-value="option.label"
-          class="min-h-10 cursor-pointer rounded-lg px-2 py-2 text-sm font-medium leading-[22px] text-ds-text-secondary data-[disabled]:cursor-not-allowed data-[highlighted]:bg-ds-fill-bw-transparent-5 data-[highlighted]:text-ds-text-secondary"
-          @select="emitDesktopChange(option, $event)"
-        >
-          <slot name="item" :option="option" :selected="option.value === modelValue" :is-mobile="false">
-            <ResponsiveSelectOptionContent :option="option" />
-          </slot>
-        </SelectItem>
-      </SelectContent>
-    </Select>
-
-    <Button
-      v-if="clearable && hasValue"
-      type="button"
-      variant="ghost"
-      size="icon-xs"
-      :aria-label="clearLabel"
-      :class="responsiveSelectClearClass"
-      data-slot="responsive-select-clear"
-      @pointerdown.stop.prevent
-      @click="clearSelection"
     >
-      <Icon name="askx-actions:close" />
-    </Button>
-  </div>
+        <template
+            v-if="$slots.value"
+            #value="slotProps"
+        >
+            <slot
+                name="value"
+                v-bind="slotProps"
+            />
+        </template>
+    </ResponsiveSelectTriggerButton>
+
+    <ResponsiveOverlayDrawer
+        v-else-if="isMobile"
+        v-model:open="open"
+        :title="title"
+        :description="accessibleDescription"
+        :drawer="selectDrawerOptions"
+        :close-label="closeLabel"
+        :show-header="true"
+    >
+        <template #trigger>
+            <ResponsiveSelectTriggerButton
+                v-bind="attrs"
+                :disabled="disabled"
+                :open="open"
+                :placeholder="placeholder"
+                :title="title"
+                :size="size"
+                :trigger-class="cn(triggerClass, resolvedTriggerClass)"
+                :value-slot-props="valueSlotProps(true)"
+            >
+                <template
+                    v-if="$slots.value"
+                    #value="slotProps"
+                >
+                    <slot
+                        name="value"
+                        v-bind="slotProps"
+                    />
+                </template>
+            </ResponsiveSelectTriggerButton>
+        </template>
+
+        <div
+            :class="cn('grid gap-1 p-1', contentClass)"
+            data-slot="responsive-select-mobile-options"
+        >
+            <Button
+                v-if="clearable && hasValue"
+                type="button"
+                variant="ghost"
+                :size="40"
+                class="w-full justify-start text-muted-foreground"
+                @click="clearSelection"
+            >
+                <Icon name="askx-actions:close" />
+                {{ clearLabel }}
+            </Button>
+
+            <p
+                v-if="options.length === 0"
+                class="px-3 py-8 text-center text-sm text-muted-foreground"
+            >
+                {{ emptyText }}
+            </p>
+            <Button
+                v-for="option in options"
+                :key="option.value"
+                type="button"
+                variant="ghost"
+                :size="48"
+                class="h-auto min-h-12 w-full justify-start whitespace-normal px-3 py-2.5"
+                :class="option.value === modelValue ? 'bg-accent text-accent-foreground' : ''"
+                :disabled="option.disabled"
+                :aria-pressed="option.value === modelValue"
+                @click="selectMobileOption(option, $event)"
+            >
+                <span class="grid size-5 shrink-0 place-items-center">
+                    <Icon
+                        v-if="option.value === modelValue"
+                        name="askx-status:check"
+                        class="text-primary"
+                    />
+                </span>
+                <slot
+                    name="item"
+                    :option="option"
+                    :selected="option.value === modelValue"
+                    :is-mobile="true"
+                >
+                    <ResponsiveSelectOptionContent :option="option" />
+                </slot>
+            </Button>
+        </div>
+    </ResponsiveOverlayDrawer>
+
+    <div
+        v-else
+        class="group/responsive-select relative w-full"
+    >
+        <Select
+            v-model="modelValue"
+            v-model:open="open"
+            :disabled="disabled"
+        >
+            <SelectTrigger
+                v-bind="attrs"
+                :class="cn(responsiveSelectTriggerClass, responsiveSelectTriggerSizeClass[props.size], responsiveSelectDefaultIconClass, 'w-full', resolvedTriggerClass, triggerClass)"
+                :aria-label="title"
+                data-slot="responsive-select-trigger"
+            >
+                <SelectValue
+                    v-if="$slots.value"
+                    :placeholder="placeholder"
+                >
+                    <slot
+                        name="value"
+                        v-bind="valueSlotProps(false)"
+                    />
+                </SelectValue>
+                <SelectValue
+                    v-else
+                    :placeholder="placeholder"
+                />
+                <Icon
+                    name="askx-navigation:chevron-right"
+                    :class="cn(
+                        responsiveSelectTriggerIconClass,
+                        open && 'rotate-90 text-ds-text-secondary',
+                        clearable && hasValue ? 'group-hover/responsive-select:opacity-0' : '',
+                    )"
+                />
+            </SelectTrigger>
+
+            <SelectContent
+                position="popper"
+                :class="cn('min-w-40 rounded-xl border border-ds-border-subtle-5 bg-ds-bg-inverse p-1.5 text-ds-text-primary shadow-[0_4px_12px_color-mix(in_srgb,var(--ds-color-fill-bb-transparent-5)_100%,transparent),0_8px_32px_color-mix(in_srgb,var(--ds-color-fill-bb-transparent-5)_100%,transparent)]', props.theme === 'dark' ? 'dark' : '', contentClass)"
+            >
+                <div
+                    v-if="title.trim()"
+                    class="flex h-6 shrink-0 items-center px-1.5 py-0.5 text-[11px] font-medium leading-[15px] text-ds-text-tertiary"
+                >
+                    <span class="truncate">{{ title }}</span>
+                </div>
+                <div
+                    v-if="options.length === 0"
+                    class="px-2 py-6 text-center text-sm text-muted-foreground"
+                >
+                    {{ emptyText }}
+                </div>
+                <SelectItem
+                    v-for="option in options"
+                    :key="option.value"
+                    :value="option.value"
+                    :disabled="option.disabled"
+                    :text-value="option.label"
+                    class="min-h-10 cursor-pointer rounded-lg px-2 py-2 text-sm font-medium leading-[22px] text-ds-text-secondary data-[disabled]:cursor-not-allowed data-[highlighted]:bg-ds-fill-bw-transparent-5 data-[highlighted]:text-ds-text-secondary"
+                    @select="emitDesktopChange(option, $event)"
+                >
+                    <slot
+                        name="item"
+                        :option="option"
+                        :selected="option.value === modelValue"
+                        :is-mobile="false"
+                    >
+                        <ResponsiveSelectOptionContent :option="option" />
+                    </slot>
+                </SelectItem>
+            </SelectContent>
+        </Select>
+
+        <Button
+            v-if="clearable && hasValue"
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            :aria-label="clearLabel"
+            :class="responsiveSelectClearClass"
+            data-slot="responsive-select-clear"
+            @pointerdown.stop.prevent
+            @click="clearSelection"
+        >
+            <Icon name="askx-actions:close" />
+        </Button>
+    </div>
 </template>

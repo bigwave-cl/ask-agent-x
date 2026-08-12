@@ -8,6 +8,8 @@
     "node": ">=22"
   },
   "scripts": {
+    "lint": "pnpm --filter @askx/web lint",
+    "lint:fix": "pnpm --filter @askx/web lint:fix",
     "build": "pnpm -r build",
     "dev": "pnpm dev:prepare && pnpm -r --parallel --filter @askx/core --filter @askx/platform-adapters --filter @askx/module-skills --filter askagent-x --filter @askx/web dev",
     "dev:prepare": "pnpm --filter @askx/core build && pnpm --filter @askx/platform-adapters build && pnpm --filter @askx/module-skills build && pnpm --filter askagent-x build",

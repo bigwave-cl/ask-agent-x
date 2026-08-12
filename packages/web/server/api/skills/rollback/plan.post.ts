@@ -6,10 +6,11 @@ import { skillsManager, throwSkillsApiError } from '../../../utils/skills.js'
 const requestSchema = z.object({ receiptId: z.string().uuid() })
 
 export default defineEventHandler(async (event): Promise<SkillsRollbackPlan> => {
-  try {
-    const input = requestSchema.parse(await readBody(event))
-    return await skillsManager.planRollbackReceipt(input.receiptId)
-  } catch (error) {
-    throwSkillsApiError(error)
-  }
+    try {
+        const input = requestSchema.parse(await readBody(event))
+        return await skillsManager.planRollbackReceipt(input.receiptId)
+    }
+    catch (error) {
+        throwSkillsApiError(error)
+    }
 })

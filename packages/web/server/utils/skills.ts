@@ -9,7 +9,7 @@ export const skillsManager = new SkillsManager(defaultContext())
  * @param error 原始错误。
  */
 export function throwSkillsApiError(error: unknown): never {
-  const message = error instanceof Error ? error.message : 'Skills 操作失败。'
-  const conflict = /变化|revision|manifest|重新扫描|hash|已存在|占用|失效/.test(message)
-  throw createError({ statusCode: conflict ? 409 : 400, statusMessage: message })
+    const message = error instanceof Error ? error.message : 'Skills 操作失败。'
+    const conflict = /变化|revision|manifest|重新扫描|hash|已存在|占用|失效/.test(message)
+    throw createError({ statusCode: conflict ? 409 : 400, statusMessage: message })
 }

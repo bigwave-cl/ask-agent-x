@@ -5,5 +5,5 @@ useHead(() => ({ title: t('meta.skillsX') }))
 </script>
 
 <template>
-  <WorkspaceApp view="skills-x" />
+    <WorkspaceApp view="skills-x" />
 </template>
