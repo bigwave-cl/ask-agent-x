@@ -142,7 +142,7 @@ const messages = {
     scanPlan: 'Skills scan plan', linkPlan: 'Connect symlink', unlinkPlan: 'Remove symlink configuration', linkResult: 'Connect symlink', unlinkResult: 'Remove symlink configuration', linkConfirm: 'Connect this symlink?', externalTakeoverConfirm: 'Take over this external symlink?', externalLinkPreserved: 'external symlink detected; existing configuration preserved', linkApplied: 'connected', unlinkConfirm: 'Remove this symlink configuration?', unlinkApplied: 'symlink configuration removed', unlinkNoData: 'no connection data; no action this time',
     planHash: 'Plan hash', adopt: 'adopt', merge: 'merge', keep: 'keep', customDirectories: 'custom directories', operations: 'operations', applied: 'applied', skipped: 'skipped', failed: 'failed',
     confirmApply: 'Apply this exact plan?', confirmKeys: 'Enter confirms · Esc/Q cancels', cancelled: 'Operation cancelled.', confirmationRequired: 'A write plan requires confirmation. Re-run with --yes in non-interactive or JSON mode.', macPrivacyTitle: 'macOS folder access', macPrivacyDenied: 'macOS blocked access to: {path}', macPrivacyInstructions: 'System Settings has been opened. Allow the current terminal app to access protected folders.', macPrivacyStillDenied: 'Access is still blocked. Fully quit and reopen the terminal to activate the permission, or move the Skills folder to an unprotected location such as ~/Skills.', macPrivacyLocalRetry: 'If this terminal can enter the parent folder, press Esc/Q and retry from there:', macPrivacyRetry: 'After granting access, return here and press Enter to retry this command · Esc/Q cancels',
-    skillsNotInitialized: 'Skills management is not initialized. Run "askx skills scan" first.', platformWriteRequired: 'Select at least one platform for this link operation.', conflictKept: 'Conflicting Skills are kept unchanged and are not overwritten automatically.',
+    skillsNotInitialized: 'Skills management is not initialized. Run "askx skills scan" first.', platformWriteRequired: 'Select at least one platform for this link operation.', conflictKept: 'Conflicting Skills are kept unchanged and are not overwritten automatically.', platformPreferenceSyncFailed: 'Skills and symlinks were saved, but the platform preference could not be updated. The imported result is unaffected.',
     linkTarget: 'link target', statsDescription: 'View Skill versions, usage counts and connected targets', usageDescription: 'Record explicit local Skill usage', usageRecordDescription: 'Record one use by Skill name or stable ID', managerDescription: 'Manage the built-in AskX Skill Manager', managerRepairDescription: 'Repair a missing, corrupt or outdated built-in Skill Manager', statsTitle: 'Skill statistics', skillListTitle: 'Current Skill list', canonicalFolder: 'Skill folder', connectedPlatforms: 'Connected platforms', noManagedSkills: 'No managed Skills yet. Run askx skills to start setup.', statsHint: 'View statistics', manageHint: 'Scan or update the list', totalUsage: 'usage', totalTargets: 'targets', issueTargets: 'target issues', usagePlan: 'Usage record plan', usageResult: 'Usage recorded', managerRepairPlan: 'Skill Manager repair plan', managerRepairResult: 'Skill Manager repaired', skillName: 'Skill', version: 'Version', systemHealth: 'Previous health', preserveRegistry: 'Preserve registry', registryRevision: 'Registry revision', usageCount: 'Usage count', management: 'version management', repairWarnings: 'Warnings', scopeDescription: 'Move an existing Skill between Shared and Local scope', scopeLocalDescription: 'Move the Skill to Local scope', scopeSharedDescription: 'Move the Skill to Shared scope', scopeRequired: 'Choose exactly one of --local or --shared.', scopePlan: 'Skill scope migration plan', scopeResult: 'Skill scope updated',
   },
   'zh-CN': {
@@ -169,7 +169,7 @@ const messages = {
     scanPlan: 'Skills 扫描计划', linkPlan: '关联软链', unlinkPlan: '取消软链配置', linkResult: '关联软链', unlinkResult: '取消软链配置', linkConfirm: '确定要关联吗？', externalTakeoverConfirm: '确定要接管这个外部软链吗？', externalLinkPreserved: '检测到外部软链，已保留现有配置', linkApplied: '已关联', unlinkConfirm: '确定要取消吗？', unlinkApplied: '已取消软链设置', unlinkNoData: '不存在关联数据，本次不处理',
     planHash: '计划指纹', adopt: '接管', merge: '合并', keep: '保留', customDirectories: '自定义目录', operations: '操作', applied: '已应用', skipped: '已跳过', failed: '失败',
     confirmApply: '确认执行这份完整计划？', confirmKeys: '回车确认 · Esc/Q 放弃', cancelled: '操作已取消。', confirmationRequired: '写操作必须明确授权；非交互或 JSON 模式请重新执行并传入 --yes。', macPrivacyTitle: 'macOS 文件夹授权', macPrivacyDenied: 'macOS 阻止了当前终端访问：{path}', macPrivacyInstructions: '已打开系统设置，请为当前使用的终端应用开启受保护文件夹访问权限。', macPrivacyStillDenied: '授权后仍被阻止。请完全退出并重新打开终端使权限生效，或者将 Skills 文件夹移动到 ~/Skills 等非受保护目录。', macPrivacyLocalRetry: '如果当前终端可以进入上级目录，也可以按 Esc/Q 放弃后从该目录重新执行：', macPrivacyRetry: '授权完成后返回终端，按回车重试本次命令 · Esc/Q 放弃',
-    skillsNotInitialized: 'Skills 管理尚未初始化，请先运行 "askx skills scan"。', platformWriteRequired: '软链操作至少需要选择一个平台。', conflictKept: '内容冲突的 Skills 会保留现状，不会自动覆盖。',
+    skillsNotInitialized: 'Skills 管理尚未初始化，请先运行 "askx skills scan"。', platformWriteRequired: '软链操作至少需要选择一个平台。', conflictKept: '内容冲突的 Skills 会保留现状，不会自动覆盖。', platformPreferenceSyncFailed: 'Skill 与软链已保存，但平台偏好更新失败；本次导入结果不受影响。',
     linkTarget: '软链目标', statsDescription: '查看 Skill 版本、使用次数和已关联目标', usageDescription: '记录明确的本地 Skill 使用', usageRecordDescription: '按 Skill 名称或稳定 ID 记录一次使用', managerDescription: '管理 AskX 内置 Skill Manager', managerRepairDescription: '修复缺失、损坏或过期的内置 Skill Manager', statsTitle: 'Skill 统计', skillListTitle: '当前 Skill 列表', canonicalFolder: 'Skill 文件夹', connectedPlatforms: '已关联平台', noManagedSkills: '当前还没有 Skill，请运行 askx skills 开始设置。', statsHint: '查看统计', manageHint: '重新扫描或更新列表', totalUsage: '累计使用', totalTargets: '同步目标', issueTargets: '异常目标', usagePlan: 'Usage 记录计划', usageResult: 'Usage 已记录', managerRepairPlan: 'Skill Manager 修复计划', managerRepairResult: 'Skill Manager 已修复', skillName: 'Skill', version: '版本', systemHealth: '修复前状态', preserveRegistry: '保留 Registry', registryRevision: 'Registry 版本', usageCount: '累计次数', management: '版本管理', repairWarnings: '提示', scopeDescription: '在共享和本地范围之间迁移已有 Skill', scopeLocalDescription: '将 Skill 迁移为本地 Skill', scopeSharedDescription: '将 Skill 迁移为共享 Skill', scopeRequired: '必须且只能选择 --local 或 --shared。', scopePlan: 'Skill 范围迁移计划', scopeResult: 'Skill 范围已更新',
   },
 } as const
@@ -1398,12 +1398,16 @@ async function runSkillsSetupWizard(platforms: SkillPlatformId[], customRoots: s
       return
     }
     await skillsManager.applyOnboarding(plan, settings.revision, consentFor(plan))
-    const latestSettings = await settingsStore.read()
-    const nextPlatforms = configurationStrategy === 'merge'
-      ? [...new Set([...latestSettings.skills.platforms, ...platforms])]
-      : platforms
-    if (latestSettings.skills.platforms.join(',') !== nextPlatforms.join(',')) {
-      await settingsStore.update({ skills: { platforms: nextPlatforms } }, { source: 'cli', expectedRevision: latestSettings.revision })
+    try {
+      const latestSettings = await settingsStore.read()
+      const nextPlatforms = configurationStrategy === 'merge'
+        ? [...new Set([...latestSettings.skills.platforms, ...platforms])]
+        : platforms
+      if (latestSettings.skills.platforms.join(',') !== nextPlatforms.join(',')) {
+        await settingsStore.update({ skills: { platforms: nextPlatforms } }, { source: 'cli', expectedRevision: latestSettings.revision })
+      }
+    } catch {
+      render(<NoticeView title={t(activeLocale, 'skillsTitle')} message={t(activeLocale, 'platformPreferenceSyncFailed')} />)
     }
     render(<ManagedSkillListView bootstrap={await skillsManager.bootstrap()} locale={activeLocale} />)
   } finally {
