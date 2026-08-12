@@ -14,8 +14,8 @@ import type {
     SkillPlatformId,
     SkillsBatchMode,
     SkillsBatchPlan,
-    SkillsConfigurationStrategy,
     SkillsBatchReceipt,
+    SkillsConfigurationStrategy,
     SkillsRollbackPlan,
     SkillsBootstrap,
     SkillsScanReport,
@@ -36,7 +36,7 @@ const toast = useToast()
 const SKILLS_REQUEST_ERROR_TOAST_ID = 'skills-request-error'
 
 /** 首次接入和管理页面状态。 */
-type SkillsViewState = 'loading' | 'platforms' | 'scan' | 'links' | 'confirm' | 'result' | 'dashboard'
+type SkillsViewState = 'loading' | 'platforms' | 'scan' | 'links' | 'confirm' | 'dashboard'
 
 const state = ref<SkillsViewState>('loading')
 /** 当前引导是接入平台还是只同步单个平台内容。 */
@@ -45,6 +45,9 @@ const flowMode = ref<SkillsBatchMode>('connect')
 const configurationStrategy = ref<SkillsConfigurationStrategy>('replace')
 const bootstrap = ref<SkillsBootstrap | null>(null)
 const selectedPlatforms = ref<SkillPlatformId[]>([])
+
+/** 当前是否至少选择了一个平台或自定义扫描文件夹。 */
+const hasSelectedSource = computed(() => selectedPlatforms.value.length > 0 || selectedDirectories.value.length > 0)
 /** 用户在独立步骤明确选择建立根目录软链的平台。 */
 const selectedLinkPlatforms = ref<SkillPlatformId[]>([])
 /** 用户明确同意由 AskX 接管外部软链的平台。 */
@@ -60,7 +63,6 @@ const decisions = ref<SkillDecision[]>([])
 /** 用户明确选择的版本管理改造动作；默认保持关闭。 */
 const managementChoices = ref<SkillManagementChoice[]>([])
 const plan = ref<SkillsBatchPlan | null>(null)
-const receipt = ref<SkillsBatchReceipt | null>(null)
 const history = ref<SkillsBatchReceipt[]>([])
 const busy = ref(false)
 /** 系统原生目录窗口是否正在等待用户选择。 */
@@ -99,7 +101,6 @@ const stepLabels = computed(() => linkOnlyFlow.value
 /** 当前引导弹层标题。 */
 const setupTitle = computed(() => {
     if (linkOnlyFlow.value) return t('skills.bindPlatformLinkTitle')
-    if (state.value === 'result') return t(flowMode.value === 'sync' ? 'skills.syncResultTitle' : 'skills.resultTitle')
     return t(flowMode.value === 'sync' ? 'skills.syncDialogTitle' : 'skills.setupDialogTitle')
 })
 
@@ -144,7 +145,7 @@ async function loadBootstrap(): Promise<void> {
         linkSelectionInitialized.value = false
         selectedPlatforms.value = [...(props.settings?.skills.platforms ?? [])]
         if (bootstrap.value.initialized) {
-            await Promise.all([scan(false), loadHistory()])
+            await Promise.all([scanManagedResources(), loadHistory()])
             state.value = 'dashboard'
             setupOpen.value = false
         }
@@ -232,21 +233,24 @@ async function loadHistory(): Promise<void> {
 async function refreshManagedResources(): Promise<void> {
     try {
         bootstrap.value = await $fetch<SkillsBootstrap>('/api/skills/bootstrap')
-        await scan(false)
+        await scanManagedResources()
     }
     catch (error) {
         notifyRequestError(error, 'loadFailed')
     }
 }
 
-/** 保存平台范围并执行扫描。 */
-async function startFirstScan(): Promise<void> {
-    if (!props.settings || !selectedPlatforms.value.length) return
+/**
+ * 保存本次导入策略并执行扫描。
+ * @param strategy 合并添加或按当前来源重新导入。
+ */
+async function startFirstScan(strategy: 'merge' | 'replace'): Promise<void> {
+    if (!props.settings || !hasSelectedSource.value) return
     busy.value = true
     clearRequestError()
     try {
         flowMode.value = 'connect'
-        configurationStrategy.value = 'replace'
+        configurationStrategy.value = strategy
         await scan(true)
     }
     catch (error) {
@@ -269,6 +273,16 @@ async function scan(enterDecision = true): Promise<void> {
     decisions.value = report.value.groups.map(defaultDecision)
     managementChoices.value = []
     if (enterDecision) state.value = 'scan'
+}
+
+/** 只扫描 AskX 共享与本地统一源，用于接入完成后的管理页刷新。 */
+async function scanManagedResources(): Promise<void> {
+    report.value = await $fetch<SkillsScanReport>('/api/skills/scan', {
+        method: 'POST',
+        body: { platforms: [], customRoots: [] },
+    })
+    decisions.value = report.value.groups.map(defaultDecision)
+    managementChoices.value = []
 }
 
 /** 更新一个分组的用户决策。 */
@@ -347,28 +361,30 @@ async function applyPlan(): Promise<void> {
     busy.value = true
     clearRequestError()
     try {
-        receipt.value = await $fetch<SkillsBatchReceipt>('/api/skills/apply', {
+        await $fetch<SkillsBatchReceipt>('/api/skills/apply', {
             method: 'POST',
             body: { plan: plan.value, consent: { planHash: plan.value.hash, confirmedAt: new Date().toISOString() } },
         })
-        await persistSelectedPlatforms(configurationStrategy.value)
-        bootstrap.value = await $fetch<SkillsBootstrap>('/api/skills/bootstrap')
-        await Promise.all([scan(false), loadHistory()])
-        state.value = 'result'
+        setupOpen.value = false
+        linkOnlyFlow.value = false
+        state.value = 'dashboard'
     }
     catch (error) {
         notifyRequestError(error)
+        busy.value = false
+        return
+    }
+    try {
+        await persistSelectedPlatforms(configurationStrategy.value)
+        bootstrap.value = await $fetch<SkillsBootstrap>('/api/skills/bootstrap')
+        await Promise.all([scanManagedResources(), loadHistory()])
+    }
+    catch (error) {
+        notifyRequestError(error, 'loadFailed')
     }
     finally {
         busy.value = false
     }
-}
-
-/** 结束向导并进入正常管理页。 */
-async function complete(): Promise<void> {
-    setupOpen.value = false
-    linkOnlyFlow.value = false
-    state.value = 'dashboard'
 }
 
 /**
@@ -411,11 +427,14 @@ async function rescanForManagement(): Promise<void> {
     }
 }
 
-/** 从列表页打开初始化或重新扫描流程。 */
-function openSetup(): void {
+/**
+ * 从列表页打开添加或完整重新导入流程。
+ * @param strategy 添加时合并现有配置，完整重新导入时替换配置。
+ */
+function openSetup(strategy: 'merge' | 'replace' = 'merge'): void {
     linkOnlyFlow.value = false
     flowMode.value = 'connect'
-    configurationStrategy.value = 'replace'
+    configurationStrategy.value = strategy
     selectedPlatforms.value = [...(props.settings?.skills.platforms ?? [])]
     selectedDirectories.value = [...(bootstrap.value?.customRoots ?? [])]
     selectedLinkPlatforms.value = []
@@ -425,7 +444,6 @@ function openSetup(): void {
     decisions.value = []
     managementChoices.value = []
     plan.value = null
-    receipt.value = null
     state.value = 'platforms'
     setupOpen.value = true
 }
@@ -477,7 +495,6 @@ async function openPlatformBind(platform: SkillPlatformId): Promise<void> {
     flowMode.value = 'connect'
     configurationStrategy.value = 'preserve'
     plan.value = null
-    receipt.value = null
     linkOnlyFlow.value = true
     try {
         report.value = await $fetch<SkillsScanReport>('/api/skills/scan', {
@@ -723,7 +740,7 @@ onMounted(loadBootstrap)
                 :bootstrap="bootstrap"
                 :configured-platforms="props.settings?.skills.platforms ?? selectedPlatforms"
                 :busy="busy"
-                @action="openSetup"
+                @action="openSetup(bootstrap.initialized ? 'merge' : 'replace')"
                 @platform-action="openPlatformImport"
                 @platform-bind="openPlatformBind"
                 @platform-link-action="preparePlatformLinkAction"
@@ -756,7 +773,7 @@ onMounted(loadBootstrap)
             <BusSkillsEmptyState
                 v-else
                 :initialized="bootstrap.initialized"
-                @action="openSetup"
+                @action="openSetup(bootstrap.initialized ? 'merge' : 'replace')"
             />
 
             <CsResponsiveOverlayDialogDrawer
@@ -764,7 +781,7 @@ onMounted(loadBootstrap)
                 :title="setupTitle"
                 :description="t(linkOnlyFlow ? 'skills.bindPlatformLinkDescription' : flowMode === 'sync' ? 'skills.syncDialogDescription' : 'skills.setupDialogDescription')"
                 :dismissible="!busy"
-                :show-header="state !== 'result'"
+                show-header
                 :close-disabled="busy"
                 :close-label="t('skills.closeSetup')"
                 :dialog="{ content: { class: 'max-w-[calc(100vw-2rem)] sm:max-w-[min(72rem,calc(100vw-2rem))]' } }"
@@ -845,19 +862,13 @@ onMounted(loadBootstrap)
                     v-else-if="state === 'confirm' && plan"
                     :plan="plan"
                 />
-                <BusSkillsExecutionResult
-                    v-else-if="state === 'result' && receipt"
-                    :receipt="receipt"
-                    :mode="flowMode"
-                />
-
                 <template #footer>
                     <template v-if="state === 'platforms'">
                         <p
-                            v-if="!selectedPlatforms.length"
+                            v-if="!hasSelectedSource"
                             class="text-sm text-destructive"
                         >
-                            {{ t('skills.mustSelectPlatform') }}
+                            {{ t('skills.mustSelectSource') }}
                         </p>
                         <p
                             v-else
@@ -868,17 +879,28 @@ onMounted(loadBootstrap)
                                 class="size-3.5 text-primary"
                             />{{ t('skills.transactional') }}
                         </p>
-                        <Button
-                            :size="48"
-                            :disabled="!selectedPlatforms.length || busy || pickingDirectories"
-                            @click="startFirstScan"
-                        >
-                            <Icon
-                                name="askx-actions:refresh"
-                                :class="['size-4', { 'animate-spin': busy }]"
-                            />
-                            {{ busy ? t('skills.scanning') : t('skills.startScan') }}
-                        </Button>
+                        <div class="flex flex-wrap items-center justify-end gap-2">
+                            <Button
+                                v-if="bootstrap.initialized"
+                                variant="outline"
+                                :size="48"
+                                :disabled="!hasSelectedSource || busy || pickingDirectories"
+                                @click="startFirstScan('replace')"
+                            >
+                                <Icon name="askx-actions:refresh" />{{ t('skills.reimportFromSources') }}
+                            </Button>
+                            <Button
+                                :size="48"
+                                :disabled="!hasSelectedSource || busy || pickingDirectories"
+                                @click="startFirstScan(bootstrap.initialized ? 'merge' : 'replace')"
+                            >
+                                <Icon
+                                    name="askx-actions:upload"
+                                    :class="['size-4', { 'animate-pulse': busy }]"
+                                />
+                                {{ busy ? t('skills.scanning') : t(bootstrap.initialized ? 'skills.scanAndAdd' : 'skills.startScan') }}
+                            </Button>
+                        </div>
                     </template>
 
                     <template v-else-if="state === 'scan'">
@@ -944,15 +966,6 @@ onMounted(loadBootstrap)
                         </Button>
                     </template>
 
-                    <template v-else-if="state === 'result'">
-                        <span />
-                        <Button
-                            :size="48"
-                            @click="complete"
-                        >
-                            {{ t('skills.openManager') }}<Icon name="askx-navigation:arrow-right" />
-                        </Button>
-                    </template>
                 </template>
             </CsResponsiveOverlayDialogDrawer>
 

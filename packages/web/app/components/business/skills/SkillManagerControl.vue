@@ -84,9 +84,14 @@ const sharedHealth = computed(() => {
             @add="emit('add')"
             @updated="emit('updated')"
         />
-        <BusSkillsLocalSkillList
+        <BusSkillsSkillList
             v-show="activeTab === 'local'"
-            :skills="localSkills"
+            scope="local"
+            :managed-skills="localSkills"
+            :health="[]"
+            :platforms="platforms"
+            :platform-health="platformHealth"
+            :report="report"
             :busy="busy"
             @updated="emit('updated')"
         />

@@ -4,6 +4,7 @@ import type {
     ManagedSkillDetail,
     ManagedSkillFile,
     ManagedSkillHealth,
+    ManagedLocalSkillRecord,
     ManagedSkillRecord,
     ManagedSkillTreeNode,
     SkillFileUpdatePlan,
@@ -21,7 +22,9 @@ import { resolveSkillTreeIcon } from './skillTreeIcon'
 /** Skills 管理列表属性。 */
 interface Props {
     /** manifest 中已接管的 Skill。 */
-    managedSkills: ManagedSkillRecord[]
+    managedSkills: Array<ManagedSkillRecord | ManagedLocalSkillRecord>
+    /** 当前展示共享 Skill 还是本地专属 Skill。 */
+    scope?: 'shared' | 'local'
     /** 最新只读扫描报告。 */
     report: SkillsScanReport
     /** 受管 Skill 的只读健康状态。 */
@@ -34,7 +37,7 @@ interface Props {
     busy?: boolean
 }
 
-const props = withDefaults(defineProps<Props>(), { busy: false })
+const props = withDefaults(defineProps<Props>(), { busy: false, scope: 'shared' })
 const emit = defineEmits<{
     /** 打开添加 Skill 流程。 */
     add: []
@@ -267,14 +270,14 @@ async function copyPath(path: string): Promise<void> {
     if (copied) toast.success(t('skills.pathCopied'))
 }
 
-/** 为当前共享 Skill 生成迁移到本地范围的计划。 */
+/** 为当前 Skill 生成共享与本地范围之间的迁移计划。 */
 async function prepareLocalMigration(): Promise<void> {
     if (!selectedSkillId.value || dirty.value) return
     migratingScope.value = true
     try {
         scopePlan.value = await $fetch<LocalSkillMigrationPlan>('/api/skills/local/migrate-plan', {
             method: 'POST',
-            body: { skillId: selectedSkillId.value, targetScope: 'local' },
+            body: { skillId: selectedSkillId.value, targetScope: props.scope === 'shared' ? 'local' : 'shared' },
         })
     }
     catch {
@@ -285,7 +288,7 @@ async function prepareLocalMigration(): Promise<void> {
     }
 }
 
-/** 应用当前共享转本地迁移计划。 */
+/** 应用当前 Skill 范围迁移计划。 */
 async function applyLocalMigration(): Promise<void> {
     if (!scopePlan.value) return
     migratingScope.value = true
@@ -296,7 +299,7 @@ async function applyLocalMigration(): Promise<void> {
             body: { plan, consent: { planHash: plan.hash, confirmedAt: new Date().toISOString() } },
         })
         scopePlan.value = null
-        toast.success(t('skills.migrateToLocalCompleted'))
+        toast.success(t(props.scope === 'shared' ? 'skills.migrateToLocalCompleted' : 'skills.localMigrationCompleted'))
         clearSelection()
         emit('updated')
     }
@@ -333,13 +336,16 @@ onMounted(() => {
                     <span class="h-px w-8 bg-ds-brand-default" />{{ t('skills.resourceEyebrow') }}
                 </div>
                 <h2 class="mt-3 text-2xl font-semibold tracking-[-0.03em]">
-                    {{ t('skills.listTitle') }}
+                    {{ t(scope === 'shared' ? 'skills.listTitle' : 'skills.localSkillsTitle') }}
                 </h2>
                 <p class="mt-2 text-sm text-muted-foreground">
-                    {{ t('skills.resourceDescription') }}
+                    {{ t(scope === 'shared' ? 'skills.resourceDescription' : 'skills.localSkillsDescription') }}
                 </p>
             </div>
-            <div class="grid w-full grid-cols-2 gap-2 sm:w-[22rem]">
+            <div
+                v-if="scope === 'shared'"
+                class="grid w-full grid-cols-2 gap-2 sm:w-[22rem]"
+            >
                 <BusSkillsSkillCopyManager
                     :managed-skills="managedSkills"
                     :platforms="platforms"
@@ -367,7 +373,7 @@ onMounted(() => {
                 <aside class="flex min-h-0 flex-col border-b bg-ds-fill-bw-transparent-3 lg:border-r lg:border-b-0">
                     <div class="border-b p-4">
                         <div class="flex items-center justify-between gap-3">
-                            <div><strong class="text-sm">{{ t('skills.canonicalSkills') }}</strong><span class="ml-2 font-mono text-[10px] text-muted-foreground">{{ managedSkills.length }}</span></div><Icon
+                            <div><strong class="text-sm">{{ t(scope === 'shared' ? 'skills.canonicalSkills' : 'skills.localSkillsTitle') }}</strong><span class="ml-2 font-mono text-[10px] text-muted-foreground">{{ managedSkills.length }}</span></div><Icon
                                 name="askx-objects:skills"
                                 class="size-4 text-primary"
                                 aria-hidden="true"
@@ -515,7 +521,7 @@ onMounted(() => {
                                         :disabled="busy || dirty || migratingScope"
                                         @click="prepareLocalMigration"
                                     >
-                                        <Icon name="askx-objects:file" />{{ t('skills.migrateToLocal') }}
+                                        <Icon :name="scope === 'shared' ? 'askx-objects:file' : 'askx-actions:upload'" />{{ t(scope === 'shared' ? 'skills.migrateToLocal' : 'skills.migrateToShared') }}
                                     </Button>
                                     <CsLocalPathOpener :path="detail.canonicalPath" />
                                 </div>
@@ -688,7 +694,7 @@ onMounted(() => {
             @update:open="value => { if (!value && !migratingScope) scopePlan = null }"
         >
             <DialogContent class="sm:max-w-lg">
-                <DialogHeader><DialogTitle>{{ t('skills.migrateToLocalConfirmTitle') }}</DialogTitle><DialogDescription>{{ t('skills.migrateToLocalConfirmDescription') }}</DialogDescription></DialogHeader>
+                <DialogHeader><DialogTitle>{{ t(scope === 'shared' ? 'skills.migrateToLocalConfirmTitle' : 'skills.localMigrationConfirmTitle') }}</DialogTitle><DialogDescription>{{ t(scope === 'shared' ? 'skills.migrateToLocalConfirmDescription' : 'skills.localMigrationConfirmDescription') }}</DialogDescription></DialogHeader>
                 <div
                     v-if="scopePlan"
                     class="rounded-xl border bg-muted/30 p-4"
@@ -706,7 +712,7 @@ onMounted(() => {
                         :disabled="migratingScope"
                         @click="applyLocalMigration"
                     >
-                        <Icon name="askx-objects:file" />{{ t('skills.migrateToLocal') }}
+                        <Icon :name="scope === 'shared' ? 'askx-objects:file' : 'askx-actions:upload'" />{{ t(scope === 'shared' ? 'skills.migrateToLocal' : 'skills.migrateToShared') }}
                     </Button>
                 </DialogFooter>
             </DialogContent>

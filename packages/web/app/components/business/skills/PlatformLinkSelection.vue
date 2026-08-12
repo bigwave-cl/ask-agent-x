@@ -39,6 +39,14 @@ const emit = defineEmits<{
     'select-directories': []
 }>()
 const { t } = useI18n()
+/** 本步骤出现过的自定义文件夹选项，取消勾选后仍保留以便恢复。 */
+const directoryOptions = ref<Array<{ name: string, path: string }>>([])
+
+watch([() => props.sourceDirectories, () => props.directories], ([sources, selected]) => {
+    const merged = new Map(directoryOptions.value.map(directory => [directory.path, directory]))
+    for (const directory of [...sources, ...selected]) merged.set(directory.path, directory)
+    directoryOptions.value = [...merged.values()].sort((left, right) => left.path.localeCompare(right.path))
+}, { immediate: true, deep: true })
 
 /**
  * 切换一个平台的软链接入选择。
@@ -61,12 +69,12 @@ function toggleTakeover(platform: SkillPlatformStatus): void {
         : [...props.takeover, platform.id])
 }
 
-/**
- * 从本次软链目标中移除一个自定义目录。
- * @param path 要移除的目录绝对路径。
- */
-function removeDirectory(path: string): void {
-    emit('update:directories', props.directories.filter(directory => directory.path !== path))
+/** 切换一个自定义文件夹的软链接入选择。 */
+function toggleDirectory(directory: { name: string, path: string }): void {
+    const removing = props.directories.some(entry => entry.path === directory.path)
+    emit('update:directories', removing
+        ? props.directories.filter(entry => entry.path !== directory.path)
+        : [...props.directories, directory].sort((left, right) => left.path.localeCompare(right.path)))
 }
 
 /** 判断自定义软链目录是否也来自第一步扫描来源。 */
@@ -224,13 +232,17 @@ function suspectedOwner(platform: SkillPlatformStatus): string {
             </div>
 
             <div
-                v-if="directories.length"
+                v-if="directoryOptions.length"
                 class="mt-4 grid gap-2 border-t pt-4 sm:grid-cols-2"
             >
-                <div
-                    v-for="directory in directories"
+                <button
+                    v-for="directory in directoryOptions"
                     :key="directory.path"
-                    class="flex min-w-0 items-center gap-3 rounded-xl border bg-card px-3 py-2.5 shadow-xs"
+                    type="button"
+                    class="flex min-w-0 items-center gap-3 rounded-xl border px-3 py-2.5 text-left shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
+                    :class="directories.some(entry => entry.path === directory.path) ? 'border-primary/30 bg-ds-fill-brand-transparent-5' : 'bg-card hover:bg-muted/40'"
+                    :aria-pressed="directories.some(entry => entry.path === directory.path)"
+                    @click="toggleDirectory(directory)"
                 >
                     <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Icon
                         name="askx-objects:folder"
@@ -245,18 +257,17 @@ function suspectedOwner(platform: SkillPlatformStatus): string {
                         class="mt-0.5 block truncate font-mono text-[9px] text-muted-foreground sm:text-[10px]"
                         :title="directory.path"
                     >{{ directory.path }}</code></span>
-                    <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        :aria-label="t('skills.removeFolder', { name: directory.name })"
-                        @click="removeDirectory(directory.path)"
+                    <span
+                        class="grid size-7 shrink-0 place-items-center rounded-full border transition"
+                        :class="directories.some(entry => entry.path === directory.path) ? 'border-primary bg-primary text-ds-text-white' : 'bg-card text-muted-foreground'"
                     >
                         <Icon
-                            name="askx-actions:close"
+                            name="askx-status:check"
                             class="size-3.5"
+                            :class="{ 'text-transparent': !directories.some(entry => entry.path === directory.path) }"
                         />
-                    </Button>
-                </div>
+                    </span>
+                </button>
             </div>
             <p
                 v-else
