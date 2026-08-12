@@ -36,6 +36,28 @@ async function createFixture() {
   return { dataDir, skillId, skillPath, manifestStore }
 }
 
+/** 创建一个本地专属 Skill 测试环境。 */
+async function createLocalFixture() {
+  const dataDir = await mkdtemp(join(tmpdir(), 'askx-local-skill-files-'))
+  temporaryDirectories.push(dataDir)
+  const skillId = randomUUID()
+  const skillPath = join(dataDir, 'local-skills', 'local-demo')
+  await mkdir(skillPath, { recursive: true })
+  await writeFile(join(skillPath, 'SKILL.md'), '---\nname: local-demo\ndescription: 本地专属资源\n---\n\n旧内容\n')
+  const contentHash = await hashSkillDirectory(skillPath)
+  const manifestStore = new SkillsManifestStore(dataDir)
+  await manifestStore.write({
+    version: 2,
+    revision: 0,
+    initializedAt: new Date().toISOString(),
+    lastScan: { scannedAt: new Date().toISOString(), fingerprint: 'local-fixture', platforms: [] },
+    skills: [],
+    localSkills: [{ id: skillId, name: 'local-demo', kind: 'user', canonicalPath: skillPath, localPath: skillPath, contentHash, updatedAt: new Date().toISOString() }],
+    platformBindings: [],
+  }, 0)
+  return { dataDir, skillId, skillPath, manifestStore }
+}
+
 afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true })))
 })
@@ -97,5 +119,33 @@ describe('Skill 文件管理', () => {
     const current = await readManagedSkillFile({ manifestStore: fixture.manifestStore }, fixture.skillId, 'SKILL.md')
     await writeFile(join(fixture.skillPath, 'SKILL.md'), `${current.content}\n外部修改`)
     await expect(createSkillFileUpdatePlan({ manifestStore: fixture.manifestStore }, fixture.skillId, 'SKILL.md', '新内容', current.contentHash)).rejects.toThrow('Skill 内容已经变化')
+  })
+
+  it('使用同一资源管理链路查看并编辑本地专属 Skill', async () => {
+    const fixture = await createLocalFixture()
+    const detail = await inspectManagedSkillDetail({ manifestStore: fixture.manifestStore }, fixture.skillId)
+    expect(detail).toMatchObject({ name: 'local-demo', description: '本地专属资源' })
+
+    const current = await readManagedSkillFile({ manifestStore: fixture.manifestStore }, fixture.skillId, 'SKILL.md')
+    const plan = await createSkillFileUpdatePlan({ manifestStore: fixture.manifestStore }, fixture.skillId, 'SKILL.md', current.content.replace('旧内容', '新内容'), current.contentHash)
+    const receipt = await applySkillFileUpdatePlan({ manifestStore: fixture.manifestStore }, plan, { planHash: plan.hash, confirmedAt: new Date().toISOString() })
+    const manifest = await fixture.manifestStore.read()
+
+    expect(await readFile(join(fixture.skillPath, 'SKILL.md'), 'utf8')).toContain('新内容')
+    expect(manifest?.skills).toHaveLength(0)
+    expect(manifest?.localSkills?.[0]?.contentHash).toBe(receipt.skillContentHash)
+  })
+
+  it('拒绝本地专属 Skill 使用 AskX 本地根目录之外的路径', async () => {
+    const fixture = await createLocalFixture()
+    const manifest = await fixture.manifestStore.read()
+    const outsidePath = join(fixture.dataDir, 'outside', 'local-demo')
+    await mkdir(outsidePath, { recursive: true })
+    await fixture.manifestStore.write({
+      ...manifest!,
+      localSkills: manifest!.localSkills!.map(skill => ({ ...skill, canonicalPath: outsidePath, localPath: outsidePath })),
+    }, manifest!.revision)
+
+    await expect(inspectManagedSkillDetail({ manifestStore: fixture.manifestStore }, fixture.skillId)).rejects.toThrow('本地专属路径超出')
   })
 })

@@ -162,6 +162,78 @@ describe('SkillsManager', () => {
     expect(await readFile(join(dataDir, 'skills', 'custom-demo', 'SKILL.md'), 'utf8')).toContain('custom-demo')
   })
 
+  it('只选择自定义文件夹且不设置任何软链时可以完成添加', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-folder-only-home-'))
+    const dataDir = join(homeDir, '.askx')
+    const customRoot = join(homeDir, 'import-skills')
+    await mkdir(join(customRoot, 'folder-demo'), { recursive: true })
+    await writeFile(join(customRoot, 'folder-demo', 'SKILL.md'), '---\nname: folder-demo\ndescription: 仅文件夹来源\n---\n')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const report = await manager.scan([], [customRoot])
+    const source = report.groups[0]?.locations.find(location => location.metadata.valid)
+    if (!source) throw new Error('测试 Skill 扫描失败。')
+    const plan = await manager.planOnboarding({
+      platforms: [],
+      customRoots: [customRoot],
+      linkPlatforms: [],
+      linkCustomRoots: [],
+      configurationStrategy: 'merge',
+      detectionFingerprint: report.fingerprint,
+      settingsRevision: 0,
+      decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
+    })
+
+    expect(plan.platformOperations).toEqual([])
+    expect(plan.customLinkOperations).toEqual([])
+    const receipt = await manager.applyOnboarding(plan, 0, consent(plan))
+    const bootstrap = await manager.bootstrap()
+
+    expect(receipt.results).toMatchObject([{ skillName: 'folder-demo', status: 'applied' }])
+    expect(bootstrap.managedSkills.map(skill => skill.name)).toContain('folder-demo')
+    expect(bootstrap.customRoots.map(root => root.path)).toEqual([customRoot])
+    expect(bootstrap.customLinkBindings).toEqual([])
+    expect(await readFile(join(dataDir, 'skills', 'folder-demo', 'SKILL.md'), 'utf8')).toContain('folder-demo')
+  })
+
+  it('已有 Skill 时只从自定义文件夹追加且不设置软链可以完成保存', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-folder-merge-home-'))
+    const dataDir = join(homeDir, '.askx')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const initialReport = await manager.scan(['codex'])
+    const initialPlan = await manager.planOnboarding({
+      platforms: ['codex'],
+      linkPlatforms: [],
+      detectionFingerprint: initialReport.fingerprint,
+      settingsRevision: 0,
+      decisions: [],
+    })
+    await manager.applyOnboarding(initialPlan, 0, consent(initialPlan))
+
+    const customRoot = join(homeDir, 'later-skills')
+    await mkdir(join(customRoot, 'later-demo'), { recursive: true })
+    await writeFile(join(customRoot, 'later-demo', 'SKILL.md'), '---\nname: later-demo\ndescription: 后续添加\n---\n')
+    const report = await manager.scan([], [customRoot])
+    const source = report.groups.find(group => group.name === 'later-demo')?.locations.find(location => location.metadata.valid)
+    if (!source) throw new Error('追加 Skill 扫描失败。')
+    const plan = await manager.planOnboarding({
+      platforms: [],
+      customRoots: [customRoot],
+      linkPlatforms: [],
+      linkCustomRoots: [],
+      configurationStrategy: 'merge',
+      detectionFingerprint: report.fingerprint,
+      settingsRevision: 0,
+      decisions: [{ kind: 'adopt', sourceLocationId: source.id }],
+    })
+    const receipt = await manager.applyOnboarding(plan, 0, consent(plan))
+    const bootstrap = await manager.bootstrap()
+
+    expect(receipt.customLinkResults).toEqual([])
+    expect(bootstrap.managedSkills.map(skill => skill.name)).toContain('later-demo')
+    expect(bootstrap.customRoots.map(root => root.path)).toEqual([customRoot])
+    expect(bootstrap.customLinkBindings).toEqual([])
+  })
+
   it('自定义软链历史记录与本次新增合计超过三个时会在计划阶段拒绝', async () => {
     const homeDir = await mkdtemp(join(tmpdir(), 'askx-custom-link-limit-home-'))
     const dataDir = join(homeDir, '.askx')

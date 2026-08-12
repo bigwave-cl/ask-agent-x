@@ -6,13 +6,15 @@ import { stableHash, type UserConsent } from '@askx/core'
 import { managedDirectoryLinkType } from '@askx/platform-adapters'
 import { z } from 'zod'
 import type { SkillsManifestStore } from './manifest-store.js'
-import { managedCustomLinkBindingSchema, managedPlatformBindingSchema, managedSkillRecordSchema, type ManagedCustomLinkBinding, type ManagedPlatformBinding, type ManagedSkillRecord, type SkillsManifest } from './skill-types.js'
+import { managedCustomLinkBindingSchema, managedLocalSkillRecordSchema, managedPlatformBindingSchema, managedSkillRecordSchema, type ManagedCustomLinkBinding, type ManagedLocalSkillRecord, type ManagedPlatformBinding, type ManagedSkillRecord, type SkillsManifest } from './skill-types.js'
 import { verifyManagedLink } from './skills-verifier.js'
 
 /** 用户可管理的统一源备份目录名。 */
 const CANONICAL_BACKUP_DIRECTORY = 'skills-source'
 /** 备份中的统一源内容目录名。 */
 const BACKUP_SOURCE_DIRECTORY = 'source'
+/** 备份中的本地专属 Skill 内容目录名。 */
+const BACKUP_LOCAL_SOURCE_DIRECTORY = 'local-source'
 /** 备份元数据文件名。 */
 const BACKUP_METADATA_FILE = 'backup.json'
 /** 年月日与当日次数组成的备份版本格式。 */
@@ -178,6 +180,12 @@ interface CanonicalBackupMetadata {
   entryCount: number
   /** 备份时 manifest 中的受管 Skill。 */
   skills: ManagedSkillRecord[]
+  /** 备份时 manifest 中的本地专属 Skill。 */
+  localSkills?: ManagedLocalSkillRecord[] | undefined
+  /** 备份时本地专属 Skill 目录的内容指纹。 */
+  localSourceFingerprint?: string | undefined
+  /** 备份时本地专属 Skill 根节点数量。 */
+  localEntryCount?: number | undefined
   /** 备份时仍处于启用状态的软链绑定。 */
   links: CanonicalLinkBackupItem[]
   /** 备份时完整的平台软链配置。 */
@@ -194,6 +202,14 @@ interface CanonicalSourceSnapshot {
   fingerprint: string
   /** 统一源直接子节点数量。 */
   entryCount: number
+}
+
+/** 共享与本地专属 Skill 根目录的联合快照。 */
+interface ManagedSkillsSnapshot {
+  /** 共享统一源快照。 */
+  source: CanonicalSourceSnapshot
+  /** 本地专属 Skill 根目录快照。 */
+  localSource: CanonicalSourceSnapshot
 }
 
 /** 已读取的备份状态。 */
@@ -221,6 +237,9 @@ const canonicalBackupMetadataSchema = z.object({
   sourceFingerprint: z.string().min(1),
   entryCount: z.number().int().nonnegative(),
   skills: z.array(managedSkillRecordSchema),
+  localSkills: z.array(managedLocalSkillRecordSchema).optional(),
+  localSourceFingerprint: z.string().min(1).optional(),
+  localEntryCount: z.number().int().nonnegative().optional(),
   links: z.array(z.object({
     id: z.string().min(1),
     name: z.string().min(1),
@@ -296,6 +315,11 @@ function collectLinkBindings(manifest: SkillsManifest): CanonicalLinkBackupItem[
 /** 获取统一源绝对路径。 */
 function resolveCanonicalRoot(context: CanonicalSourceManagerContext): string {
   return join(context.manifestStore.dataDir, 'skills')
+}
+
+/** 获取本地专属 Skill 根目录绝对路径。 */
+function resolveLocalSkillsRoot(context: CanonicalSourceManagerContext): string {
+  return join(context.manifestStore.dataDir, 'local-skills')
 }
 
 /** 获取用户可管理的长期备份根路径。 */
@@ -445,10 +469,17 @@ async function readBackupState(context: CanonicalSourceManagerContext, version: 
     const metadata = canonicalBackupMetadataSchema.parse(JSON.parse(await readFile(join(backupPath, BACKUP_METADATA_FILE), 'utf8'))) as CanonicalBackupMetadata
     if (metadata.backupVersion !== version) throw new Error('备份版本与目录名称不一致。')
     const sourcePath = join(backupPath, BACKUP_SOURCE_DIRECTORY)
+    const localSourcePath = join(backupPath, BACKUP_LOCAL_SOURCE_DIRECTORY)
     if (verifyContent) {
       const sourceSnapshot = await inspectDirectory(sourcePath)
       if (sourceSnapshot.kind !== 'directory' || sourceSnapshot.fingerprint !== metadata.sourceFingerprint || sourceSnapshot.entryCount !== metadata.entryCount) {
         throw new Error('备份内容与创建时指纹不一致。')
+      }
+      if (metadata.localSourceFingerprint !== undefined) {
+        const localSourceSnapshot = await inspectDirectory(localSourcePath)
+        if (localSourceSnapshot.kind !== 'directory' || localSourceSnapshot.fingerprint !== metadata.localSourceFingerprint || localSourceSnapshot.entryCount !== metadata.localEntryCount) {
+          throw new Error('本地 Skill 备份内容与创建时指纹不一致。')
+        }
       }
     } else {
       const sourceStat = await lstat(sourcePath)
@@ -460,8 +491,8 @@ async function readBackupState(context: CanonicalSourceManagerContext, version: 
         label: metadata.backupLabel ?? metadata.backupVersion,
         valid: true,
         createdAt: metadata.createdAt,
-        skillCount: metadata.skills.filter((skill) => skill.kind !== 'system').length,
-        entryCount: metadata.entryCount,
+        skillCount: metadata.skills.filter((skill) => skill.kind !== 'system').length + (metadata.localSkills?.length ?? 0),
+        entryCount: metadata.entryCount + (metadata.localEntryCount ?? 0),
         sourceFingerprint: metadata.sourceFingerprint,
         linkCount: metadata.links.length,
       },
@@ -492,14 +523,16 @@ export async function listCanonicalSkillsBackups(context: CanonicalSourceManager
 }
 
 /** 创建操作相关的最新文件系统检测指纹。 */
-async function createDetectionState(context: CanonicalSourceManagerContext, manifest: SkillsManifest, action: CanonicalSourceAction, backupVersion?: string): Promise<{ fingerprint: string, source: CanonicalSourceSnapshot }> {
+async function createDetectionState(context: CanonicalSourceManagerContext, manifest: SkillsManifest, action: CanonicalSourceAction, backupVersion?: string): Promise<{ fingerprint: string, sources: ManagedSkillsSnapshot }> {
   const source = await inspectDirectory(resolveCanonicalRoot(context))
-  if (action === 'clear') return { source, fingerprint: stableHash({ action, source, manifestSkills: manifest.skills, platformBindings: manifest.platformBindings, customLinkBindings: manifest.customLinkBindings ?? [] }) }
+  const localSource = await inspectDirectory(resolveLocalSkillsRoot(context))
+  const sources = { source, localSource }
+  if (action === 'clear') return { sources, fingerprint: stableHash({ action, sources, manifestSkills: manifest.skills, manifestLocalSkills: manifest.localSkills ?? [], platformBindings: manifest.platformBindings, customLinkBindings: manifest.customLinkBindings ?? [] }) }
   if (!backupVersion) throw new Error('该操作缺少统一源备份版本。')
   const backup = await readBackupState(context, backupVersion)
   return {
-    source,
-    fingerprint: stableHash({ action, backupVersion, backupFingerprint: backup.backupFingerprint, source: action === 'restore' ? source : undefined }),
+    sources,
+    fingerprint: stableHash({ action, backupVersion, backupFingerprint: backup.backupFingerprint, sources: action === 'restore' ? sources : undefined }),
   }
 }
 
@@ -527,8 +560,8 @@ export async function createCanonicalSourceMutationPlan(context: CanonicalSource
   if (action === 'delete-backup' && !selectedBackupVersion) throw new Error('请选择要永久删除的统一源备份。')
   const detection = await createDetectionState(context, manifest, action, selectedBackupVersion)
   const hasSystemSkill = manifest.skills.some((skill) => skill.kind === 'system')
-  const userEntryCount = Math.max(0, detection.source.entryCount - (hasSystemSkill ? 1 : 0))
-  const currentSkillCount = manifest.skills.filter((skill) => skill.kind !== 'system').length
+  const userEntryCount = Math.max(0, detection.sources.source.entryCount - (hasSystemSkill ? 1 : 0)) + detection.sources.localSource.entryCount
+  const currentSkillCount = manifest.skills.filter((skill) => skill.kind !== 'system').length + (manifest.localSkills?.length ?? 0)
   const selectedClearModules = action === 'clear' ? [...new Set(clearModules)].sort() as ClearModule[] : []
   const linkBindings = action === 'clear' && selectedClearModules.includes('links') ? collectLinkBindings(manifest) : []
   const clearSkills = selectedClearModules.includes('skills')
@@ -547,7 +580,7 @@ export async function createCanonicalSourceMutationPlan(context: CanonicalSource
     clearModules: selectedClearModules,
     manifestRevision: manifest.revision,
     detectionFingerprint: detection.fingerprint,
-    currentEntryCount: detection.source.entryCount,
+    currentEntryCount: detection.sources.source.entryCount + detection.sources.localSource.entryCount,
     currentSkillCount,
     linkBindings,
     backupRequested,
@@ -560,7 +593,7 @@ export async function createCanonicalSourceMutationPlan(context: CanonicalSource
 }
 
 /** 原子创建一份清空前的长期备份。 */
-async function createPersistentBackup(context: CanonicalSourceManagerContext, plan: CanonicalSourceMutationPlan, manifest: SkillsManifest, source: CanonicalSourceSnapshot): Promise<CanonicalSkillsBackup> {
+async function createPersistentBackup(context: CanonicalSourceManagerContext, plan: CanonicalSourceMutationPlan, manifest: SkillsManifest, sources: ManagedSkillsSnapshot): Promise<CanonicalSkillsBackup> {
   if (!plan.backupVersion || !plan.backupLabel) throw new Error('清空计划缺少备份版本或名称。')
   const finalPath = resolveBackupPath(context, plan.backupVersion)
   if (await pathExists(finalPath)) throw new Error('计划中的备份版本已被占用，请重新操作。')
@@ -576,16 +609,32 @@ async function createPersistentBackup(context: CanonicalSourceManagerContext, pl
       preserveTimestamps: true,
       errorOnExist: true,
     })
+    await mkdir(join(temporaryPath, BACKUP_LOCAL_SOURCE_DIRECTORY), { recursive: true, mode: 0o700 })
+    if (sources.localSource.kind === 'directory') {
+      await cp(resolveLocalSkillsRoot(context), join(temporaryPath, BACKUP_LOCAL_SOURCE_DIRECTORY), {
+        recursive: true,
+        dereference: false,
+        preserveTimestamps: true,
+        force: true,
+      })
+    }
     const copied = await inspectDirectory(join(temporaryPath, BACKUP_SOURCE_DIRECTORY))
-    if (copied.fingerprint !== source.fingerprint || copied.entryCount !== source.entryCount) throw new Error('清空前备份校验失败。')
+    const copiedLocal = await inspectDirectory(join(temporaryPath, BACKUP_LOCAL_SOURCE_DIRECTORY))
+    const localBackupMatches = sources.localSource.kind === 'missing'
+      ? copiedLocal.kind === 'directory' && copiedLocal.entryCount === 0
+      : copiedLocal.fingerprint === sources.localSource.fingerprint && copiedLocal.entryCount === sources.localSource.entryCount
+    if (copied.fingerprint !== sources.source.fingerprint || copied.entryCount !== sources.source.entryCount || !localBackupMatches) throw new Error('清空前备份校验失败。')
     const metadata: CanonicalBackupMetadata = {
       version: 1,
       backupVersion: plan.backupVersion,
       backupLabel: plan.backupLabel,
       createdAt: plan.createdAt,
-      sourceFingerprint: source.fingerprint,
-      entryCount: source.entryCount,
+      sourceFingerprint: sources.source.fingerprint,
+      entryCount: sources.source.entryCount,
       skills: manifest.skills,
+      localSkills: manifest.localSkills ?? [],
+      localSourceFingerprint: copiedLocal.fingerprint,
+      localEntryCount: copiedLocal.entryCount,
       links: plan.linkBindings,
       platformBindings: manifest.platformBindings,
       customLinkBindings: manifest.customLinkBindings ?? [],
@@ -670,11 +719,11 @@ async function rollbackManagedLinks(moves: AppliedClearLinkMove[], removedLinks:
 }
 
 /** 应用经过确认的统一源清空计划。 */
-async function applyClearPlan(context: CanonicalSourceManagerContext, plan: CanonicalSourceMutationPlan, manifest: SkillsManifest, source: CanonicalSourceSnapshot): Promise<CanonicalSourceMutationReceipt> {
+async function applyClearPlan(context: CanonicalSourceManagerContext, plan: CanonicalSourceMutationPlan, manifest: SkillsManifest, sources: ManagedSkillsSnapshot): Promise<CanonicalSourceMutationReceipt> {
   const appliedAt = new Date().toISOString()
   const systemSkill = manifest.skills.find((skill) => skill.kind === 'system')
   if (!systemSkill) throw new Error('默认 AskX Skill Manager 缺失，请先修复后再清空。')
-  const userSkillCount = manifest.skills.filter((skill) => skill.kind !== 'system').length
+  const userSkillCount = manifest.skills.filter((skill) => skill.kind !== 'system').length + (manifest.localSkills?.length ?? 0)
   const clearSkills = plan.clearModules.includes('skills')
   const clearLinks = plan.clearModules.includes('links')
   const allLinkBindings = collectLinkBindings(manifest)
@@ -700,20 +749,25 @@ async function applyClearPlan(context: CanonicalSourceManagerContext, plan: Cano
       ...(createdBackup ? { backupVersion: createdBackup.version, backupPath: createdBackup.path, backupLabel: createdBackup.label } : {}),
     }
   }
-  if ((!clearSkills || (source.entryCount === 1 && userSkillCount === 0)) && (!clearLinks || plan.linkBindings.length === 0)) {
+  if ((!clearSkills || (sources.source.entryCount === 1 && sources.localSource.entryCount === 0 && userSkillCount === 0)) && (!clearLinks || plan.linkBindings.length === 0)) {
     return {
       id: randomUUID(), planHash: plan.hash, action: plan.action, status: 'skipped', appliedAt, manifestRevision: manifest.revision,
       clearBackupSummary: createClearSummary(),
     }
   }
   let createdBackup: CanonicalSkillsBackup | undefined
-  if (plan.backupRequired) createdBackup = await createPersistentBackup(context, plan, manifest, source)
+  if (plan.backupRequired) createdBackup = await createPersistentBackup(context, plan, manifest, sources)
   const canonicalRoot = resolveCanonicalRoot(context)
+  const localSkillsRoot = resolveLocalSkillsRoot(context)
   const transactionRoot = join(context.manifestStore.dataDir, 'transactions', `canonical-clear-${plan.id}`)
   const originalPath = join(transactionRoot, 'original-source')
+  const originalLocalPath = join(transactionRoot, 'original-local-source')
   const replacementPath = join(transactionRoot, 'empty-source')
+  const replacementLocalPath = join(transactionRoot, 'empty-local-source')
   let originalMoved = false
+  let originalLocalMoved = false
   let replacementApplied = false
+  let replacementLocalApplied = false
   let savedManifest: SkillsManifest | undefined
   const appliedLinkMoves: AppliedClearLinkMove[] = []
   const removedLinks: RemovedClearLink[] = []
@@ -727,21 +781,30 @@ async function applyClearPlan(context: CanonicalSourceManagerContext, plan: Cano
         preserveTimestamps: true,
         errorOnExist: true,
       })
-      if (source.kind === 'directory') {
+      if (sources.source.kind === 'directory') {
         await rename(canonicalRoot, originalPath)
         originalMoved = true
       }
       await rename(replacementPath, canonicalRoot)
       replacementApplied = true
+      await mkdir(replacementLocalPath, { recursive: true, mode: 0o700 })
+      if (sources.localSource.kind === 'directory') {
+        await rename(localSkillsRoot, originalLocalPath)
+        originalLocalMoved = true
+      }
+      await rename(replacementLocalPath, localSkillsRoot)
+      replacementLocalApplied = true
     }
     savedManifest = await context.manifestStore.write({
       ...manifest,
-      ...(clearSkills ? { skills: [systemSkill] } : {}),
+      ...(clearSkills ? { skills: [systemSkill], localSkills: [] } : {}),
       ...(clearLinks ? { platformBindings: [], customLinkBindings: [] } : {}),
     }, manifest.revision)
     if (clearSkills) {
       const verified = await inspectDirectory(canonicalRoot)
       if (verified.kind !== 'directory' || verified.entryCount !== 1) throw new Error('统一源清空后验证失败。')
+      const verifiedLocal = await inspectDirectory(localSkillsRoot)
+      if (verifiedLocal.kind !== 'directory' || verifiedLocal.entryCount !== 0) throw new Error('本地 Skill 清空后验证失败。')
     }
     await rm(transactionRoot, { recursive: true, force: true }).catch(() => undefined)
     return {
@@ -758,6 +821,7 @@ async function applyClearPlan(context: CanonicalSourceManagerContext, plan: Cano
     const rollbackErrors: unknown[] = []
     try {
       await rollbackCanonicalRoot(canonicalRoot, originalPath, replacementApplied, originalMoved)
+      await rollbackCanonicalRoot(localSkillsRoot, originalLocalPath, replacementLocalApplied, originalLocalMoved)
     } catch (rollbackError) {
       rollbackErrors.push(rollbackError)
     }
@@ -780,16 +844,21 @@ async function applyClearPlan(context: CanonicalSourceManagerContext, plan: Cano
 }
 
 /** 应用经过确认的统一源备份恢复计划。 */
-async function applyRestorePlan(context: CanonicalSourceManagerContext, plan: CanonicalSourceMutationPlan, manifest: SkillsManifest, source: CanonicalSourceSnapshot): Promise<CanonicalSourceMutationReceipt> {
+async function applyRestorePlan(context: CanonicalSourceManagerContext, plan: CanonicalSourceMutationPlan, manifest: SkillsManifest, sources: ManagedSkillsSnapshot): Promise<CanonicalSourceMutationReceipt> {
   if (!plan.backupVersion) throw new Error('恢复计划缺少备份版本。')
   const backup = await readBackupState(context, plan.backupVersion)
   if (!backup.summary.valid || !backup.metadata) throw new Error(backup.summary.issue ?? '统一源备份已经损坏，不能恢复。')
   const canonicalRoot = resolveCanonicalRoot(context)
+  const localSkillsRoot = resolveLocalSkillsRoot(context)
   const transactionRoot = join(context.manifestStore.dataDir, 'transactions', `canonical-restore-${plan.id}`)
   const originalPath = join(transactionRoot, 'original-source')
+  const originalLocalPath = join(transactionRoot, 'original-local-source')
   const replacementPath = join(transactionRoot, 'restored-source')
+  const replacementLocalPath = join(transactionRoot, 'restored-local-source')
   let originalMoved = false
+  let originalLocalMoved = false
   let replacementApplied = false
+  let replacementLocalApplied = false
   let savedManifest: SkillsManifest | undefined
   try {
     await mkdir(transactionRoot, { recursive: true, mode: 0o700 })
@@ -799,18 +868,45 @@ async function applyRestorePlan(context: CanonicalSourceManagerContext, plan: Ca
       preserveTimestamps: true,
       errorOnExist: true,
     })
+    if (backup.metadata.localSourceFingerprint !== undefined) {
+      await cp(join(backup.summary.path, BACKUP_LOCAL_SOURCE_DIRECTORY), replacementLocalPath, {
+        recursive: true,
+        dereference: false,
+        preserveTimestamps: true,
+        errorOnExist: true,
+      })
+    } else {
+      await mkdir(replacementLocalPath, { recursive: true, mode: 0o700 })
+    }
     const staged = await inspectDirectory(replacementPath)
     if (staged.fingerprint !== backup.metadata.sourceFingerprint || staged.entryCount !== backup.metadata.entryCount) throw new Error('恢复内容写入暂存区后校验失败。')
-    if (source.kind === 'directory') {
+    const stagedLocal = await inspectDirectory(replacementLocalPath)
+    if (backup.metadata.localSourceFingerprint !== undefined
+      && (stagedLocal.fingerprint !== backup.metadata.localSourceFingerprint || stagedLocal.entryCount !== backup.metadata.localEntryCount)) throw new Error('本地 Skill 恢复内容写入暂存区后校验失败。')
+    if (sources.source.kind === 'directory') {
       await rename(canonicalRoot, originalPath)
       originalMoved = true
     }
     await rename(replacementPath, canonicalRoot)
     replacementApplied = true
+    if (sources.localSource.kind === 'directory') {
+      await rename(localSkillsRoot, originalLocalPath)
+      originalLocalMoved = true
+    }
+    await rename(replacementLocalPath, localSkillsRoot)
+    replacementLocalApplied = true
     const restoredSkills = backup.metadata.skills.map((skill) => ({ ...skill, canonicalPath: join(canonicalRoot, skill.name) }))
-    savedManifest = await context.manifestStore.write({ ...manifest, skills: restoredSkills }, manifest.revision)
+    const restoredLocalSkills = (backup.metadata.localSkills ?? []).map((skill) => ({
+      ...skill,
+      canonicalPath: join(localSkillsRoot, skill.name),
+      localPath: join(localSkillsRoot, skill.name),
+    }))
+    savedManifest = await context.manifestStore.write({ ...manifest, skills: restoredSkills, localSkills: restoredLocalSkills }, manifest.revision)
     const verified = await inspectDirectory(canonicalRoot)
     if (verified.fingerprint !== backup.metadata.sourceFingerprint || verified.entryCount !== backup.metadata.entryCount) throw new Error('统一源恢复后验证失败。')
+    const verifiedLocal = await inspectDirectory(localSkillsRoot)
+    if (backup.metadata.localSourceFingerprint !== undefined
+      && (verifiedLocal.fingerprint !== backup.metadata.localSourceFingerprint || verifiedLocal.entryCount !== backup.metadata.localEntryCount)) throw new Error('本地 Skill 恢复后验证失败。')
     await rm(transactionRoot, { recursive: true, force: true }).catch(() => undefined)
     return {
       id: randomUUID(),
@@ -825,6 +921,7 @@ async function applyRestorePlan(context: CanonicalSourceManagerContext, plan: Ca
     const rollbackErrors: unknown[] = []
     try {
       await rollbackCanonicalRoot(canonicalRoot, originalPath, replacementApplied, originalMoved)
+      await rollbackCanonicalRoot(localSkillsRoot, originalLocalPath, replacementLocalApplied, originalLocalMoved)
     } catch (rollbackError) {
       rollbackErrors.push(rollbackError)
     }
@@ -879,11 +976,12 @@ export async function applyCanonicalSourceMutationPlan(context: CanonicalSourceM
   const manifest = await context.manifestStore.read()
   if (!manifest || manifest.revision !== plan.manifestRevision) throw new Error('Skills manifest 已经变化，请重新操作。')
   const detection = await createDetectionState(context, manifest, plan.action, plan.action === 'clear' ? undefined : plan.backupVersion)
-  const currentUserSkillCount = manifest.skills.filter((skill) => skill.kind !== 'system').length
-  if (detection.fingerprint !== plan.detectionFingerprint || detection.source.entryCount !== plan.currentEntryCount || currentUserSkillCount !== plan.currentSkillCount) {
+  const currentUserSkillCount = manifest.skills.filter((skill) => skill.kind !== 'system').length + (manifest.localSkills?.length ?? 0)
+  const currentEntryCount = detection.sources.source.entryCount + detection.sources.localSource.entryCount
+  if (detection.fingerprint !== plan.detectionFingerprint || currentEntryCount !== plan.currentEntryCount || currentUserSkillCount !== plan.currentSkillCount) {
     throw new Error('统一源或备份已经变化，请重新操作。')
   }
-  if (plan.action === 'clear') return applyClearPlan(context, plan, manifest, detection.source)
-  if (plan.action === 'restore') return applyRestorePlan(context, plan, manifest, detection.source)
+  if (plan.action === 'clear') return applyClearPlan(context, plan, manifest, detection.sources)
+  if (plan.action === 'restore') return applyRestorePlan(context, plan, manifest, detection.sources)
   return applyDeleteBackupPlan(context, plan, manifest)
 }

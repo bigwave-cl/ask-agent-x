@@ -71,6 +71,8 @@ interface SkillScanDirectory {
   customRootId?: string | undefined
   /** 是否允许当前根目录自身就是一个 Skill。 */
   allowRootSkill: boolean
+  /** 当前根目录中普通子项的默认导入范围。 */
+  importScope?: 'shared' | 'local'
 }
 
 /**
@@ -229,13 +231,13 @@ async function scanSkillDirectory(root: SkillScanDirectory, scannedPaths: Set<st
       throw error
     })
   const candidates: Array<{ name: string; path: string; importScope: 'shared' | 'local' }> = rootHasSkillFile
-    ? [{ name: basename(root.path), path: root.path, importScope: 'shared' }]
+    ? [{ name: basename(root.path), path: root.path, importScope: root.importScope ?? 'shared' }]
     : []
   if (!rootHasSkillFile) {
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
       if (entry.name.startsWith('.') || (!entry.isDirectory() && !entry.isSymbolicLink())) continue
       if (entry.name !== 'local' || !entry.isDirectory()) {
-        candidates.push({ name: entry.name, path: join(root.path, entry.name), importScope: 'shared' })
+        candidates.push({ name: entry.name, path: join(root.path, entry.name), importScope: root.importScope ?? 'shared' })
         continue
       }
       const localRoot = join(root.path, entry.name)
@@ -351,6 +353,7 @@ export async function scanSkills(
       return { platform, path: descriptor.skillsDir, allowRootSkill: false }
     }),
     { platform: 'askx', path: join(dataDir, 'skills'), allowRootSkill: false },
+    { platform: 'askx', path: join(dataDir, 'local-skills'), allowRootSkill: false, importScope: 'local' },
     ...customRoots.map((root) => ({ platform: 'custom' as const, path: root.path, customRootId: root.id, allowRootSkill: true })),
   ]
   const locations: SkillLocation[] = []

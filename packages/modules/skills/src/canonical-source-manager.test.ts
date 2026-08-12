@@ -53,6 +53,28 @@ async function createFixture(withSkill = true, withBinding = true) {
   return { dataDir, canonicalRoot, manifestStore }
 }
 
+/** 在测试环境中加入一个本地专属 Skill。 */
+async function addLocalSkill(fixture: Awaited<ReturnType<typeof createFixture>>, name = 'private-skill') {
+  const localPath = join(fixture.dataDir, 'local-skills', name)
+  await mkdir(localPath, { recursive: true })
+  await writeFile(join(localPath, 'SKILL.md'), `---\nname: ${name}\n---\n\n本地内容\n`)
+  const manifest = await fixture.manifestStore.read()
+  if (!manifest) throw new Error('测试 manifest 缺失。')
+  await fixture.manifestStore.write({
+    ...manifest,
+    localSkills: [{
+      id: randomUUID(),
+      name,
+      kind: 'user',
+      canonicalPath: localPath,
+      localPath,
+      contentHash: await hashSkillDirectory(localPath),
+      updatedAt: new Date('2026-08-01T08:00:00.000Z').toISOString(),
+    }],
+  }, manifest.revision)
+  return localPath
+}
+
 /** 为计划创建匹配的用户确认。 */
 function consent(plan: { hash: string }) {
   return { planHash: plan.hash, confirmedAt: new Date().toISOString() }
@@ -166,6 +188,23 @@ describe('统一 Skill 来源备份管理', () => {
     })
     expect(await listCanonicalSkillsBackups({ manifestStore: fixture.manifestStore })).toEqual([])
     expect(await readdir(fixture.canonicalRoot)).toEqual(['askx-skill-manager'])
+  })
+
+  it('清空 Skill 时一并备份并清除本地专属 Skill', async () => {
+    const fixture = await createFixture()
+    const localPath = await addLocalSkill(fixture)
+    const plan = await createCanonicalSourceMutationPlan({ manifestStore: fixture.manifestStore }, 'clear', undefined, new Date('2026-08-03T12:00:00.000Z'))
+    expect(plan.currentSkillCount).toBe(2)
+    const receipt = await applyCanonicalSourceMutationPlan({ manifestStore: fixture.manifestStore }, plan, consent(plan))
+    expect(receipt.clearBackupSummary?.skills).toEqual({ cleared: 2, notCleared: 0, backedUp: 2, notBackedUp: 0, failed: 0 })
+    expect(await readdir(join(fixture.dataDir, 'local-skills'))).toEqual([])
+    expect((await fixture.manifestStore.read())?.localSkills).toEqual([])
+    await expect(readFile(join(localPath, 'SKILL.md'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+
+    const restorePlan = await createCanonicalSourceMutationPlan({ manifestStore: fixture.manifestStore }, 'restore', '2026-08-03-01')
+    await applyCanonicalSourceMutationPlan({ manifestStore: fixture.manifestStore }, restorePlan, consent(restorePlan))
+    expect(await readFile(join(localPath, 'SKILL.md'), 'utf8')).toContain('本地内容')
+    expect((await fixture.manifestStore.read())?.localSkills?.map(skill => skill.name)).toEqual(['private-skill'])
   })
 
   it('仅清空 Skill 时保留现有软链配置', async () => {

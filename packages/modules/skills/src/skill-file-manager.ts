@@ -17,6 +17,7 @@ import {
   skillFileUpdatePlanSchema,
   type ManagedSkillDetail,
   type ManagedSkillFile,
+  type ManagedLocalSkillRecord,
   type ManagedSkillRecord,
   type ManagedSkillTreeNode,
   type SkillFileUpdatePlan,
@@ -87,18 +88,25 @@ function resolveFileLanguage(path: string): string {
   return extension || 'text'
 }
 
-/** 校验 manifest 记录严格对应 AskX 统一源中的直接子目录。 */
-async function resolveManagedSkill(context: SkillFileManagerContext, skillId: string): Promise<{ manifest: NonNullable<Awaited<ReturnType<SkillsManifestStore['read']>>>, record: ManagedSkillRecord }> {
+/** 已登记 Skill 的文件管理范围。 */
+type ManagedSkillScope = 'shared' | 'local'
+
+/** 校验 manifest 记录严格对应 AskX 共享或本地根目录中的直接子目录。 */
+async function resolveManagedSkill(context: SkillFileManagerContext, skillId: string): Promise<{ manifest: NonNullable<Awaited<ReturnType<SkillsManifestStore['read']>>>, record: ManagedSkillRecord | ManagedLocalSkillRecord, scope: ManagedSkillScope }> {
   const manifest = await context.manifestStore.read()
   if (!manifest?.initializedAt) throw new Error('Skills 管理尚未初始化。')
-  const record = manifest.skills.find((entry) => entry.id === skillId)
+  const sharedRecord = manifest.skills.find(entry => entry.id === skillId)
+  const localRecord = manifest.localSkills?.find(entry => entry.id === skillId)
+  const record = sharedRecord ?? localRecord
   if (!record) throw new Error('受管 Skill 不存在或已经移除。')
-  const canonicalRoot = resolve(context.manifestStore.dataDir, 'skills')
-  const expectedPath = resolve(canonicalRoot, record.name)
-  if (resolve(record.canonicalPath) !== expectedPath || dirname(expectedPath) !== canonicalRoot) throw new Error('Skill 统一源路径超出 AskX 管理范围。')
+  const scope: ManagedSkillScope = sharedRecord ? 'shared' : 'local'
+  const managedRoot = resolve(context.manifestStore.dataDir, scope === 'shared' ? 'skills' : 'local-skills')
+  const expectedPath = resolve(managedRoot, record.name)
+  if (resolve(record.canonicalPath) !== expectedPath || dirname(expectedPath) !== managedRoot) throw new Error(`Skill ${scope === 'shared' ? '统一源' : '本地专属'}路径超出 AskX 管理范围。`)
+  if (scope === 'local' && resolve((record as ManagedLocalSkillRecord).localPath) !== expectedPath) throw new Error('Skill 本地专属路径与 manifest 不一致。')
   const rootStat = await lstat(expectedPath)
   if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) throw new Error('受管 Skill 根目录不是可编辑的真实目录。')
-  return { manifest, record }
+  return { manifest, record, scope }
 }
 
 /** 校验并解析 Skill 根目录内的既有普通文件，拒绝路径穿越和软链接。 */
@@ -238,7 +246,7 @@ export async function applySkillFileUpdatePlan(context: SkillFileManagerContext,
   const plan = skillFileUpdatePlanSchema.parse(inputPlan)
   const { hash: _hash, ...unsigned } = plan
   if (stableHash(unsigned) !== plan.hash || consent.planHash !== plan.hash) throw new Error('Skill 文件更新计划或用户授权已经失效。')
-  const { manifest, record } = await resolveManagedSkill(context, plan.skillId)
+  const { manifest, record, scope } = await resolveManagedSkill(context, plan.skillId)
   if (manifest.revision !== plan.manifestRevision || record.name !== plan.skillName || record.contentHash !== plan.skillContentHash) throw new Error('Skills manifest 已经变化，请重新打开文件。')
   if (await hashSkillDirectory(record.canonicalPath) !== plan.skillContentHash) throw new Error('Skill 内容已经变化，请重新打开文件。')
   const currentFile = await readManagedSkillFile(context, plan.skillId, plan.path)
@@ -313,17 +321,27 @@ export async function applySkillFileUpdatePlan(context: SkillFileManagerContext,
     }
     const skillContentHash = fingerprint.contentHash
     const appliedAt = new Date().toISOString()
+    const updatedRecord = {
+      ...record,
+      contentHash: skillContentHash,
+      businessContentHash: fingerprint.businessContentHash,
+      ...(manager ? { manager } : {}),
+      updatedAt: appliedAt,
+    }
     const saved = await context.manifestStore.write({
       ...manifest,
-      skills: manifest.skills.map((entry) => entry.id === record.id
-        ? {
-            ...entry,
-            contentHash: skillContentHash,
-            businessContentHash: fingerprint.businessContentHash,
-            ...(manager ? { manager } : {}),
-            updatedAt: appliedAt,
-          }
-        : entry),
+      skills: scope === 'shared' ? manifest.skills.map(entry => entry.id === record.id ? updatedRecord : entry) : manifest.skills,
+      localSkills: scope === 'local'
+        ? (manifest.localSkills ?? []).map(entry => entry.id === record.id
+            ? {
+                ...entry,
+                contentHash: skillContentHash,
+                businessContentHash: fingerprint.businessContentHash,
+                ...(manager ? { manager } : {}),
+                updatedAt: appliedAt,
+              }
+            : entry)
+        : manifest.localSkills,
     }, manifest.revision)
     await rm(transactionRoot, { recursive: true, force: true }).catch(() => undefined)
     return {

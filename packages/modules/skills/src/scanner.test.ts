@@ -30,17 +30,34 @@ describe('scanSkills', () => {
     expect(second).toBe(first)
   })
 
-  it('未选择平台时只扫描 AskX 统一源', async () => {
+  it('未选择平台时扫描 AskX 共享与本地专属目录', async () => {
     const home = await mkdtemp(join(tmpdir(), 'askx-home-'))
     const data = join(home, '.askx')
     await writeSkill(join(data, 'skills', 'managed'), 'managed')
+    await writeSkill(join(data, 'local-skills', 'private'), 'private')
     await writeSkill(join(home, '.codex', 'skills', 'ignored'), 'ignored')
 
     const result = await scanSkills(home, data, [])
 
     expect(result.platforms).toEqual([])
-    expect(result.locations.map((location) => location.name)).toEqual(['managed'])
-    expect(result.locations[0]?.platform).toBe('askx')
+    expect(result.locations.map(location => location.name).sort()).toEqual(['managed', 'private'])
+    expect(result.locations.every(location => location.platform === 'askx')).toBe(true)
+    expect(result.locations.find(location => location.name === 'managed')?.importScope).toBe('shared')
+    expect(result.locations.find(location => location.name === 'private')?.importScope).toBe('local')
+  })
+
+  it('添加 Skill 时将外部来源与已有本地专属同名 Skill 合并比较', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'askx-home-'))
+    const data = join(home, '.askx')
+    await writeSkill(join(data, 'local-skills', 'demo'), 'local version')
+    await writeSkill(join(home, '.codex', 'skills', 'demo'), 'external version')
+
+    const result = await scanSkills(home, data, ['codex'])
+    const group = result.groups.find(entry => entry.name === 'demo')
+
+    expect(group?.status).toBe('conflict')
+    expect(group?.locations).toHaveLength(2)
+    expect(group?.locations.find(location => location.platform === 'askx')?.importScope).toBe('local')
   })
 
   it('按同名 Skill 检测内容冲突', async () => {
