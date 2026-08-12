@@ -20,11 +20,11 @@ describe('scanSkills', () => {
     }
     const first = createSkillsScanFingerprint({
       ...base,
-      platformStatuses: [{ id: 'claude', name: 'Claude Code', skillsDir: '/tmp/.claude/skills', installed: true, skillsDirExists: true, version: '1.0.0', linkSupported: true, notes: ['CLI'] }],
+      platformStatuses: [{ id: 'claude', name: 'Claude Code', skillsDir: '/tmp/.claude/skills', installed: true, skillsDirExists: true, skillsPathKind: 'directory', version: '1.0.0', linkSupported: true, notes: ['CLI'] }],
     })
     const second = createSkillsScanFingerprint({
       ...base,
-      platformStatuses: [{ id: 'claude', name: 'Claude Code', skillsDir: '/tmp/.claude/skills', installed: true, skillsDirExists: true, version: '2.0.0', linkSupported: true, notes: ['Desktop'] }],
+      platformStatuses: [{ id: 'claude', name: 'Claude Code', skillsDir: '/tmp/.claude/skills', installed: true, skillsDirExists: true, skillsPathKind: 'directory', version: '2.0.0', linkSupported: true, notes: ['Desktop'] }],
     })
 
     expect(second).toBe(first)

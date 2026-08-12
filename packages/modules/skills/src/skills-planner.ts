@@ -19,6 +19,8 @@ export interface CreateSkillsPlanInput {
   configurationStrategy: SkillsConfigurationStrategy
   /** 用户明确选择接入软链的平台；为空时只同步统一源。 */
   linkPlatforms?: SkillPlatformId[]
+  /** 用户明确授权接管外部软链的平台。 */
+  takeoverPlatforms?: SkillPlatformId[]
   /** AskX 支持的全部平台状态，不受本次扫描来源限制。 */
   linkPlatformStatuses: SkillPlatformStatus[]
   /** manifest 中已有的平台绑定，用于生成跳过或恢复动作。 */
@@ -164,6 +166,7 @@ export function createSkillsBatchPlan(input: CreateSkillsPlanInput): SkillsBatch
     throw new Error('版本管理选择引用了不存在的 Skill。')
   }
   const canonicalRoot = join(input.dataDir, 'skills')
+  const takeoverPlatforms = new Set(input.takeoverPlatforms ?? [])
   const linkPlatforms = input.mode === 'connect' ? [...new Set(input.linkPlatforms ?? input.report.platforms)] : []
   const selectedStatuses = linkPlatforms.map((platform) => {
     const status = input.linkPlatformStatuses.find((entry) => entry.id === platform)
@@ -173,8 +176,21 @@ export function createSkillsBatchPlan(input: CreateSkillsPlanInput): SkillsBatch
   })
   const selectedPlatformOperations = selectedStatuses.map((platform) => {
     const binding = input.platformBindings?.find((entry) => entry.platform === platform.id)
-    const action = binding ? (binding.suspendedAt ? 'resume' as const : 'skip' as const) : 'bind' as const
-    return { kind: 'bind-platform' as const, action, platform: platform.id, path: platform.skillsDir, target: canonicalRoot }
+    if (binding && !binding.suspendedAt) return { kind: 'bind-platform' as const, action: 'skip' as const, platform: platform.id, path: platform.skillsDir, target: canonicalRoot }
+    if (binding?.suspendedAt && platform.skillsPathKind !== 'symlink') return { kind: 'bind-platform' as const, action: 'resume' as const, platform: platform.id, path: platform.skillsDir, target: canonicalRoot }
+    if (platform.skillsPathKind === 'symlink' && platform.linkTarget) {
+      const suspectedOwnerPlatform = input.linkPlatformStatuses.find((entry) => entry.id !== platform.id && entry.skillsDir === platform.linkTarget)?.id
+      return {
+        kind: 'bind-platform' as const,
+        action: takeoverPlatforms.has(platform.id) ? 'takeover' as const : 'keep-external' as const,
+        platform: platform.id,
+        path: platform.skillsDir,
+        target: canonicalRoot,
+        externalLinkTarget: platform.linkTarget,
+        ...(suspectedOwnerPlatform ? { suspectedOwnerPlatform } : {}),
+      }
+    }
+    return { kind: 'bind-platform' as const, action: 'bind' as const, platform: platform.id, path: platform.skillsDir, target: canonicalRoot }
   })
   const selectedPlatformIds = new Set(selectedStatuses.map((platform) => platform.id))
   const suspendedPlatformOperations = input.configurationStrategy === 'replace'
@@ -295,6 +311,10 @@ export function assertSkillsPlanScope(plan: SkillsBatchPlan, report: SkillsScanR
     const current = platformStatuses.find((platform) => platform.id === operation.platform)
     if (!current || !current.linkSupported || operation.path !== current.skillsDir || operation.target !== canonicalRoot) {
       throw new Error('Skills 计划的平台根目录绑定范围已经变化。')
+    }
+    if ((operation.action === 'keep-external' || operation.action === 'takeover')
+      && (current.skillsPathKind !== 'symlink' || current.linkTarget !== operation.externalLinkTarget)) {
+      throw new Error(`平台 ${operation.platform} 的外部软链已经变化，请重新生成计划。`)
     }
   }
   const seenCustomPaths = new Set<string>()

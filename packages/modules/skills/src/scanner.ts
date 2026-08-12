@@ -79,10 +79,13 @@ interface SkillScanDirectory {
  * @returns 不受 CLI 版本探测和提示文案波动影响的指纹。
  */
 export function createSkillsScanFingerprint(input: Pick<SkillsScanReport, 'platforms' | 'platformStatuses' | 'customRoots' | 'locations' | 'groups'>): string {
-  const platformStates = input.platformStatuses.map(({ id, skillsDir, skillsDirExists, linkSupported }) => ({
+  const platformStates = input.platformStatuses.map(({ id, skillsDir, skillsDirExists, skillsPathKind, linkTarget, linkTargetExists, linkSupported }) => ({
     id,
     skillsDir,
     skillsDirExists,
+    skillsPathKind,
+    linkTarget,
+    linkTargetExists,
     linkSupported,
   }))
   return stableHash({
@@ -143,6 +146,9 @@ export async function detectSkillPlatforms(homeDir: string): Promise<SkillPlatfo
       skillsDir: detected.skillsDir,
       installed: detected.installed,
       skillsDirExists: detected.skillsDirExists,
+      skillsPathKind: detected.skillsPathKind,
+      ...(detected.linkTarget ? { linkTarget: detected.linkTarget } : {}),
+      ...(detected.linkTargetExists !== undefined ? { linkTargetExists: detected.linkTargetExists } : {}),
       ...(detected.version ? { version: detected.version } : {}),
       linkSupported: detected.linkSupported,
       notes: detected.notes,

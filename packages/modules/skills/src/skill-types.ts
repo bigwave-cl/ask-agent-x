@@ -140,6 +140,12 @@ export interface SkillPlatformStatus {
   installed: boolean
   /** Skill 根目录是否存在。 */
   skillsDirExists: boolean
+  /** Skill 根路径本身的文件系统类型，不跟随软链。 */
+  skillsPathKind: 'missing' | 'directory' | 'symlink' | 'other'
+  /** 根路径为软链时解析后的绝对目标。 */
+  linkTarget?: string
+  /** 软链目标当前是否存在。 */
+  linkTargetExists?: boolean
   /** 探测到的版本。 */
   version?: string
   /** 当前文件系统路径是否允许切换为根目录软链。 */
@@ -798,13 +804,17 @@ export interface SkillBindPlatformOperation {
   /** 操作类型。 */
   kind: 'bind-platform'
   /** 保存时针对当前平台执行的幂等动作。 */
-  action: 'bind' | 'resume' | 'suspend' | 'skip'
+  action: 'bind' | 'resume' | 'suspend' | 'skip' | 'keep-external' | 'takeover'
   /** 目标平台。 */
   platform: SkillPlatformId
   /** 将被替换的平台 Skills 根路径。 */
   path: string
   /** 平台根路径最终指向的 AskX 统一目录。 */
   target: string
+  /** 接管外部软链前检测到的原目标。 */
+  externalLinkTarget?: string
+  /** 根据已知平台目录推断出的可能来源平台。 */
+  suspectedOwnerPlatform?: SkillPlatformId
 }
 
 /** 建立自定义目录受管链接操作。 */
@@ -1265,7 +1275,7 @@ export const skillPlanOperationSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('keep') }),
   z.object({ kind: z.literal('archive'), path: z.string().min(1) }),
   z.object({ kind: z.literal('copy-canonical'), sourcePath: z.string().min(1), targetPath: z.string().min(1) }),
-  z.object({ kind: z.literal('bind-platform'), action: z.enum(['bind', 'resume', 'suspend', 'skip']), platform: skillPlatformIdSchema, path: z.string().min(1), target: z.string().min(1) }),
+  z.object({ kind: z.literal('bind-platform'), action: z.enum(['bind', 'resume', 'suspend', 'skip', 'keep-external', 'takeover']), platform: skillPlatformIdSchema, path: z.string().min(1), target: z.string().min(1), externalLinkTarget: z.string().min(1).optional(), suspectedOwnerPlatform: skillPlatformIdSchema.optional() }),
   z.object({ kind: z.literal('bind-custom-root'), action: z.enum(['bind', 'resume', 'suspend', 'skip']), id: z.string().min(1), name: z.string().min(1), path: z.string().min(1), target: z.string().min(1) }),
   z.object({ kind: z.literal('select-source'), sourcePath: z.string().min(1) }),
   z.object({ kind: z.literal('replace'), path: z.string().min(1) }),
@@ -1296,10 +1306,12 @@ export const skillsBatchPlanSchema = z.object({
   systemSkillAction: z.enum(['install', 'none']).default('none'),
   platformOperations: z.array(z.object({
     kind: z.literal('bind-platform'),
-    action: z.enum(['bind', 'resume', 'suspend', 'skip']),
+    action: z.enum(['bind', 'resume', 'suspend', 'skip', 'keep-external', 'takeover']),
     platform: skillPlatformIdSchema,
     path: z.string().min(1),
     target: z.string().min(1),
+    externalLinkTarget: z.string().min(1).optional(),
+    suspectedOwnerPlatform: skillPlatformIdSchema.optional(),
   })),
   customLinkOperations: z.array(z.object({
     kind: z.literal('bind-custom-root'),

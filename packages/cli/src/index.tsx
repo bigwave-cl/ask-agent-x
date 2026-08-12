@@ -29,6 +29,7 @@ import type {
   PlatformLinkReceipt,
   SkillDecision,
   SkillPlatformId,
+  SkillPlatformStatus,
   SkillsBatchPlan,
   SkillsBatchReceipt,
   SkillsBootstrap,
@@ -138,7 +139,7 @@ const messages = {
     skillConflict: 'Skill {name} has conflicting content.', skillBroken: 'Skill {name} has a broken link.', skillInvalid: 'Skill {name} has invalid metadata.',
     linkDescription: 'Bind or resume selected Agent Skills directories to the canonical source', unlinkDescription: 'Suspend selected managed Skills-directory links without synchronizing content',
     directoryDescription: 'Add a custom directory as a read-only synchronization source', linkDirectoryDescription: 'Bind a custom local directory to the canonical source', yesDescription: 'Confirm the displayed immutable plan without an interactive prompt',
-    scanPlan: 'Skills scan plan', linkPlan: 'Connect symlink', unlinkPlan: 'Remove symlink configuration', linkResult: 'Connect symlink', unlinkResult: 'Remove symlink configuration', linkConfirm: 'Connect this symlink?', linkApplied: 'connected', unlinkConfirm: 'Remove this symlink configuration?', unlinkApplied: 'symlink configuration removed', unlinkNoData: 'no connection data; no action this time',
+    scanPlan: 'Skills scan plan', linkPlan: 'Connect symlink', unlinkPlan: 'Remove symlink configuration', linkResult: 'Connect symlink', unlinkResult: 'Remove symlink configuration', linkConfirm: 'Connect this symlink?', externalTakeoverConfirm: 'Take over this external symlink?', externalLinkPreserved: 'external symlink detected; existing configuration preserved', linkApplied: 'connected', unlinkConfirm: 'Remove this symlink configuration?', unlinkApplied: 'symlink configuration removed', unlinkNoData: 'no connection data; no action this time',
     planHash: 'Plan hash', adopt: 'adopt', merge: 'merge', keep: 'keep', customDirectories: 'custom directories', operations: 'operations', applied: 'applied', skipped: 'skipped', failed: 'failed',
     confirmApply: 'Apply this exact plan?', confirmKeys: 'Enter confirms · Esc/Q cancels', cancelled: 'Operation cancelled.', confirmationRequired: 'A write plan requires confirmation. Re-run with --yes in non-interactive or JSON mode.', macPrivacyTitle: 'macOS folder access', macPrivacyDenied: 'macOS blocked access to: {path}', macPrivacyInstructions: 'System Settings has been opened. Allow the current terminal app to access protected folders.', macPrivacyStillDenied: 'Access is still blocked. Fully quit and reopen the terminal to activate the permission, or move the Skills folder to an unprotected location such as ~/Skills.', macPrivacyLocalRetry: 'If this terminal can enter the parent folder, press Esc/Q and retry from there:', macPrivacyRetry: 'After granting access, return here and press Enter to retry this command · Esc/Q cancels',
     skillsNotInitialized: 'Skills management is not initialized. Run "askx skills scan" first.', platformWriteRequired: 'Select at least one platform for this link operation.', conflictKept: 'Conflicting Skills are kept unchanged and are not overwritten automatically.',
@@ -165,7 +166,7 @@ const messages = {
     skillConflict: 'Skill {name} 在不同平台的内容不一致。', skillBroken: 'Skill {name} 包含失效软链。', skillInvalid: 'Skill {name} 的元数据无效。',
     linkDescription: '将选中的 Agent Skills 根目录绑定或恢复到统一源', unlinkDescription: '无损停用选中的受管 Skills 根目录软链，不同步内容',
     directoryDescription: '添加一个只读同步来源的自定义目录', linkDirectoryDescription: '将一个自定义本地目录绑定到统一源', yesDescription: '无需交互确认，直接授权已展示的不可变计划',
-    scanPlan: 'Skills 扫描计划', linkPlan: '关联软链', unlinkPlan: '取消软链配置', linkResult: '关联软链', unlinkResult: '取消软链配置', linkConfirm: '确定要关联吗？', linkApplied: '已关联', unlinkConfirm: '确定要取消吗？', unlinkApplied: '已取消软链设置', unlinkNoData: '不存在关联数据，本次不处理',
+    scanPlan: 'Skills 扫描计划', linkPlan: '关联软链', unlinkPlan: '取消软链配置', linkResult: '关联软链', unlinkResult: '取消软链配置', linkConfirm: '确定要关联吗？', externalTakeoverConfirm: '确定要接管这个外部软链吗？', externalLinkPreserved: '检测到外部软链，已保留现有配置', linkApplied: '已关联', unlinkConfirm: '确定要取消吗？', unlinkApplied: '已取消软链设置', unlinkNoData: '不存在关联数据，本次不处理',
     planHash: '计划指纹', adopt: '接管', merge: '合并', keep: '保留', customDirectories: '自定义目录', operations: '操作', applied: '已应用', skipped: '已跳过', failed: '失败',
     confirmApply: '确认执行这份完整计划？', confirmKeys: '回车确认 · Esc/Q 放弃', cancelled: '操作已取消。', confirmationRequired: '写操作必须明确授权；非交互或 JSON 模式请重新执行并传入 --yes。', macPrivacyTitle: 'macOS 文件夹授权', macPrivacyDenied: 'macOS 阻止了当前终端访问：{path}', macPrivacyInstructions: '已打开系统设置，请为当前使用的终端应用开启受保护文件夹访问权限。', macPrivacyStillDenied: '授权后仍被阻止。请完全退出并重新打开终端使权限生效，或者将 Skills 文件夹移动到 ~/Skills 等非受保护目录。', macPrivacyLocalRetry: '如果当前终端可以进入上级目录，也可以按 Esc/Q 放弃后从该目录重新执行：', macPrivacyRetry: '授权完成后返回终端，按回车重试本次命令 · Esc/Q 放弃',
     skillsNotInitialized: 'Skills 管理尚未初始化，请先运行 "askx skills scan"。', platformWriteRequired: '软链操作至少需要选择一个平台。', conflictKept: '内容冲突的 Skills 会保留现状，不会自动覆盖。',
@@ -837,7 +838,7 @@ function SkillsBatchPlanView({ plan, report, locale, title }: { plan: SkillsBatc
             · {unit.skillName}  [{t(locale, unit.decision.kind === 'adopt' ? 'adopt' : unit.decision.kind === 'merge' ? 'merge' : 'keep')}]
           </Text>
         ))}
-        {plan.platformOperations.map((operation) => <Text key={operation.platform} color={accent}>→ {operation.platform}  [{t(locale, operation.action === 'bind' ? 'platformActionBind' : operation.action === 'resume' ? 'platformActionResume' : 'platformActionSkip')}]  {operation.path}</Text>)}
+        {plan.platformOperations.map((operation) => <Text key={operation.platform} color={operation.action === 'takeover' ? 'yellow' : accent}>→ {operation.platform}  [{operation.action === 'keep-external' ? (locale === 'zh-CN' ? '保留外部软链' : 'keep external') : operation.action === 'takeover' ? (locale === 'zh-CN' ? '接管外部软链' : 'take over external') : t(locale, operation.action === 'bind' ? 'platformActionBind' : operation.action === 'resume' ? 'platformActionResume' : 'platformActionSkip')}]  {operation.path}{operation.externalLinkTarget ? `  ${operation.externalLinkTarget} → ${operation.target}` : ''}</Text>)}
         {plan.customLinkOperations.map((operation) => <Text key={operation.id} color={accent}>→ {operation.name}  {operation.path}</Text>)}
       </Box>
     </Frame>
@@ -850,13 +851,43 @@ function RootLinkPlanView({ plan, locale }: { plan: SkillsBatchPlan; locale: Ask
     <Frame title={t(locale, 'linkPlan')}>
       <Text>{t(locale, 'planHash')}  <Text dimColor>{plan.hash}</Text></Text>
       {plan.platformOperations.map((operation) => (
-        <Text key={operation.platform} color={accent}>→ {operation.platform}  {operation.path}  →  {operation.target}</Text>
+        <Text key={operation.platform} color={operation.action === 'takeover' ? 'yellow' : accent}>→ {operation.platform}  [{operation.action}]  {operation.path}  →  {operation.action === 'keep-external' ? operation.externalLinkTarget : operation.target}</Text>
       ))}
       {plan.customLinkOperations.map((operation) => (
         <Text key={operation.id} color={accent}>→ {operation.name}  {operation.path}  →  {operation.target}</Text>
       ))}
     </Frame>
   )
+}
+
+/** 外部软链接管前的终端信息。 */
+function ExternalLinkConflictView({ platform, canonicalRoot, locale }: { platform: SkillPlatformStatus; canonicalRoot: string; locale: AskXLocale }) {
+  return (
+    <Frame title={locale === 'zh-CN' ? '检测到外部软链' : 'External symlink detected'}>
+      <Text>{locale === 'zh-CN' ? '平台' : 'Platform'}  <Text color={accent}>{platform.name}</Text></Text>
+      <Text>{locale === 'zh-CN' ? '软链地址' : 'Link path'}  {platform.skillsDir}</Text>
+      <Text>{locale === 'zh-CN' ? '当前目标' : 'Current target'}  <Text color="yellow">{platform.linkTarget}</Text></Text>
+      <Text>{locale === 'zh-CN' ? '变更后目标' : 'New target'}  <Text color={accent}>{canonicalRoot}</Text></Text>
+      <Text dimColor>{locale === 'zh-CN' ? '无法仅凭软链可靠识别创建软件。默认保留；接管时会备份原软链，取消 AskX 软链后可恢复。' : 'The creating application cannot be identified reliably from a symlink alone. Keep it by default; takeover backs it up for restoration.'}</Text>
+    </Frame>
+  )
+}
+
+/**
+ * 逐个请求外部软链接管授权。
+ * @param platforms 本次选择的软链平台。
+ * @returns 用户明确同意接管的平台。
+ */
+async function chooseExternalLinkTakeovers(platforms: SkillPlatformId[]): Promise<SkillPlatformId[]> {
+  const bootstrap = await skillsManager.bootstrap()
+  const bindings = new Map(bootstrap.platformBindings.map(binding => [binding.platform, binding]))
+  const conflicts = bootstrap.platforms.filter(platform => platforms.includes(platform.id) && (!bindings.has(platform.id) || Boolean(bindings.get(platform.id)?.suspendedAt)) && platform.skillsPathKind === 'symlink' && platform.linkTarget)
+  const selected: SkillPlatformId[] = []
+  for (const platform of conflicts) {
+    render(<ExternalLinkConflictView platform={platform} canonicalRoot={bootstrap.canonicalSkillsDir} locale={activeLocale} />)
+    if (await confirmWrite(activeLocale, 'externalTakeoverConfirm')) selected.push(platform.id)
+  }
+  return selected
 }
 
 /** 单个平台软链计划的终端展示。 */
@@ -882,6 +913,8 @@ interface CliPlatformLinkResult {
   receipt?: PlatformLinkReceipt
   /** 当前平台失败时的错误信息。 */
   error?: string
+  /** 本次因未授权接管而保留了外部软链。 */
+  externalPreserved?: boolean
 }
 
 /** 自定义文件夹软链的 CLI 执行结果。 */
@@ -911,7 +944,7 @@ function PlatformLinkResultsView({ results, directoryResults = [], batchReceipt,
   return (
     <Frame title={title}>
       {results.map((result) => {
-        const messageKey = messageKeyByResult[platformLinkResultMessage(result.status, action)]
+        const messageKey = result.externalPreserved ? 'externalLinkPreserved' : messageKeyByResult[platformLinkResultMessage(result.status, action)]
         return (
           <Text key={result.platform} color={result.status === 'applied' ? 'green' : result.status === 'failed' ? 'red' : 'yellow'}>
             {result.status === 'applied' ? '✓' : result.status === 'failed' ? '×' : '·'} {result.platform}  {t(locale, messageKey)}{result.error ? `  ${result.error}` : ''}
@@ -1340,6 +1373,7 @@ async function runSkillsSetupWizard(platforms: SkillPlatformId[], customRoots: s
       render(<NoticeView title={t(activeLocale, 'skillsTitle')} message={t(activeLocale, 'cancelled')} />)
       return
     }
+    const takeoverPlatforms = await chooseExternalLinkTakeovers(linkPlatforms)
     const linkCustomRoots = await chooseCustomLinkDirectories(activeLocale, customRoots, configurationStrategy !== 'merge')
     const plan = await skillsManager.planOnboarding({
       platforms,
@@ -1355,6 +1389,7 @@ async function runSkillsSetupWizard(platforms: SkillPlatformId[], customRoots: s
       mode: 'connect',
       configurationStrategy,
       linkPlatforms,
+      takeoverPlatforms,
       linkCustomRoots,
     })
     render(<SkillsBatchPlanView plan={plan} report={report} locale={activeLocale} title={t(activeLocale, 'scanPlan')} />)
@@ -1528,6 +1563,8 @@ interface SkillsLinkOptions extends SkillsWriteOptions {
   platform: string[]
   /** 要额外绑定到统一源的本地目录。 */
   directory: string[]
+  /** 明确允许接管本次选中平台的外部软链。 */
+  takeoverExternalLink?: boolean
 }
 
 skills
@@ -1537,6 +1574,7 @@ skills
   .option('-y, --yes', t(activeLocale, 'yesDescription'))
   .option('-p, --platform <platform>', t(activeLocale, 'platformsArgument'), collectPlatform, [])
   .option('-d, --directory <path>', t(activeLocale, 'linkDirectoryDescription'), collectDirectory, [])
+  .option('--takeover-external-link', '明确备份并接管检测到的外部软链 / Explicitly back up and take over external symlinks')
   .action(async (options: SkillsLinkOptions) => {
     let bootstrap = await skillsManager.bootstrap()
     if (!bootstrap.initialized) throw new Error(t(activeLocale, 'skillsNotInitialized'))
@@ -1554,9 +1592,11 @@ skills
 
     const results: CliPlatformLinkResult[] = []
     const bindings = new Map(bootstrap.platformBindings.map((binding) => [binding.platform, binding]))
-    const suspendedPlatforms = selectedPlatforms.filter((platform) => bindings.get(platform)?.suspendedAt)
+    const platformStatuses = new Map(bootstrap.platforms.map(platform => [platform.id, platform]))
+    const suspendedExternalPlatforms = new Set(selectedPlatforms.filter(platform => bindings.get(platform)?.suspendedAt && platformStatuses.get(platform)?.skillsPathKind === 'symlink'))
+    const suspendedPlatforms = selectedPlatforms.filter((platform) => bindings.get(platform)?.suspendedAt && !suspendedExternalPlatforms.has(platform))
     const activePlatforms = selectedPlatforms.filter((platform) => bindings.has(platform) && !bindings.get(platform)?.suspendedAt)
-    const newPlatforms = selectedPlatforms.filter((platform) => !bindings.has(platform))
+    const newPlatforms = selectedPlatforms.filter((platform) => !bindings.has(platform) || suspendedExternalPlatforms.has(platform))
 
     for (const platform of suspendedPlatforms) {
       const execution = await executePlatformLinkAction(platform, 'resume', options)
@@ -1587,6 +1627,9 @@ skills
       bootstrap = await skillsManager.bootstrap()
       const settings = await settingsStore.read()
       const report = await skillsManager.scan([])
+      const takeoverPlatforms = options.takeoverExternalLink
+        ? newPlatforms
+        : options.json || options.yes ? [] : await chooseExternalLinkTakeovers(newPlatforms)
       const plan = await skillsManager.planOnboarding({
         platforms: [],
         detectionFingerprint: report.fingerprint,
@@ -1595,6 +1638,7 @@ skills
         mode: 'connect',
         configurationStrategy: 'preserve',
         linkPlatforms: newPlatforms,
+        takeoverPlatforms,
         linkCustomRoots: newDirectories,
       })
       if (!options.json) render(<RootLinkPlanView plan={plan} locale={activeLocale} />)
@@ -1607,6 +1651,7 @@ skills
       results.push(...batchReceipt.platformResults.map((result) => ({
         platform: result.platform,
         status: result.status === 'rolled-back' ? 'failed' as const : result.status,
+        ...(plan.platformOperations.find(operation => operation.platform === result.platform)?.action === 'keep-external' ? { externalPreserved: true } : {}),
         ...(result.warnings.length ? { error: result.warnings.join('; ') } : {}),
       })))
     }

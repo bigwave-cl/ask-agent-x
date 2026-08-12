@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir } from 'node:fs/promises'
+import { mkdtemp, mkdir, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -28,6 +28,17 @@ describe('platformDescriptors', () => {
 })
 
 describe('detectPlatforms', () => {
+  it('不跟随平台根软链并返回其绝对目标快照', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'askx-platform-link-home-'))
+    const target = join(home, 'external-skills')
+    await mkdir(join(home, '.claude'), { recursive: true })
+    await mkdir(target)
+    await symlink(target, join(home, '.claude', 'skills'), 'dir')
+
+    const claude = (await detectPlatforms(home)).find(platform => platform.id === 'claude')
+
+    expect(claude).toMatchObject({ skillsPathKind: 'symlink', linkTarget: target, linkTargetExists: true })
+  })
   it('根目录代理能力不依赖应用安装状态', async () => {
     const home = await mkdtemp(join(tmpdir(), 'askx-platform-home-'))
     await mkdir(join(home, '.codex'), { recursive: true })

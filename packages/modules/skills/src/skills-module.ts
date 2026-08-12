@@ -166,6 +166,8 @@ export interface SkillsPlanRequest {
   configurationStrategy?: SkillsConfigurationStrategy
   /** 用户明确选择建立根目录软链的平台。 */
   linkPlatforms?: SkillPlatformId[]
+  /** 用户明确授权接管外部软链的平台。 */
+  takeoverPlatforms?: SkillPlatformId[]
   /** 用户明确选择建立统一源软链的自定义目录。 */
   linkCustomRoots?: string[]
 }
@@ -265,6 +267,7 @@ export class SkillsManager {
       mode: request.mode ?? 'connect',
       configurationStrategy: request.configurationStrategy ?? (request.mode === 'sync' ? 'preserve' : 'replace'),
       ...(request.linkPlatforms ? { linkPlatforms: request.linkPlatforms } : {}),
+      ...(request.takeoverPlatforms ? { takeoverPlatforms: request.takeoverPlatforms } : {}),
       linkPlatformStatuses: await detectSkillPlatforms(this.context.homeDir),
       platformBindings: manifest?.platformBindings ?? [],
       customLinkBindings: manifest?.customLinkBindings ?? [],

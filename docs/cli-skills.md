@@ -78,7 +78,7 @@ askx skills scan --platform cursor --directory /absolute/path/to/skills
 ## `askx skills link`
 
 ```bash
-askx skills link [--platform <platform>]... [--directory <path>]... [-y] [--json]
+askx skills link [--platform <platform>]... [--directory <path>]... [--takeover-external-link] [-y] [--json]
 ```
 
 | 参数 | 必填 | 说明 |
@@ -219,3 +219,4 @@ askx skills link --platform claude --yes --json
 askx skills unlink --directory /absolute/path/to/skills --yes --json
 askx skills usage record my-skill --yes --json
 ```
+设置前会只读检测平台 Skills 根路径。若该路径已经是 AskX manifest 之外的软链，交互模式会展示平台、软链地址、当前目标和变更后的 AskX 目标，并默认保留现有配置。只有用户明确确认，或非交互命令同时传入 `--takeover-external-link`，才会备份并接管外部软链；之后取消 AskX 软链时会恢复原软链。普通软链本身通常不包含创建软件信息，因此无法验证时会标记为其他软件或用户创建，而不会猜测所有者。

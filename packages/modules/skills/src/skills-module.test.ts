@@ -1,4 +1,4 @@
-import { access, lstat, mkdtemp, mkdir, readFile, readlink, rm, writeFile } from 'node:fs/promises'
+import { access, lstat, mkdtemp, mkdir, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { stableHash, type UserConsent } from '@askx/core'
@@ -19,6 +19,45 @@ function consent(plan: { hash: string }): UserConsent {
 }
 
 describe('SkillsManager', () => {
+  it('默认保留外部软链且不会误登记为 AskX 绑定', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-external-link-home-'))
+    const dataDir = join(homeDir, '.askx')
+    const externalTarget = join(homeDir, 'other-tool', 'skills')
+    await mkdir(join(homeDir, '.claude'), { recursive: true })
+    await mkdir(externalTarget, { recursive: true })
+    await symlink(externalTarget, join(homeDir, '.claude', 'skills'), 'dir')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const report = await manager.scan([])
+    const plan = await manager.planOnboarding({ platforms: [], detectionFingerprint: report.fingerprint, settingsRevision: 0, decisions: [], linkPlatforms: ['claude'], configurationStrategy: 'preserve' })
+
+    expect(plan.platformOperations[0]).toMatchObject({ action: 'keep-external', externalLinkTarget: externalTarget })
+    const receipt = await manager.applyOnboarding(plan, 0, consent(plan))
+
+    expect(receipt.platformResults[0]?.status).toBe('skipped')
+    expect(await readlink(join(homeDir, '.claude', 'skills'))).toBe(externalTarget)
+    expect((await manager.bootstrap()).platformBindings).toEqual([])
+  })
+
+  it('明确接管外部软链后取消绑定会恢复原软链', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'askx-takeover-link-home-'))
+    const dataDir = join(homeDir, '.askx')
+    const externalTarget = join(homeDir, 'other-tool', 'skills')
+    const platformPath = join(homeDir, '.claude', 'skills')
+    await mkdir(join(homeDir, '.claude'), { recursive: true })
+    await mkdir(externalTarget, { recursive: true })
+    await symlink(externalTarget, platformPath, 'dir')
+    const manager = new SkillsManager({ homeDir, dataDir })
+    const report = await manager.scan([])
+    const plan = await manager.planOnboarding({ platforms: [], detectionFingerprint: report.fingerprint, settingsRevision: 0, decisions: [], linkPlatforms: ['claude'], takeoverPlatforms: ['claude'], configurationStrategy: 'preserve' })
+
+    expect(plan.platformOperations[0]?.action).toBe('takeover')
+    await manager.applyOnboarding(plan, 0, consent(plan))
+    expect(await readlink(platformPath)).toBe(join(dataDir, 'skills'))
+
+    const unlinkPlan = await manager.planPlatformLink('claude', 'suspend')
+    await manager.applyPlatformLink(unlinkPlan, consent(unlinkPlan))
+    expect(await readlink(platformPath)).toBe(externalTarget)
+  })
   it('旧版逐 Skill manifest 会要求迁移为平台根目录代理', async () => {
     const homeDir = await mkdtemp(join(tmpdir(), 'askx-legacy-home-'))
     const dataDir = join(homeDir, '.askx')

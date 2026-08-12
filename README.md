@@ -35,6 +35,8 @@ pnpm askx skills scan
 pnpm askx skills scan --platform codex --platform claude --json
 pnpm askx skills scan --platform claude
 pnpm askx skills link --platform claude
+# 仅在确认需要替换其他工具创建的软链时显式接管
+pnpm askx skills link --platform claude --takeover-external-link
 pnpm askx skills unlink --platform claude
 pnpm askx skills history list
 pnpm askx skills rollback <receipt-id>

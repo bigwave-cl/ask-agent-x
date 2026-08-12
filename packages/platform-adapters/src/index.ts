@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process'
 import { constants } from 'node:fs'
-import { access, lstat } from 'node:fs/promises'
+import { access, lstat, readlink } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname, posix, win32 } from 'node:path'
+import { dirname, isAbsolute, posix, resolve, win32 } from 'node:path'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
@@ -14,6 +14,9 @@ export type PlatformPathFlavor = 'posix' | 'windows'
 
 /** Node 创建受管目录链接时使用的链接类型。 */
 export type ManagedDirectoryLinkType = 'dir' | 'junction'
+
+/** 平台 Skills 根路径当前的文件系统类型。 */
+export type PlatformSkillsPathKind = 'missing' | 'directory' | 'symlink' | 'other'
 
 export interface PlatformDescriptor {
   /** 平台标识。 */
@@ -31,12 +34,38 @@ export interface PlatformDetection extends PlatformDescriptor {
   installed: boolean
   /** Skills 根路径是否已经存在。 */
   skillsDirExists: boolean
+  /** Skills 根路径本身的文件系统类型，不跟随软链。 */
+  skillsPathKind: PlatformSkillsPathKind
+  /** Skills 根路径为软链时解析后的绝对目标。 */
+  linkTarget?: string
+  /** 软链目标当前是否存在。 */
+  linkTargetExists?: boolean
   /** 探测到的平台版本。 */
   version?: string
   /** 当前文件系统路径是否允许切换为目录软链。 */
   linkSupported: boolean
   /** 可解释的检测说明。 */
   notes: string[]
+}
+
+/**
+ * 只读获取平台 Skills 根路径快照。
+ * @param path 平台 Skills 根路径。
+ * @returns 不跟随软链的路径类型与软链目标。
+ */
+async function inspectSkillsPath(path: string): Promise<Pick<PlatformDetection, 'skillsDirExists' | 'skillsPathKind' | 'linkTarget' | 'linkTargetExists'>> {
+  try {
+    const stat = await lstat(path)
+    if (stat.isSymbolicLink()) {
+      const rawTarget = await readlink(path)
+      const linkTarget = isAbsolute(rawTarget) ? resolve(rawTarget) : resolve(dirname(path), rawTarget)
+      return { skillsDirExists: await pathExists(path), skillsPathKind: 'symlink', linkTarget, linkTargetExists: await pathExists(linkTarget) }
+    }
+    return { skillsDirExists: true, skillsPathKind: stat.isDirectory() ? 'directory' : 'other' }
+  } catch (error) {
+    if (['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) return { skillsDirExists: false, skillsPathKind: 'missing' }
+    throw error
+  }
 }
 
 /**
@@ -186,6 +215,7 @@ export async function detectPlatforms(
 ): Promise<PlatformDetection[]> {
   return Promise.all(
     platformDescriptors(home, resolvePlatformPathFlavor(runtimePlatform)).map(async (descriptor) => {
+      const skillsPath = await inspectSkillsPath(descriptor.skillsDir)
       const version = descriptor.command ? await readCommandVersion(descriptor.command, runtimePlatform) : undefined
       const detectedMarker = (await Promise.all(installationMarkers(descriptor, home, runtimePlatform).map(async (path) => await pathExists(path) ? path : undefined))).find(Boolean)
       const installed = Boolean(version || detectedMarker)
@@ -197,8 +227,8 @@ export async function detectPlatforms(
       if (!linkSupported) notes.push('The Skills root path is not writable and cannot be replaced with a managed directory link.')
       return {
         ...descriptor,
+        ...skillsPath,
         installed,
-        skillsDirExists: await pathExists(descriptor.skillsDir),
         ...(version ? { version } : {}),
         linkSupported,
         notes,

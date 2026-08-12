@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { cp, lstat, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { cp, lstat, mkdir, readFile, readdir, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
 import { stableHash, type RollbackResult, type UserConsent } from '@askx/core'
 import { managedDirectoryLinkType } from '@askx/platform-adapters'
 import { installBuiltinSkillManager } from './builtin-skill-manager.js'
@@ -624,6 +624,37 @@ async function applyPlatformRoot(
   let backup: SkillBackupMove | undefined
   let createdLink = false
   try {
+    if (operation.action === 'keep-external') {
+      const stat = await lstat(operation.path)
+      if (!stat.isSymbolicLink()) throw new Error(`平台 ${operation.platform} 的外部软链已经变化。`)
+      const currentTarget = resolve(dirname(operation.path), await readlink(operation.path))
+      if (currentTarget !== operation.externalLinkTarget) throw new Error(`平台 ${operation.platform} 的外部软链目标已经变化。`)
+      result.status = 'skipped'
+      result.warnings.push(`保留现有外部软链：${operation.path} -> ${currentTarget}`)
+      return { result }
+    }
+    if (operation.action === 'takeover' && previousBinding?.suspendedAt) {
+      if (!previousBinding.suspendedPath) throw new Error(`平台 ${operation.platform} 缺少停用软链路径。`)
+      await verifyManagedLink(previousBinding.suspendedPath, operation.target)
+      const stat = await lstat(operation.path)
+      if (!stat.isSymbolicLink()) throw new Error(`平台 ${operation.platform} 的外部软链已经变化。`)
+      const currentTarget = resolve(dirname(operation.path), await readlink(operation.path))
+      if (currentTarget !== operation.externalLinkTarget) throw new Error(`平台 ${operation.platform} 的外部软链目标已经变化。`)
+      backup = await moveToBackup(
+        operation.path,
+        previousBinding.originalRootBackup?.backupPath ?? join(dataDir, 'backups', 'skills', transactionId, operation.platform, 'skills-root.bak'),
+      )
+      result.backup = backup
+      try {
+        await rename(previousBinding.suspendedPath, operation.path)
+        await verifyManagedLink(operation.path, operation.target)
+      } catch (error) {
+        if (await pathExists(operation.path)) await rename(operation.path, previousBinding.suspendedPath)
+        if (await pathExists(backup.backupPath) && !await pathExists(operation.path)) await rename(backup.backupPath, operation.path)
+        throw error
+      }
+      return { result, backup, resumedBinding: previousBinding }
+    }
     if (operation.action === 'suspend') {
       if (!previousBinding || previousBinding.suspendedAt) throw new Error(`平台 ${operation.platform} 的已绑定状态已经变化。`)
       await verifyManagedLink(operation.path, operation.target)
@@ -671,15 +702,18 @@ async function applyPlatformRoot(
       }
       return { result, resumedBinding: previousBinding }
     }
-    if (await pathExists(operation.path)) {
-      const stat = await lstat(operation.path)
+    let existingStat
+    try {
+      existingStat = await lstat(operation.path)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+    if (existingStat) {
+      const stat = existingStat
       if (stat.isSymbolicLink()) {
-        try {
-          await verifyManagedLink(operation.path, operation.target)
-          return { result }
-        } catch {
-          // 目标不一致时按普通平台目录进入备份和重新接入流程。
-        }
+        if (operation.action !== 'takeover') throw new Error(`平台 ${operation.platform} 已存在外部软链，必须明确授权接管后才能变更。`)
+        const currentTarget = resolve(dirname(operation.path), await readlink(operation.path))
+        if (currentTarget !== operation.externalLinkTarget) throw new Error(`平台 ${operation.platform} 的外部软链目标已经变化。`)
       }
       backup = await moveToBackup(
         operation.path,
@@ -814,6 +848,7 @@ function createPlatformBindings(
       continue
     }
     if (result.status === 'applied') {
+      if (operation?.action === 'keep-external') continue
       const previous = bindings.get(result.platform)
       bindings.set(result.platform, {
         platform: result.platform,
