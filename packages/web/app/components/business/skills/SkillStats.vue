@@ -98,6 +98,17 @@ function moveItem(recordId: string, managed: boolean): void {
     draftManagedIds.value = [...next]
 }
 
+/** 批量移动当前搜索结果，只修改弹层草稿。 */
+function moveItems(items: SkillManagementStatusItem[], managed: boolean): void {
+    if (!items.length) return
+    const next = new Set(draftManagedIds.value)
+    for (const item of items) {
+        if (managed) next.add(item.recordId)
+        else next.delete(item.recordId)
+    }
+    draftManagedIds.value = [...next]
+}
+
 /** 返回管理状态的用户文案 key。 */
 function stateKey(item: SkillManagementStatusItem): string {
     if (item.managed && !item.registryRegistered) return 'skills.managementStates.registryMissing'
@@ -358,16 +369,25 @@ watch(() => props.active, active => { if (active) void loadStats() }, { immediat
 
                 <div class="grid min-h-0 gap-4 lg:grid-cols-2">
                     <section class="overflow-hidden rounded-2xl border bg-background">
-                        <header class="flex items-center justify-between border-b bg-primary/5 px-4 py-3">
-                            <div>
+                        <header class="flex items-start justify-between gap-3 border-b bg-primary/5 px-4 py-3">
+                            <div class="min-w-0">
                                 <h3 class="text-sm font-semibold">
                                     {{ t('skills.managedSkillsTitle') }}
                                 </h3><p class="mt-1 text-xs text-muted-foreground">
                                     {{ t('skills.managedSkillsDescription') }}
                                 </p>
-                            </div><Badge variant="secondary">
-                                {{ managedDraftItems.length }}
-                            </Badge>
+                            </div><div class="flex shrink-0 items-center gap-2">
+                                <Badge variant="secondary">
+                                    {{ managedDraftItems.length }}
+                                </Badge><Button
+                                    variant="outline"
+                                    :size="36"
+                                    :disabled="saving || !managedDraftItems.length"
+                                    @click="moveItems(managedDraftItems, false)"
+                                >
+                                    <Icon name="askx-navigation:double-chevron-right" />{{ query.trim() ? t('skills.moveFilteredToUnmanaged') : t('skills.moveAllToUnmanaged') }}
+                                </Button>
+                            </div>
                         </header>
                         <ScrollArea
                             type="hover"
@@ -417,16 +437,25 @@ watch(() => props.active, active => { if (active) void loadStats() }, { immediat
                     </section>
 
                     <section class="overflow-hidden rounded-2xl border bg-background">
-                        <header class="flex items-center justify-between border-b bg-muted/25 px-4 py-3">
-                            <div>
+                        <header class="flex items-start justify-between gap-3 border-b bg-muted/25 px-4 py-3">
+                            <div class="min-w-0">
                                 <h3 class="text-sm font-semibold">
                                     {{ t('skills.unmanagedSkillsTitle') }}
                                 </h3><p class="mt-1 text-xs text-muted-foreground">
                                     {{ t('skills.unmanagedSkillsDescription') }}
                                 </p>
-                            </div><Badge variant="outline">
-                                {{ unmanagedDraftItems.length }}
-                            </Badge>
+                            </div><div class="flex shrink-0 items-center gap-2">
+                                <Button
+                                    variant="outline"
+                                    :size="36"
+                                    :disabled="saving || !unmanagedDraftItems.length"
+                                    @click="moveItems(unmanagedDraftItems, true)"
+                                >
+                                    <Icon name="askx-navigation:double-chevron-left" />{{ query.trim() ? t('skills.moveFilteredToManaged') : t('skills.moveAllToManaged') }}
+                                </Button><Badge variant="outline">
+                                    {{ unmanagedDraftItems.length }}
+                                </Badge>
+                            </div>
                         </header>
                         <ScrollArea
                             type="hover"
