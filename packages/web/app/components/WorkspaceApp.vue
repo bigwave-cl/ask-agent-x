@@ -1,24 +1,12 @@
 <script setup lang="ts">
 import type { AskXConfig, AskXLocale, AskXThemeColor, ManagedPlatformId } from '@askx/core'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Progress } from '@/components/ui/progress'
-import { Separator } from '@/components/ui/separator'
+import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Switch } from '@/components/ui/switch'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import type { AskxIconName } from '@/lib/iconCatalog'
-import { parseSessionCredential } from '@/lib/session-credential'
-import { skillPlatformPresentations } from '@/lib/skillPlatformPresentation'
+import type { ResponsiveSelectOption } from '@/components/common/responsive-select/types'
 import { useConfirm } from '@/composables/useConfirm'
-
-/** 设置页展示的 Agent 平台。 */
-const agents: Array<{ id: ManagedPlatformId, name: string, icon: AskxIconName, note: string }> = [
-    { id: 'codex', ...skillPlatformPresentations.codex, note: '~/.codex/skills' },
-    { id: 'claude', ...skillPlatformPresentations.claude, note: '~/.claude/skills' },
-    { id: 'cursor', ...skillPlatformPresentations.cursor, note: '~/.cursor/skills' },
-]
+import { parseSessionCredential } from '@/lib/session-credential'
+import { defineComponent, h } from 'vue'
 
 type FeedbackKey = 'feedbackConnecting' | 'feedbackConnected' | 'feedbackSynced' | 'feedbackExternal' | 'feedbackMinPlatform' | 'feedbackUnsaved' | 'feedbackSaved' | 'feedbackReadFailed' | 'feedbackSaveFailed' | 'feedbackConflict' | 'feedbackReset'
 type AuthState = 'checking' | 'authenticated' | 'unauthenticated'
@@ -34,11 +22,12 @@ const props = withDefaults(defineProps<{
 })
 
 const tokenCommand = 'askx ui token'
-const pipelineKeys = ['pipelineDetect', 'pipelinePlan', 'pipelineConsent', 'pipelineApply', 'pipelineVerify', 'pipelineRollback'] as const
 const localePath = useLocalePath()
 const { locale, setLocale: setI18nLocale, t } = useI18n()
 const commonMessages = useMessageSection('common')
 const workspaceMessages = useMessageSection('workspace')
+/** 工作台操作反馈 Toast。 */
+const toast = useToast()
 const settings = ref<AskXConfig | null>(null)
 const authState = ref<AuthState>('checking')
 const workspaceView = computed(() => props.view)
@@ -55,6 +44,7 @@ const draft = reactive<{ backupBeforeLink: boolean, platforms: ManagedPlatformId
 })
 const loading = ref(true)
 const saving = ref(false)
+/** 恢复初始状态请求是否正在执行。 */
 const resetting = ref(false)
 const dirty = ref(false)
 const feedbackKey = ref<FeedbackKey>('feedbackConnecting')
@@ -66,9 +56,12 @@ const copy = computed(() => ({
     ...commonMessages.value,
     ...workspaceMessages.value,
 }))
-const feedback = computed(() => t(`workspace.${feedbackKey.value}`, feedbackArgs.value))
 const enabledCount = computed(() => draft.platforms.length)
-const syncProgress = computed(() => settings.value ? 100 : 20)
+/** 设置页语言选项。 */
+const languageOptions = computed<ResponsiveSelectOption[]>(() => [
+    { value: 'zh-CN', label: copy.value.chinese },
+    { value: 'en', label: 'English' },
+])
 
 function setFeedback(key: FeedbackKey, args: Record<string, string | number> = {}) {
     feedbackKey.value = key
@@ -199,26 +192,6 @@ async function refreshSettings(initial = false, force = false) {
     }
 }
 
-function togglePlatform(platform: ManagedPlatformId) {
-    const exists = draft.platforms.includes(platform)
-    if (exists && draft.platforms.length === 1) {
-        setFeedback('feedbackMinPlatform')
-        return
-    }
-    draft.platforms = exists
-        ? draft.platforms.filter(entry => entry !== platform)
-        : [...draft.platforms, platform]
-    dirty.value = true
-    setFeedback('feedbackUnsaved')
-}
-
-function setBackup(value: boolean) {
-    if (draft.backupBeforeLink === value) return
-    draft.backupBeforeLink = value
-    dirty.value = true
-    setFeedback('feedbackUnsaved')
-}
-
 async function handleLocaleChange(value: unknown) {
     if ((value !== 'zh-CN' && value !== 'en') || !settings.value || value === draft.locale || saving.value) return
     saving.value = true
@@ -252,6 +225,63 @@ async function handleLocaleChange(value: unknown) {
     finally {
         saving.value = false
     }
+}
+
+/** 打开需要输入确认短语的恢复初始状态弹窗。 */
+function openFactoryResetConfirm(): void {
+    if (!settings.value || resetting.value) return
+    const confirmation = ref('')
+    /** 恢复初始状态确认输入区域。 */
+    const FactoryResetConfirmation = defineComponent({
+        name: 'FactoryResetConfirmation',
+        setup() {
+            return () => h('div', { class: 'grid gap-4' }, [
+                h('p', { class: 'text-sm leading-6 text-muted-foreground' }, copy.value.factoryResetWarning),
+                h('div', { class: 'grid gap-2' }, [
+                    h('label', { class: 'text-sm font-medium text-foreground' }, copy.value.factoryResetInputLabel),
+                    h(Input, {
+                        modelValue: confirmation.value,
+                        placeholder: copy.value.factoryResetPhrase,
+                        autocomplete: 'off',
+                        'onUpdate:modelValue': (value: string | number) => {
+                            confirmation.value = String(value)
+                            controller.init({ okDisabled: confirmation.value !== copy.value.factoryResetPhrase })
+                        },
+                    }),
+                ]),
+            ])
+        },
+    })
+    const controller = useConfirm({
+        title: copy.value.factoryResetConfirmTitle,
+        desc: FactoryResetConfirmation,
+        cancelText: copy.value.cancel,
+        okText: copy.value.factoryResetAction,
+        okVariant: 'destructive',
+        okDisabled: true,
+        contentClass: 'sm:max-w-lg',
+        onOk: async (done) => {
+            if (!settings.value || confirmation.value !== copy.value.factoryResetPhrase) return
+            resetting.value = true
+            try {
+                const updated = await $fetch<AskXConfig>('/api/settings/factory-reset', {
+                    method: 'POST',
+                    body: { revision: settings.value.revision, confirmation: confirmation.value },
+                })
+                await applySettings(updated, 'feedbackReset', { revision: updated.revision })
+                toast.success(copy.value.factoryResetSucceeded)
+                done()
+                await navigateTo(localePath('/settings'), { replace: true })
+            }
+            catch (error) {
+                if (errorStatus(error) === 409) await refreshSettings(false, true)
+                throw error
+            }
+            finally {
+                resetting.value = false
+            }
+        },
+    })
 }
 
 function setVisualTheme(theme: VisualTheme) {
@@ -308,45 +338,6 @@ async function saveSettings() {
     finally {
         saving.value = false
     }
-}
-
-/** 恢复全部共享设置默认值，同时保留 Skills、备份和链接数据。 */
-async function resetSettings(done: () => void) {
-    if (!settings.value || resetting.value) return
-    resetting.value = true
-    try {
-        const updated = await $fetch<AskXConfig>('/api/settings/reset', {
-            method: 'POST',
-            body: { revision: settings.value.revision, confirmed: true },
-        })
-        await applySettings(updated, 'feedbackReset', { revision: updated.revision })
-        done()
-    }
-    catch (error) {
-        if (errorStatus(error) === 409) {
-            dirty.value = false
-            await refreshSettings(false, true)
-            setFeedback('feedbackConflict')
-        }
-        else {
-            setFeedback('feedbackSaveFailed')
-        }
-    }
-    finally {
-        resetting.value = false
-    }
-}
-
-/** 打开共享设置重置确认。 */
-function requestResetSettings(): void {
-    useConfirm({
-        title: copy.value.resetSettingsConfirmTitle,
-        desc: copy.value.resetSettingsConfirmDescription,
-        cancelText: copy.value.resetSettingsCancel,
-        okText: copy.value.confirmResetSettings,
-        okVariant: 'destructive',
-        onOk: async done => resetSettings(done),
-    })
 }
 
 function openWorkspacePage(destination: WorkspaceView) {
@@ -525,396 +516,77 @@ onBeforeUnmount(() => {
             as="main"
             class="grid min-h-svh content-start gap-8 pb-8 pt-20 lg:pb-10 lg:pt-16"
         >
-            <section class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-                <div class="max-w-3xl">
-                    <CsWorkspacePageNav
-                        icon="askx-status:star"
-                        :label="copy.pageEyebrow"
-                    />
-                    <h1 class="text-balance text-3xl font-semibold tracking-[-0.035em] sm:text-4xl lg:text-5xl">
-                        {{ copy.pageTitle }}
-                    </h1>
-                    <p class="mt-4 max-w-2xl text-pretty text-sm leading-6 text-muted-foreground sm:text-base">
-                        {{ copy.pageDescription }}
-                    </p>
-                </div>
-                <div class="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Icon
-                        name="askx-actions:refresh"
-                        class="size-3.5"
-                        :class="{ 'animate-spin': loading }"
-                    />
-                    <span data-testid="settings-feedback">{{ feedback }}</span>
-                </div>
+            <section class="max-w-3xl">
+                <CsWorkspacePageNav
+                    icon="askx-objects:language"
+                    :label="copy.pageEyebrow"
+                />
+                <h1 class="text-balance text-3xl font-semibold tracking-[-0.035em] sm:text-4xl lg:text-5xl">
+                    {{ copy.pageTitle }}
+                </h1>
+                <p class="mt-4 max-w-2xl text-pretty text-sm leading-6 text-muted-foreground sm:text-base">
+                    {{ copy.languageDescription }}
+                </p>
             </section>
 
-            <section
-                class="grid gap-4 md:grid-cols-3"
-                :aria-label="copy.overview"
-            >
-                <Card size="sm">
-                    <CardHeader class="flex-row items-start justify-between space-y-0">
-                        <div>
-                            <CardDescription>{{ copy.agentsEnabled }}</CardDescription><CardTitle class="mt-2 text-2xl">
-                                {{ enabledCount }} / {{ agents.length }}
-                            </CardTitle>
-                        </div>
-                        <span class="grid size-9 place-items-center rounded-lg bg-primary/10 text-primary"><Icon
-                            name="askx-objects:agent"
-                            class="size-4"
+            <section class="max-w-2xl rounded-2xl border bg-card p-5 shadow-sm sm:p-6">
+                <div class="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div class="flex min-w-0 items-start gap-3">
+                        <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Icon
+                            name="askx-objects:language"
+                            class="size-5"
                         /></span>
-                    </CardHeader>
-                    <CardContent class="text-xs text-muted-foreground">
-                        {{ enabledCount }} {{ copy.agentsEnabledHint }}
-                    </CardContent>
-                </Card>
-
-                <Card size="sm">
-                    <CardHeader class="flex-row items-start justify-between space-y-0">
                         <div>
-                            <CardDescription>{{ copy.currentRevision }}</CardDescription>
-                            <CardTitle
-                                v-if="settings"
-                                class="mt-2 text-2xl"
-                                data-testid="settings-revision"
-                            >
-                                #{{ settings.revision }}
-                            </CardTitle>
-                            <Skeleton
-                                v-else
-                                class="mt-2 h-7 w-16"
-                            />
-                        </div>
-                        <span class="grid size-9 place-items-center rounded-lg bg-secondary text-secondary-foreground"><Icon
-                            name="askx-objects:branch"
-                            class="size-4"
-                        /></span>
-                    </CardHeader>
-                    <CardContent class="text-xs text-muted-foreground">
-                        {{ copy.currentRevisionHint }}
-                    </CardContent>
-                </Card>
-
-                <Card size="sm">
-                    <CardHeader class="flex-row items-start justify-between space-y-0">
-                        <div>
-                            <CardDescription>{{ copy.safetyGuard }}</CardDescription><CardTitle class="mt-2 text-base">
-                                {{ draft.backupBeforeLink ? copy.safetyGuardOn : copy.safetyGuardOff }}
-                            </CardTitle>
-                        </div>
-                        <span class="grid size-9 place-items-center rounded-lg bg-success-soft text-success"><Icon
-                            name="askx-status:lock"
-                            class="size-4"
-                        /></span>
-                    </CardHeader>
-                    <CardContent>
-                        <Badge :variant="draft.backupBeforeLink ? 'secondary' : 'destructive'">
-                            {{ draft.backupBeforeLink ? copy.connected : copy.off }}
-                        </Badge>
-                    </CardContent>
-                </Card>
-            </section>
-
-            <section class="grid items-start gap-6 lg:grid-cols-[minmax(0,1.65fr)_minmax(300px,.75fr)]">
-                <Card data-testid="settings-panel">
-                    <CardHeader class="border-b">
-                        <div class="flex items-start gap-3">
-                            <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Icon
-                                name="askx-actions:settings"
-                                class="size-4"
-                            /></span>
-                            <div>
-                                <CardTitle>{{ copy.settingsTitle }}</CardTitle><CardDescription class="mt-1.5">
-                                    {{ copy.settingsDescription }}
-                                </CardDescription>
-                            </div>
-                        </div>
-                    </CardHeader>
-
-                    <CardContent class="grid gap-6 pt-2">
-                        <section>
-                            <div class="mb-3 flex items-end justify-between gap-4">
-                                <div>
-                                    <h2 class="text-sm font-medium">
-                                        {{ copy.platformsTitle }}
-                                    </h2><p class="mt-1 text-xs text-muted-foreground">
-                                        {{ copy.platformsDescription }}
-                                    </p>
-                                </div>
-                                <Badge variant="outline">
-                                    {{ enabledCount }}/{{ agents.length }}
-                                </Badge>
-                            </div>
-                            <div
-                                class="grid gap-3 sm:grid-cols-3"
-                                :class="{ 'pointer-events-none opacity-60': loading }"
-                            >
-                                <Button
-                                    v-for="agent in agents"
-                                    :key="agent.id"
-                                    type="button"
-                                    variant="outline"
-                                    class="h-auto min-w-0 justify-start gap-3 p-3 text-left"
-                                    :class="draft.platforms.includes(agent.id) ? 'border-primary bg-primary/5 hover:bg-primary/8' : 'text-muted-foreground'"
-                                    :aria-pressed="draft.platforms.includes(agent.id)"
-                                    :data-testid="`platform-${agent.id}`"
-                                    @click="togglePlatform(agent.id)"
-                                >
-                                    <span class="grid size-8 shrink-0 place-items-center rounded-md bg-secondary text-secondary-foreground"><Icon
-                                        :name="agent.icon"
-                                        class="size-4.5"
-                                        aria-hidden="true"
-                                    /></span>
-                                    <span class="min-w-0 flex-1"><strong class="block truncate text-xs font-medium text-foreground">{{ agent.name }}</strong><small class="mt-1 block truncate font-mono text-[10px]">{{ agent.note }}</small></span>
-                                    <Icon
-                                        v-if="draft.platforms.includes(agent.id)"
-                                        name="askx-status:check"
-                                        class="size-3.5 shrink-0 text-primary"
-                                    />
-                                </Button>
-                            </div>
-                        </section>
-
-                        <Separator />
-
-                        <section class="flex items-center justify-between gap-6">
-                            <div class="flex min-w-0 items-start gap-3">
-                                <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-secondary text-secondary-foreground"><Icon
-                                    name="askx-actions:download"
-                                    class="size-4"
-                                /></span>
-                                <div>
-                                    <div class="flex flex-wrap items-center gap-2">
-                                        <h2 class="text-sm font-medium">
-                                            {{ copy.backupTitle }}
-                                        </h2><Badge variant="secondary">
-                                            {{ copy.recommended }}
-                                        </Badge>
-                                    </div><p class="mt-1 text-xs leading-5 text-muted-foreground">
-                                        {{ copy.backupDescription }}
-                                    </p>
-                                </div>
-                            </div>
-                            <Switch
-                                :model-value="draft.backupBeforeLink"
-                                :aria-label="copy.backupTitle"
-                                data-testid="backup-toggle"
-                                @update:model-value="setBackup"
-                            />
-                        </section>
-
-                        <Separator />
-
-                        <section class="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-                            <div class="flex min-w-0 items-start gap-3">
-                                <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-secondary text-secondary-foreground"><Icon
-                                    name="askx-objects:language"
-                                    class="size-4"
-                                /></span>
-                                <div>
-                                    <h2 class="text-sm font-medium">
-                                        {{ copy.languageTitle }}
-                                    </h2><p class="mt-1 text-xs leading-5 text-muted-foreground">
-                                        {{ copy.languageDescription }}
-                                    </p>
-                                </div>
-                            </div>
-                            <ToggleGroup
-                                type="single"
-                                variant="outline"
-                                :model-value="draft.locale"
-                                class="w-full sm:w-auto"
-                                :disabled="saving || loading"
-                                @update:model-value="handleLocaleChange"
-                            >
-                                <ToggleGroupItem
-                                    value="zh-CN"
-                                    class="flex-1 sm:flex-none"
-                                    data-testid="locale-zh-CN"
-                                >
-                                    <Icon
-                                        name="askx-objects:language"
-                                        class="size-3.5"
-                                    />{{ copy.chinese }}
-                                </ToggleGroupItem>
-                                <ToggleGroupItem
-                                    value="en"
-                                    class="flex-1 sm:flex-none"
-                                    data-testid="locale-en"
-                                >
-                                    EN
-                                </ToggleGroupItem>
-                            </ToggleGroup>
-                        </section>
-                    </CardContent>
-
-                    <CardFooter class="flex-col justify-between gap-3 sm:flex-row">
-                        <div
-                            class="flex items-center gap-2 text-xs"
-                            :class="dirty ? 'text-warning' : 'text-muted-foreground'"
-                        >
-                            <span
-                                class="size-1.5 rounded-full"
-                                :class="dirty ? 'bg-warning' : 'bg-success'"
-                            />
-                            {{ dirty ? copy.unsaved : copy.allSaved }}
-                        </div>
-                        <Button
-                            :size="40"
-                            :disabled="!dirty || saving || loading"
-                            data-testid="save-settings"
-                            @click="saveSettings"
-                        >
-                            <Icon
-                                v-if="saving"
-                                name="askx-actions:refresh"
-                                data-icon="inline-start"
-                                class="animate-spin"
-                            />
-                            <Icon
-                                v-else
-                                name="askx-actions:confirm"
-                                data-icon="inline-start"
-                            />
-                            {{ saving ? copy.saving : copy.save }}
-                        </Button>
-                    </CardFooter>
-                </Card>
-
-                <div class="grid gap-6">
-                    <Card>
-                        <CardHeader>
-                            <div class="flex items-center justify-between gap-3">
-                                <span class="grid size-9 place-items-center rounded-lg bg-success-soft text-success"><Icon
-                                    name="askx-objects:layers"
-                                    class="size-4"
-                                /></span>
-                                <Badge variant="outline">
-                                    <span class="size-1.5 rounded-full bg-success" />{{ settings ? copy.connected : copy.connecting }}
-                                </Badge>
-                            </div>
-                            <CardTitle class="mt-2">
-                                {{ copy.syncTitle }}
-                            </CardTitle>
-                            <CardDescription>{{ copy.syncDescription }}</CardDescription>
-                        </CardHeader>
-                        <CardContent class="grid gap-4">
-                            <Progress :model-value="syncProgress" />
-                            <dl class="grid gap-3 text-xs">
-                                <div class="flex items-center justify-between gap-4">
-                                    <dt class="text-muted-foreground">
-                                        {{ copy.revision }}
-                                    </dt><dd class="font-mono font-medium">
-                                        #{{ settings?.revision ?? '—' }}
-                                    </dd>
-                                </div>
-                                <div class="flex items-center justify-between gap-4">
-                                    <dt class="text-muted-foreground">
-                                        {{ copy.source }}
-                                    </dt><dd class="font-mono font-medium">
-                                        {{ settings?.updatedBy?.toUpperCase() ?? '—' }}
-                                    </dd>
-                                </div>
-                                <div class="flex items-center justify-between gap-4">
-                                    <dt class="text-muted-foreground">
-                                        {{ copy.configPath }}
-                                    </dt><dd class="truncate font-mono font-medium">
-                                        ~/.askx/config.json
-                                    </dd>
-                                </div>
-                                <div class="flex items-center justify-between gap-4">
-                                    <dt class="text-muted-foreground">
-                                        {{ copy.polling }}
-                                    </dt><dd class="font-mono font-medium">
-                                        {{ copy.pollingValue }}
-                                    </dd>
-                                </div>
-                            </dl>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader>
-                            <div class="flex items-center justify-between gap-3">
-                                <span class="grid size-9 place-items-center rounded-lg bg-primary/10 text-primary"><Icon
-                                    name="askx-objects:agent"
-                                    class="size-4"
-                                /></span><Badge variant="secondary">
-                                    <Icon
-                                        name="askx-status:lock"
-                                        class="size-3"
-                                    />{{ copy.readOnly }}
-                                </Badge>
-                            </div>
-                            <CardTitle class="mt-2">
-                                {{ copy.skillsTitle }}
-                            </CardTitle>
-                            <CardDescription>{{ copy.skillsDescription }}</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <ol class="grid gap-2">
-                                <li
-                                    v-for="(key, index) in pipelineKeys"
-                                    :key="key"
-                                    class="flex items-center gap-2 text-xs"
-                                >
-                                    <span
-                                        class="grid size-5 place-items-center rounded-full"
-                                        :class="index === 0 ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'"
-                                    >
-                                        <Icon
-                                            v-if="index === 0"
-                                            name="askx-status:check"
-                                            class="size-3"
-                                        />
-                                        <span
-                                            v-else
-                                            class="text-[9px]"
-                                        >{{ index + 1 }}</span>
-                                    </span>
-                                    <span :class="index === 0 ? 'font-medium text-foreground' : 'text-muted-foreground'">{{ copy[key] }}</span>
-                                    <Icon
-                                        v-if="index < pipelineKeys.length - 1"
-                                        name="askx-navigation:chevron-right"
-                                        class="ml-auto size-3 text-muted-foreground/50"
-                                    />
-                                </li>
-                            </ol>
-                        </CardContent>
-                        <CardFooter class="flex-col items-stretch gap-2 bg-transparent">
-                            <Button
-                                variant="outline"
-                                :size="40"
-                                disabled
-                            >
-                                <Icon
-                                    name="askx-objects:agent"
-                                    data-icon="inline-start"
-                                />{{ copy.runDetection }}
-                            </Button>
-                            <p class="text-center text-[11px] text-muted-foreground">
-                                {{ copy.comingSoon }}
+                            <h2 class="text-sm font-medium">
+                                {{ copy.languageTitle }}
+                            </h2>
+                            <p class="mt-1 text-xs leading-5 text-muted-foreground">
+                                {{ copy.languageDescription }}
                             </p>
-                        </CardFooter>
-                    </Card>
+                        </div>
+                    </div>
+                    <CsResponsiveSelect
+                        :model-value="draft.locale"
+                        size="40"
+                        trigger-class="w-full sm:w-44"
+                        :title="copy.languageTitle"
+                        :placeholder="copy.languageTitle"
+                        :close-label="copy.close"
+                        :clear-label="copy.close"
+                        :empty-text="copy.languageOptionsEmpty"
+                        :options="languageOptions"
+                        :disabled="saving || loading"
+                        data-testid="locale-select"
+                        @update:model-value="handleLocaleChange"
+                    />
+                </div>
+            </section>
 
-                    <Card class="border-destructive/30">
-                        <CardHeader>
-                            <CardTitle>{{ copy.resetSettingsTitle }}</CardTitle>
-                            <CardDescription>{{ copy.resetSettingsDescription }}</CardDescription>
-                        </CardHeader>
-                        <CardFooter>
-                            <Button
-                                variant="destructive"
-                                :size="40"
-                                :disabled="loading || saving"
-                                data-testid="reset-settings"
-                                @click="requestResetSettings"
-                            >
-                                <Icon name="askx-actions:refresh" />{{ copy.resetSettingsAction }}
-                            </Button>
-                        </CardFooter>
-                    </Card>
+            <section class="max-w-2xl rounded-2xl border border-destructive/30 bg-card p-5 shadow-sm sm:p-6">
+                <div class="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div class="flex min-w-0 items-start gap-3">
+                        <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-destructive/10 text-destructive"><Icon
+                            name="askx-actions:delete"
+                            class="size-5"
+                        /></span>
+                        <div>
+                            <h2 class="text-sm font-medium">
+                                {{ copy.factoryResetTitle }}
+                            </h2>
+                            <p class="mt-1 text-xs leading-5 text-muted-foreground">
+                                {{ copy.factoryResetDescription }}
+                            </p>
+                        </div>
+                    </div>
+                    <Button
+                        variant="destructive"
+                        :size="40"
+                        :disabled="resetting || loading"
+                        data-testid="factory-reset"
+                        @click="openFactoryResetConfirm"
+                    >
+                        <Icon name="askx-actions:delete" />{{ copy.factoryResetAction }}
+                    </Button>
                 </div>
             </section>
         </CsWorkspaceContent>
