@@ -138,18 +138,18 @@ function customLinkAction(binding: ManagedCustomLinkBinding): Exclude<CustomLink
                         class="size-5"
                         aria-hidden="true"
                     /></span>
-                    <div class="min-w-0 flex-1">
+                    <div class="grid min-w-0 flex-1 gap-1">
                         <strong class="block truncate text-sm">{{ skillPlatformPresentations[platform.id].name }}</strong>
-                        <div class="mt-1 flex min-w-0 items-center gap-1.5">
+                        <code
+                            class="block min-w-0 truncate font-mono text-[10px] leading-4 text-muted-foreground"
+                            :title="platform.skillsDir"
+                        >{{ platform.skillsDir }}</code>
+                        <div class="flex min-h-5 items-center">
                             <Badge
                                 :variant="isConnected(platform.id) || connectionStatus(platform.id) === 'suspended' ? 'secondary' : ['failed', 'broken'].includes(connectionStatus(platform.id)) ? 'destructive' : 'outline'"
-                                class="shrink-0"
                             >
                                 {{ connectionLabel(platform.id) }}
-                            </Badge><code
-                                class="block min-w-0 truncate font-mono text-[9px] text-muted-foreground"
-                                :title="platform.skillsDir"
-                            >{{ platform.skillsDir }}</code>
+                            </Badge>
                         </div>
                     </div>
                     <div
@@ -229,13 +229,12 @@ function customLinkAction(binding: ManagedCustomLinkBinding): Exclude<CustomLink
                                 name="askx-objects:file-link"
                                 class="size-4"
                             /></span>
-                            <span class="min-w-0 flex-1"><strong class="block truncate text-xs">{{ binding.name }}</strong><code
-                                class="mt-0.5 block truncate font-mono text-[9px] text-muted-foreground"
+                            <span class="grid min-w-0 flex-1 gap-1"><strong class="block truncate text-sm">{{ binding.name }}</strong><code
+                                class="block min-w-0 truncate font-mono text-[10px] leading-4 text-muted-foreground"
                                 :title="binding.path"
-                            >{{ binding.path }}</code></span>
-                            <Badge variant="secondary">
+                            >{{ binding.path }}</code><span class="flex min-h-5 items-center"><Badge variant="secondary">
                                 {{ binding.suspendedAt ? t('skills.rootSuspended') : t('skills.rootConnected') }}
-                            </Badge>
+                            </Badge></span></span>
                             <div class="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
                                 <Button
                                     :size="36"
