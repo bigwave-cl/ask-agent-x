@@ -7,7 +7,7 @@
     "askx": "./dist/index.js"
   },
   "exports": "./dist/index.js",
-  "files": ["dist", "README.md"],
+  "files": ["dist", "scripts/lifecycle.mjs", "README.md"],
   "engines": {
     "node": ">=22"
   },
@@ -23,7 +23,7 @@
   "scripts": {
     "build": "tsup && node scripts/prepare-package.mjs",
     "dev": "tsup src/index.tsx --format esm --dts --watch",
-    "postinstall": "node ./dist/lifecycle.mjs start",
+    "postinstall": "node ./scripts/lifecycle.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests"
   },

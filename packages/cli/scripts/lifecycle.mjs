@@ -47,7 +47,7 @@ async function writeInstallRecord() {
 
 await writeInstallRecord()
 
-const cliEntry = resolve(scriptDirectory, 'index.js')
+const cliEntry = resolve(packageDirectory, 'dist/index.js')
 // 全局覆盖安装时旧服务仍可能占用已被替换的分块文件，必须由当前包完整重启。
 const child = spawn(process.execPath, [cliEntry, 'ui', 'restart', '--json'], {
   env: process.env,
