@@ -1,6 +1,6 @@
 # AskAgent X CLI 命令索引
 
-本文档对应 AskAgent X `26.810.1`。这里按使用场景索引命令；参数和副作用以 API 文档为准。
+本文档对应 AskAgent X `26.812.1`。这里按使用场景索引命令；参数和副作用以 API 文档为准。
 
 - [基础与 Web API](./cli-base.md)
 - [Skills API](./cli-skills.md)

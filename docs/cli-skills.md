@@ -1,6 +1,6 @@
 # AskAgent X Skills CLI API
 
-本文档对应 AskAgent X `26.810.1`。每个章节对应一个实际命令，按命令名即可快速查找。
+本文档对应 AskAgent X `26.812.1`。每个章节对应一个实际命令，按命令名即可快速查找。
 
 - [命令索引](./cli.md)
 - [基础与 Web API](./cli-base.md)

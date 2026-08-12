@@ -1,6 +1,6 @@
 # AskAgent X Base CLI API
 
-本文档对应 AskAgent X `26.810.1`，罗列安装、诊断、清空、Web 服务和卸载命令。
+本文档对应 AskAgent X `26.812.1`，罗列安装、诊断、清空、Web 服务和卸载命令。
 
 - [命令索引](./cli.md)
 - [Skills API](./cli-skills.md)
