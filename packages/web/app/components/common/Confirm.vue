@@ -25,6 +25,8 @@ export interface ConfirmOptions {
     cancelText?: string
     /** 确认按钮文案。 */
     okText?: string
+    /** 是否禁用确认按钮。 */
+    okDisabled?: boolean
     /** 取消按钮样式。 */
     cancelVariant?: ButtonVariants['variant']
     /** 确认按钮样式。 */
@@ -180,7 +182,7 @@ defineExpose({ init, close })
                     {{ options.cancelText || t('common.cancel') }}
                 </AlertDialogCancel>
                 <AlertDialogAction
-                    :disabled="loading"
+                    :disabled="loading || options.okDisabled"
                     :size="40"
                     :variant="buttonVariant(options.okVariant)"
                     :class="['text-sm', options.actionLayout === 'equal' ? 'min-w-0 w-full flex-1' : 'w-auto flex-none']"
