@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { cp, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
+import { cp, lstat, mkdir, readFile, readdir, rename, rm } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { stableHash, type UserConsent } from '@askx/core'
@@ -35,6 +35,8 @@ export interface SystemSkillRepairPlan {
   registrySourcePath?: string
   /** 计划绑定的 registry 内容指纹。 */
   registrySourceHash?: string
+  /** 计划绑定的 registry revision。 */
+  registryRevision?: number
   /** 用户授权对应的稳定指纹。 */
   hash: string
 }
@@ -82,6 +84,7 @@ export const systemSkillRepairPlanSchema = z.object({
   preserveRegistry: z.boolean(),
   registrySourcePath: z.string().min(1).optional(),
   registrySourceHash: z.string().min(1).optional(),
+  registryRevision: z.number().int().nonnegative().optional(),
   hash: z.string().min(1),
 })
 
@@ -106,24 +109,42 @@ async function pathExists(path: string): Promise<boolean> {
 
 /** 有效 Registry 快照。 */
 interface RegistrySnapshot {
-  /** 快照所在文件。 */
+  /** 快照所在数据目录。 */
   path: string
-  /** 已解析的完整内容。 */
-  content: string
-  /** 内容稳定指纹。 */
+  /** 整个数据目录的稳定指纹。 */
   hash: string
+  /** Registry revision。 */
+  revision: number
   /** 文件更新时间，用于选择最新备份。 */
   modifiedAt: number
 }
 
-/** 读取一个候选 Registry 文件并验证 schema。 */
+/** 为 Registry 数据目录生成排除瞬时锁文件的稳定指纹。 */
+async function hashRegistryDirectory(root: string): Promise<string> {
+  const entries: Array<{ path: string; content: string }> = []
+  /** 递归收集普通文件。 */
+  async function visit(directory: string, prefix = ''): Promise<void> {
+    for (const entry of (await readdir(directory, { withFileTypes: true })).sort((left, right) => left.name.localeCompare(right.name))) {
+      if (entry.name === 'skills.lock') continue
+      const path = join(directory, entry.name)
+      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name
+      if (entry.isDirectory()) await visit(path, relativePath)
+      else if (entry.isFile()) entries.push({ path: relativePath, content: (await readFile(path)).toString('base64') })
+      else throw new Error(`Registry 数据目录包含不支持的文件类型：${path}`)
+    }
+  }
+  await visit(root)
+  return stableHash(entries)
+}
+
+/** 读取一个候选 Registry 数据目录并验证 schema。 */
 async function readRegistrySnapshot(path: string): Promise<RegistrySnapshot | null> {
   try {
-    const information = await lstat(path)
-    if (!information.isFile() || information.isSymbolicLink()) return null
-    const content = await readFile(path, 'utf8')
-    askxSkillRegistrySchema.parse(JSON.parse(content))
-    return { path, content, hash: stableHash(content), modifiedAt: information.mtimeMs }
+    const registryDirectory = basename(path) === 'skills.json' ? dirname(path) : path
+    const information = await lstat(registryDirectory)
+    if (!information.isDirectory() || information.isSymbolicLink()) return null
+    const registry = askxSkillRegistrySchema.parse(JSON.parse(await readFile(join(registryDirectory, 'skills.json'), 'utf8')))
+    return { path: registryDirectory, hash: await hashRegistryDirectory(registryDirectory), revision: registry.revision, modifiedAt: information.mtimeMs }
   } catch {
     return null
   }
@@ -149,7 +170,7 @@ async function collectBackupRegistrySnapshots(root: string, depth = 0): Promise<
 
 /** 优先读取当前 Registry，否则选择最新的有效 AskX 备份。 */
 async function findRecoverableRegistry(dataDir: string): Promise<RegistrySnapshot | null> {
-  const current = await readRegistrySnapshot(join(dataDir, 'skills', ASKX_SKILL_MANAGER_NAME, 'registry', 'skills.json'))
+  const current = await readRegistrySnapshot(join(dataDir, 'skills', ASKX_SKILL_MANAGER_NAME, 'registry'))
   if (current) return current
   const snapshots = await collectBackupRegistrySnapshots(join(dataDir, 'backups'))
   return snapshots.sort((left, right) => right.modifiedAt - left.modifiedAt)[0] ?? null
@@ -210,11 +231,11 @@ export async function installBuiltinSkillManager(stagingRoot: string): Promise<M
   const source = resolveBuiltinSkillManagerPath()
   const target = join(stagingRoot, ASKX_SKILL_MANAGER_NAME)
   const temporary = join(stagingRoot, `.${ASKX_SKILL_MANAGER_NAME}.${randomUUID()}.staging`)
-  const currentRegistry = join(target, 'registry', 'skills.json')
+  const currentRegistry = join(target, 'registry')
   await cp(source, temporary, { recursive: true, preserveTimestamps: true })
   if (await pathExists(currentRegistry)) {
-    await mkdir(join(temporary, 'registry'), { recursive: true, mode: 0o700 })
-    await cp(currentRegistry, join(temporary, 'registry', 'skills.json'), { preserveTimestamps: true })
+    await rm(join(temporary, 'registry'), { recursive: true, force: true })
+    await cp(currentRegistry, join(temporary, 'registry'), { recursive: true, preserveTimestamps: true, filter: sourcePath => basename(sourcePath) !== 'skills.lock' })
   }
   if (await pathExists(target)) await rm(target, { recursive: true, force: true })
   await rename(temporary, target)
@@ -255,7 +276,7 @@ export async function createSystemSkillRepairPlan(manifestStore: SkillsManifestS
     ...(inspection.contentHash ? { currentContentHash: inspection.contentHash } : {}),
     builtinBusinessContentHash: builtin.businessContentHash,
     preserveRegistry: Boolean(registry),
-    ...(registry ? { registrySourcePath: registry.path, registrySourceHash: registry.hash } : {}),
+    ...(registry ? { registrySourcePath: registry.path, registrySourceHash: registry.hash, registryRevision: registry.revision } : {}),
   }
   return { ...unsigned, hash: stableHash(unsigned) }
 }
@@ -278,14 +299,18 @@ export async function applySystemSkillRepairPlan(
   const canonicalRoot = join(manifestStore.dataDir, 'skills')
   const target = join(canonicalRoot, ASKX_SKILL_MANAGER_NAME)
   const backup = join(manifestStore.dataDir, 'backups', 'skills', plan.id, `${ASKX_SKILL_MANAGER_NAME}.bak`)
+  const registryTemporary = join(manifestStore.dataDir, 'transactions', plan.id, 'registry.snapshot')
   await mkdir(canonicalRoot, { recursive: true, mode: 0o700 })
   let moved = false
   let registrySnapshot: RegistrySnapshot | null = null
   try {
     if (plan.preserveRegistry) {
-      if (!plan.registrySourcePath || !plan.registrySourceHash) throw new Error('修复计划缺少 Registry 恢复快照。')
+      if (!plan.registrySourcePath || !plan.registrySourceHash || plan.registryRevision === undefined) throw new Error('修复计划缺少 Registry 数据快照。')
       registrySnapshot = await readRegistrySnapshot(plan.registrySourcePath)
-      if (!registrySnapshot || registrySnapshot.hash !== plan.registrySourceHash) throw new Error('Registry 恢复快照已经变化，请重新生成计划。')
+      if (!registrySnapshot || registrySnapshot.hash !== plan.registrySourceHash || registrySnapshot.revision !== plan.registryRevision) throw new Error('Registry 数据已经变化，请重新生成计划。')
+      await mkdir(dirname(registryTemporary), { recursive: true, mode: 0o700 })
+      await cp(registrySnapshot.path, registryTemporary, { recursive: true, preserveTimestamps: true, filter: sourcePath => basename(sourcePath) !== 'skills.lock' })
+      if (await hashRegistryDirectory(registryTemporary) !== registrySnapshot.hash) throw new Error('Registry 数据快照校验失败。')
     }
     if (await pathExists(target)) {
       await mkdir(dirname(backup), { recursive: true, mode: 0o700 })
@@ -293,7 +318,11 @@ export async function applySystemSkillRepairPlan(
       moved = true
     }
     await cp(resolveBuiltinSkillManagerPath(), target, { recursive: true, preserveTimestamps: true })
-    if (registrySnapshot) await writeFile(join(target, 'registry', 'skills.json'), registrySnapshot.content, { encoding: 'utf8', mode: 0o600 })
+    if (registrySnapshot) {
+      await rm(join(target, 'registry'), { recursive: true, force: true })
+      await cp(registryTemporary, join(target, 'registry'), { recursive: true, preserveTimestamps: true })
+      if (await hashRegistryDirectory(join(target, 'registry')) !== registrySnapshot.hash) throw new Error('修复后的 Registry 数据校验失败。')
+    }
     const fingerprint = await fingerprintManagedSkill(target)
     const metadata = await inspectSkillManagerMetadata(target, fingerprint.businessContentHash)
     if (!metadata.metadata || metadata.state !== 'askx-managed') throw new Error('修复后的系统 Skill 校验失败。')
@@ -319,6 +348,7 @@ export async function applySystemSkillRepairPlan(
       skills: [...manifest.skills.filter((skill) => skill.kind !== 'system'), record],
     }, manifest.revision)
     if (moved) await rm(backup, { recursive: true, force: true })
+    await rm(dirname(registryTemporary), { recursive: true, force: true })
     return {
       id: randomUUID(),
       planHash: plan.hash,
@@ -331,6 +361,7 @@ export async function applySystemSkillRepairPlan(
   } catch (error) {
     await rm(target, { recursive: true, force: true })
     if (moved && await pathExists(backup)) await rename(backup, target)
+    await rm(dirname(registryTemporary), { recursive: true, force: true })
     throw error
   }
 }

@@ -497,7 +497,7 @@
     "scopeMigrationFailed": "The Skill scope migration failed. Original content was preserved.",
     "systemRepairTitle": "Repair AskX Skill Manager",
     "systemRepairDescription": "The built-in system Skill is missing, corrupt, or outdated. Version updates, usage, and sync statistics remain unavailable until repaired.",
-    "systemRepairPreserve": "The current Registry is valid and its versions, usage, and sync statistics will be preserved.",
+    "systemRepairPreserve": "The current Registry data directory is valid. Repair updates only rules and stable scripts while preserving versions, usage, target status, and all other stored data.",
     "systemRepairUsageWarning": "No valid Registry was found, so previous usage and sync statistics cannot be restored.",
     "systemRepairQuickAction": "Repair now",
     "systemRepairAction": "Confirm repair",

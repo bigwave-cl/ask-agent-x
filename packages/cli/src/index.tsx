@@ -1130,6 +1130,7 @@ function SystemSkillRepairPlanView({ plan, locale }: { plan: SystemSkillRepairPl
     <Frame title={t(locale, 'managerRepairPlan')}>
       <Text>{t(locale, 'systemHealth')}  <Text color="yellow">{plan.health}</Text></Text>
       <Text>{t(locale, 'preserveRegistry')}  <Text color={plan.preserveRegistry ? 'green' : 'yellow'}>{plan.preserveRegistry ? 'YES' : 'NO'}</Text></Text>
+      {plan.registryRevision !== undefined && <Text>{t(locale, 'registryRevision')}  #{plan.registryRevision}</Text>}
       <Text dimColor>{t(locale, 'planHash')}  {plan.hash}</Text>
     </Frame>
   )

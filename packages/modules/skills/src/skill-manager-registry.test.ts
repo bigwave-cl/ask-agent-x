@@ -92,4 +92,67 @@ describe('Skill Manager Registry', () => {
     await applySystemSkillRepairPlan(manifestStore, plan, { planHash: plan.hash, confirmedAt: new Date().toISOString() })
     expect((await new SkillManagerRegistryStore(store.dataDir).stats()).totalUsage).toBe(7)
   })
+
+  it('系统 Skill 修复时原样保留整个 Registry 数据目录', async () => {
+    const { store, systemSkill } = await createStore()
+    const current = await store.read()
+    await store.write({
+      ...current!,
+      skills: {
+        skill_demo: {
+          current_name: 'demo', aliases: ['demo-old'], version: '26.813.1', content_sha256: 'c'.repeat(64), usage_count: 12,
+          last_used_at: '2026-08-13T00:00:00.000Z',
+          targets: { 'platform:claude': { kind: 'platform', path: '/tmp/claude', status: 'linked' } },
+        },
+      },
+    }, current!.revision)
+    const registryDirectory = join(store.dataDir, 'skills', 'askx-skill-manager', 'registry')
+    await writeFile(join(registryDirectory, 'notes.json'), '{"preserve":true}\n')
+    const registryBefore = await readFile(join(registryDirectory, 'skills.json'), 'utf8')
+    const notesBefore = await readFile(join(registryDirectory, 'notes.json'), 'utf8')
+    const skillDocument = join(store.dataDir, 'skills', 'askx-skill-manager', 'SKILL.md')
+    await writeFile(skillDocument, `${await readFile(skillDocument, 'utf8')}\n规则漂移\n`)
+    const manifestStore = new SkillsManifestStore(store.dataDir)
+    await manifestStore.write({
+      version: 3,
+      revision: 0,
+      initializedAt: new Date().toISOString(),
+      lastScan: { scannedAt: new Date().toISOString(), fingerprint: 'fixture', platforms: ['claude'] },
+      skills: [systemSkill],
+      localSkills: [],
+      platformBindings: [],
+    }, 0)
+
+    const plan = await createSystemSkillRepairPlan(manifestStore)
+    expect(plan.registryRevision).toBe(JSON.parse(registryBefore).revision)
+    await applySystemSkillRepairPlan(manifestStore, plan, { planHash: plan.hash, confirmedAt: new Date().toISOString() })
+
+    expect(await readFile(join(registryDirectory, 'skills.json'), 'utf8')).toBe(registryBefore)
+    expect(await readFile(join(registryDirectory, 'notes.json'), 'utf8')).toBe(notesBefore)
+    expect((await new SkillManagerRegistryStore(store.dataDir).stats()).totalUsage).toBe(12)
+  })
+
+  it('修复计划生成后 Registry 变化时拒绝覆盖新统计数据', async () => {
+    const { store, systemSkill } = await createStore()
+    const skillDocument = join(store.dataDir, 'skills', 'askx-skill-manager', 'SKILL.md')
+    await writeFile(skillDocument, `${await readFile(skillDocument, 'utf8')}\n规则漂移\n`)
+    const manifestStore = new SkillsManifestStore(store.dataDir)
+    await manifestStore.write({
+      version: 3,
+      revision: 0,
+      initializedAt: new Date().toISOString(),
+      lastScan: { scannedAt: new Date().toISOString(), fingerprint: 'fixture', platforms: [] },
+      skills: [systemSkill],
+      localSkills: [],
+      platformBindings: [],
+    }, 0)
+    const plan = await createSystemSkillRepairPlan(manifestStore)
+    const current = await store.read()
+    await store.write({ ...current!, skills: {} }, current!.revision)
+
+    await expect(applySystemSkillRepairPlan(manifestStore, plan, {
+      planHash: plan.hash,
+      confirmedAt: new Date().toISOString(),
+    })).rejects.toThrow('Registry 数据已经变化')
+  })
 })

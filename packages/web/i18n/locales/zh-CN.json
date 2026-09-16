@@ -497,7 +497,7 @@
     "scopeMigrationFailed": "Skill 范围迁移失败，原内容保持不变。",
     "systemRepairTitle": "修复 AskX Skill Manager",
     "systemRepairDescription": "默认系统 Skill 缺失、损坏或版本过旧。修复前版本更新、usage 与同步统计不可用。",
-    "systemRepairPreserve": "现有 Registry 有效，修复时会保留版本、usage 和同步统计。",
+    "systemRepairPreserve": "现有 Registry 数据目录有效，修复只更新规则和稳定脚本，版本、usage、目标状态及其他存储数据均保持不变。",
     "systemRepairUsageWarning": "没有找到有效 Registry，修复后无法恢复原有 usage 与同步统计。",
     "systemRepairQuickAction": "一键修复",
     "systemRepairAction": "确认修复",
