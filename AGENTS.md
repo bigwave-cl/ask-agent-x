@@ -20,7 +20,7 @@
 | `askagent-x` | Commander + Ink CLI 与各 package 的命令编排 | [packages/cli/AGENTS.md](./packages/cli/AGENTS.md) |
 | `@askx/web` | Nuxt 本地 UI、会话边界、设置 API 和 UI 服务启动器 | [packages/web/AGENTS.md](./packages/web/AGENTS.md) |
 
-产品边界和未来里程碑见 [PLAN.md](./PLAN.md)，开发与运行命令见 [README.md](./README.md)。package 专属规则应写入对应 package 的 `AGENTS.md`，不要继续堆叠到根文件。
+开发与运行命令见 [README.md](./README.md)。package 专属规则应写入对应 package 的 `AGENTS.md`，不要继续堆叠到根文件。
 
 ## Workspace 约定
 
