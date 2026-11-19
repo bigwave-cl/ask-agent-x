@@ -7,7 +7,11 @@
     "askx": "./dist/index.js"
   },
   "exports": "./dist/index.js",
-  "files": ["dist", "scripts/lifecycle.mjs", "README.md"],
+  "files": [
+    "dist",
+    "scripts/lifecycle.mjs",
+    "README.md"
+  ],
   "engines": {
     "node": ">=22"
   },
@@ -19,7 +23,14 @@
   "bugs": {
     "url": "https://github.com/bigwave-cl/ask-agent-x/issues"
   },
-  "keywords": ["agent", "skills", "codex", "claude", "cursor", "cli"],
+  "keywords": [
+    "agent",
+    "skills",
+    "codex",
+    "claude",
+    "cursor",
+    "cli"
+  ],
   "scripts": {
     "build": "tsup && node scripts/prepare-package.mjs",
     "dev": "tsup src/index.tsx --format esm --dts --watch",
@@ -41,6 +52,7 @@
     "@askx/module-skills": "workspace:*",
     "@askx/platform-adapters": "workspace:*",
     "@askx/web": "workspace:*",
-    "@types/react": "^19.2.17"
+    "@types/react": "^19.2.17",
+    "@askx/module-feishu-bridge": "workspace:*"
   }
 }

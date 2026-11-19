@@ -50,6 +50,7 @@ import { resolveConfirmationInput } from './confirmation-key.js'
 import { resolveSkillsScanInvocationMode } from './skills-scan-mode.js'
 import { createUninstallInvocation, packageManagerFromInstallPath, readInstallRecord } from './install-manager.js'
 import { terminalLink, terminalUrl } from './terminal-link.js'
+import { registerBridgeCommands } from './bridge-command.js'
 
 const accent = '#d7ff3f'
 const settingsStore = new SettingsStore(defaultContext().dataDir)
@@ -1996,6 +1997,8 @@ ui
     if (await printDevelopmentToken()) return
     throw new Error(t(activeLocale, 'noToken'))
   })
+
+registerBridgeCommands(program, settingsStore, activeLocale)
 
 program
   .command('uninstall')
