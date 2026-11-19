@@ -1,0 +1,65 @@
+{
+  "name": "@askx/module-feishu-bridge",
+  "version": "26.812.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./catalog-actions": {
+      "types": "./dist/catalog-actions.d.ts",
+      "import": "./dist/catalog-actions.js"
+    },
+    ".": {
+      "types": "./dist/bridge-module.d.ts",
+      "import": "./dist/bridge-module.js"
+    },
+    "./bridge-runtime": {
+      "types": "./dist/bridge-runtime.d.ts",
+      "import": "./dist/bridge-runtime.js"
+    },
+    "./service-manager": {
+      "types": "./dist/service-manager.d.ts",
+      "import": "./dist/service-manager.js"
+    },
+    "./work-time": {
+      "types": "./dist/work-time.d.ts",
+      "import": "./dist/work-time.js"
+    },
+    "./state": {
+      "types": "./dist/state.d.ts",
+      "import": "./dist/state.js"
+    },
+    "./thread-service": {
+      "types": "./dist/thread-service.d.ts",
+      "import": "./dist/thread-service.js"
+    },
+    "./thread-session": {
+      "types": "./dist/thread-session.d.ts",
+      "import": "./dist/thread-session.js"
+    },
+    "./project-service": {
+      "types": "./dist/project-service.d.ts",
+      "import": "./dist/project-service.js"
+    },
+    "./group-service": {
+      "types": "./dist/group-service.d.ts",
+      "import": "./dist/group-service.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/bridge-module.ts src/bridge-runtime.ts src/service-manager.ts src/work-time.ts src/state.ts src/thread-service.ts src/thread-session.ts src/project-service.ts src/group-service.ts src/catalog-actions.ts src/runtime-entry.ts --format esm --dts --clean && rm -rf dist/runtime && cp -R runtime dist/runtime",
+    "dev": "tsup src/bridge-module.ts src/bridge-runtime.ts src/service-manager.ts src/work-time.ts src/state.ts src/thread-service.ts src/thread-session.ts src/project-service.ts src/group-service.ts src/catalog-actions.ts src/runtime-entry.ts --format esm --dts --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@askx/core": "workspace:*",
+    "@larksuiteoapi/node-sdk": "1.62.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.2"
+  }
+}
