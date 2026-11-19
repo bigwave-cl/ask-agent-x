@@ -7,11 +7,31 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./bridge-relations": {
+      "types": "./dist/bridge-relations.d.ts",
+      "import": "./dist/bridge-relations.js"
+    },
+    "./bridge-credentials": {
+      "types": "./dist/bridge-credentials.d.ts",
+      "import": "./dist/bridge-credentials.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js"
+    },
+    "./bridge-settings": {
+      "types": "./dist/bridge-settings.d.ts",
+      "import": "./dist/bridge-settings.js"
+    },
+    "./bridge-thread-lock": {
+      "types": "./dist/bridge-thread-lock.d.ts",
+      "import": "./dist/bridge-thread-lock.js"
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean",
-    "dev": "tsup src/index.ts --format esm --dts --watch",
+    "build": "tsup src/index.ts src/bridge-relations.ts src/bridge-credentials.ts src/config.ts src/bridge-settings.ts src/bridge-thread-lock.ts --format esm --dts --clean",
+    "dev": "tsup src/index.ts src/bridge-relations.ts src/bridge-credentials.ts src/config.ts src/bridge-settings.ts src/bridge-thread-lock.ts --format esm --dts --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

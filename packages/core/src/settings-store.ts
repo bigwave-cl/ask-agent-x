@@ -70,6 +70,14 @@ export class SettingsStore {
           ...current.skills,
           ...parsedPatch.skills,
         },
+        bridge: {
+          ...current.bridge,
+          ...parsedPatch.bridge,
+          service: { ...current.bridge.service, ...parsedPatch.bridge?.service },
+          workTime: { ...current.bridge.workTime, ...parsedPatch.bridge?.workTime },
+          paths: { ...current.bridge.paths, ...parsedPatch.bridge?.paths },
+          feishu: { ...current.bridge.feishu, ...parsedPatch.bridge?.feishu },
+        },
       })
       const temporaryPath = `${this.path}.${randomUUID()}.tmp`
       await writeFile(temporaryPath, `${JSON.stringify(next, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { SettingsConflictError, SettingsStore } from './settings-store.js'
+import { configSchema } from './config.js'
 
 describe('SettingsStore', () => {
   it('returns safe defaults before the first write', async () => {
@@ -16,6 +17,33 @@ describe('SettingsStore', () => {
     expect(settings.themeColor).toBe('cyan')
     expect(settings.skills.backupBeforeLink).toBe(true)
     expect(settings.skills.platforms).toEqual([])
+    expect(settings.bridge.workTime.window).toEqual({ start: '09:00', end: '19:00' })
+    expect(settings.bridge.workTime.mode).toBe('windows')
+  })
+
+  it('deep merges bridge patches without resetting sibling settings', async () => {
+    const store = new SettingsStore(await mkdtemp(join(tmpdir(), 'askx-settings-')))
+
+    const updated = await store.update({ bridge: { workTime: { mode: 'always' } } }, { source: 'web', expectedRevision: 0 })
+
+    expect(updated.bridge.workTime.mode).toBe('always')
+    expect(updated.bridge.workTime.window).toEqual({ start: '09:00', end: '19:00' })
+    expect(updated.bridge.paths.codexBinary).toBe('codex')
+    expect(updated.bridge.paths).not.toHaveProperty('workspace')
+  })
+
+  it('rejects invalid bridge timezone and overlapping windows', () => {
+    const base = {
+      version: 1 as const,
+      revision: 0,
+      updatedAt: new Date(0).toISOString(),
+      updatedBy: 'system' as const,
+      locale: 'zh-CN' as const,
+      themeColor: 'cyan' as const,
+      skills: { backupBeforeLink: true, platforms: [] },
+    }
+    expect(() => configSchema.parse({ ...base, bridge: { ...defaultBridgeForTest(), workTime: { mode: 'windows', outsideWindow: 'stop-service' } } })).toThrow()
+    expect(configSchema.parse({ ...base, bridge: { ...defaultBridgeForTest(), workTime: { mode: 'windows', timezone: 'Not/AZone', windows: [{ start: '09:00', end: '12:00' }, { start: '11:00', end: '13:00' }], outsideWindow: 'stop-service' } } }).bridge.workTime.window).toEqual({ start: '09:00', end: '12:00' })
   })
 
   it('persists an atomic revisioned update', async () => {
@@ -83,3 +111,13 @@ describe('SettingsStore', () => {
       .rejects.toBeInstanceOf(SettingsConflictError)
   })
 })
+
+function defaultBridgeForTest() {
+  return {
+    enabled: false,
+    service: { launchdLabel: 'com.askagentx.feishu-bridge', host: '127.0.0.1' as const, port: 38477, autoStart: true, gracefulStopMs: 30000 },
+    workTime: { mode: 'windows' as const, window: { start: '09:00', end: '19:00' }, outsideWindow: 'stop-service' as const },
+    paths: { workspace: '/tmp/workspace', openClawConfig: '/tmp/openclaw.json', codexBinary: 'codex', appExecutable: '/Applications/ChatGPT.app/Contents/MacOS/ChatGPT', stateDir: '/tmp/bridge', projectRegistry: '/tmp/project.json', groupRegistry: '/tmp/group.json' },
+    feishu: { botAppId: 'from-openclaw', chats: [] },
+  }
+}
