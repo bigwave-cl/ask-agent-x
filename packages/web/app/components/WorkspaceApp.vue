@@ -10,7 +10,7 @@ import { defineComponent, h } from 'vue'
 
 type FeedbackKey = 'feedbackConnecting' | 'feedbackConnected' | 'feedbackSynced' | 'feedbackExternal' | 'feedbackMinPlatform' | 'feedbackUnsaved' | 'feedbackSaved' | 'feedbackReadFailed' | 'feedbackSaveFailed' | 'feedbackConflict' | 'feedbackReset'
 type AuthState = 'checking' | 'authenticated' | 'unauthenticated'
-type WorkspaceView = 'home' | 'skills-x' | 'theme' | 'settings'
+type WorkspaceView = 'home' | 'skills-x' | 'theme' | 'settings' | 'bridge'
 type VisualTheme = 'light' | 'dark' | 'system'
 
 const props = withDefaults(defineProps<{
@@ -260,7 +260,7 @@ function openFactoryResetConfirm(): void {
         okVariant: 'destructive',
         okDisabled: true,
         contentClass: 'sm:max-w-lg',
-        onOk: async (done) => {
+        onOk: async done => {
             if (!settings.value || confirmation.value !== copy.value.factoryResetPhrase) return
             resetting.value = true
             try {
@@ -516,6 +516,106 @@ onBeforeUnmount(() => {
             as="main"
             class="grid min-h-svh content-start gap-8 pb-8 pt-20 lg:pb-10 lg:pt-16"
         >
+            <section
+                id="theme"
+                class="grid gap-6 rounded-2xl border bg-card p-5 shadow-sm sm:p-6"
+            >
+                <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                    <div class="max-w-3xl">
+                        <CsWorkspacePageNav
+                            icon="askx-status:star"
+                            :label="copy.themePreviewOnly"
+                        />
+                        <h1 class="text-balance text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">
+                            {{ copy.themePageTitle }}
+                        </h1>
+                        <p class="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
+                            {{ copy.themePageDescription }}
+                        </p>
+                    </div>
+                    <Button
+                        :size="40"
+                        :disabled="!dirty || saving || loading"
+                        data-testid="save-theme"
+                        @click="saveSettings"
+                    >
+                        <Icon
+                            v-if="saving"
+                            name="askx-actions:refresh"
+                            class="animate-spin"
+                        /><Icon
+                            v-else
+                            name="askx-actions:confirm"
+                        />{{ saving ? copy.saving : copy.save }}
+                    </Button>
+                </div>
+                <div>
+                    <h2 class="text-sm font-medium">
+                        {{ copy.themeColorTitle }}
+                    </h2>
+                    <p class="mt-1 text-xs text-muted-foreground">
+                        {{ copy.themeColorDescription }}
+                    </p>
+                    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                        <button
+                            type="button"
+                            class="flex items-center gap-4 rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-lg"
+                            :class="draft.themeColor === 'cyan' ? 'border-primary ring-2 ring-primary/20' : ''"
+                            data-testid="theme-color-cyan"
+                            @click="setThemeColor('cyan')"
+                        >
+                            <span class="grid size-12 shrink-0 place-items-center rounded-xl bg-[#2fbdc7]/15"><span class="size-6 rounded-full bg-[#2fbdc7] shadow-[0_0_24px_rgba(47,189,199,.45)]" /></span>
+                            <span><strong class="block text-sm">{{ copy.themeCyan }}</strong><small class="mt-1 block text-xs leading-5 text-muted-foreground">{{ copy.themeCyanDescription }}</small></span>
+                            <Icon
+                                v-if="draft.themeColor === 'cyan'"
+                                name="askx-status:check"
+                                class="ml-auto size-4 text-primary"
+                            />
+                        </button>
+                        <button
+                            type="button"
+                            class="flex items-center gap-4 rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-lg"
+                            :class="draft.themeColor === 'rose' ? 'border-primary ring-2 ring-primary/20' : ''"
+                            data-testid="theme-color-rose"
+                            @click="setThemeColor('rose')"
+                        >
+                            <span class="grid size-12 shrink-0 place-items-center rounded-xl bg-[#e7659f]/15"><span class="size-6 rounded-full bg-[#e7659f] shadow-[0_0_24px_rgba(231,101,159,.45)]" /></span>
+                            <span><strong class="block text-sm">{{ copy.themeRose }}</strong><small class="mt-1 block text-xs leading-5 text-muted-foreground">{{ copy.themeRoseDescription }}</small></span>
+                            <Icon
+                                v-if="draft.themeColor === 'rose'"
+                                name="askx-status:check"
+                                class="ml-auto size-4 text-primary"
+                            />
+                        </button>
+                    </div>
+                </div>
+                <div class="grid gap-4 md:grid-cols-3">
+                    <button
+                        type="button"
+                        class="group overflow-hidden rounded-2xl border p-3 text-left transition hover:-translate-y-1 hover:border-primary/50 hover:shadow-xl"
+                        :class="visualTheme === 'light' ? 'ring-2 ring-primary/40' : ''"
+                        @click="setVisualTheme('light')"
+                    >
+                        <span class="block h-28 rounded-xl border bg-[#f5f6f8] p-4"><span class="mb-6 block h-3 w-20 rounded-full bg-primary" /><span class="block h-10 rounded-xl border border-black/10 bg-white shadow-sm" /></span><span class="block px-2 pb-1 pt-3"><strong class="block text-sm">{{ copy.themeMist }}</strong><small class="mt-1 block leading-5 text-muted-foreground">{{ copy.themeMistDescription }}</small></span>
+                    </button>
+                    <button
+                        type="button"
+                        class="group overflow-hidden rounded-2xl border p-3 text-left transition hover:-translate-y-1 hover:border-primary/50 hover:shadow-xl"
+                        :class="visualTheme === 'dark' ? 'ring-2 ring-primary/40' : ''"
+                        @click="setVisualTheme('dark')"
+                    >
+                        <span class="block h-28 rounded-xl border border-white/10 bg-[#08090b] p-4"><span class="mb-6 block h-3 w-20 rounded-full bg-primary" /><span class="block h-10 rounded-xl border border-white/10 bg-[#16171a] shadow-sm" /></span><span class="block px-2 pb-1 pt-3"><strong class="block text-sm">{{ copy.themeNight }}</strong><small class="mt-1 block leading-5 text-muted-foreground">{{ copy.themeNightDescription }}</small></span>
+                    </button>
+                    <button
+                        type="button"
+                        class="group overflow-hidden rounded-2xl border p-3 text-left transition hover:-translate-y-1 hover:border-primary/50 hover:shadow-xl"
+                        :class="visualTheme === 'system' ? 'ring-2 ring-primary/40' : ''"
+                        @click="setVisualTheme('system')"
+                    >
+                        <span class="grid h-28 grid-cols-2 overflow-hidden rounded-xl border"><span class="bg-[#f5f6f8] p-4"><span class="block h-3 rounded-full bg-primary" /></span><span class="bg-[#08090b] p-4"><span class="block h-3 rounded-full bg-primary" /></span></span><span class="block px-2 pb-1 pt-3"><strong class="block text-sm">{{ copy.themeSystem }}</strong><small class="mt-1 block leading-5 text-muted-foreground">{{ copy.themeSystemDescription }}</small></span>
+                    </button>
+                </div>
+            </section>
             <section class="max-w-3xl">
                 <CsWorkspacePageNav
                     icon="askx-objects:language"

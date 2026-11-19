@@ -1,9 +1,6 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'workspace' })
-const { t } = useI18n()
-useHead(() => ({ title: t('meta.theme') }))
-</script>
+const localePath = useLocalePath()
 
-<template>
-    <WorkspaceApp view="theme" />
-</template>
+await navigateTo(`${localePath('/settings')}#theme`, { redirectCode: 308 })
+</script>

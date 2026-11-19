@@ -4,6 +4,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 
 const route = useRoute()
 const localePath = useLocalePath()
+const isBridgePage = computed(() => route.path === localePath('/bridge') || route.path.endsWith('/bridge'))
 const commonMessages = useMessageSection('common')
 const copy = computed(() => ({
     ...commonMessages.value,
@@ -19,7 +20,10 @@ watch(
 
 <template>
     <div class="relative h-svh overflow-hidden bg-background text-foreground">
-        <div class="pointer-events-none fixed inset-x-0 bottom-4 z-40 sm:bottom-5">
+        <div
+            v-if="!isBridgePage"
+            class="pointer-events-none fixed inset-x-0 bottom-4 z-40 sm:bottom-5"
+        >
             <CsWorkspaceContent class="flex justify-end">
                 <CsWorkspaceNavigation />
             </CsWorkspaceContent>
@@ -36,7 +40,7 @@ watch(
                 <slot />
 
                 <footer
-                    v-if="route.path !== localePath('/')"
+                    v-if="route.path !== localePath('/') && !isBridgePage"
                     data-testid="workspace-footer"
                     class="border-t bg-card/50"
                 >

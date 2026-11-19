@@ -2,7 +2,7 @@
 import type { AskXThemeColor } from '@askx/core'
 import type { AskxIconName } from '@/lib/iconCatalog'
 
-type PortalDestination = 'skills-x' | 'theme' | 'settings'
+type PortalDestination = 'skills-x' | 'bridge' | 'settings'
 
 const props = defineProps<{
     enabledCount: number
@@ -21,7 +21,7 @@ const particleColor = computed(() => props.themeColor === 'rose' ? '#e7659f' : '
 
 const portalCardTone: Record<PortalDestination, string> = {
     'skills-x': '[--portal-accent:var(--ds-color-brand-default)] min-[801px]:rotate-[-0.7deg]',
-    theme: '[--portal-accent:var(--chart-3)] min-[801px]:translate-y-3 min-[801px]:rotate-[0.8deg]',
+    bridge: '[--portal-accent:var(--chart-3)] min-[801px]:translate-y-3 min-[801px]:rotate-[0.8deg]',
     settings: '[--portal-accent:var(--chart-4)] min-[801px]:rotate-[-0.2deg]',
 }
 
@@ -42,12 +42,12 @@ const portals = computed<Array<{
         icon: 'askx-objects:agent',
     },
     {
-        id: 'theme',
+        id: 'bridge',
         index: '02',
-        title: copy.value.themeTitle,
-        description: copy.value.themeDescription,
-        meta: copy.value.themeMeta,
-        icon: 'askx-objects:palette',
+        title: copy.value.bridgeTitle,
+        description: copy.value.bridgeDescription,
+        meta: copy.value.bridgeMeta,
+        icon: 'askx-objects:chat',
     },
     {
         id: 'settings',
