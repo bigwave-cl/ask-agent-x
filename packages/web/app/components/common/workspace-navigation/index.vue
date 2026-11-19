@@ -32,7 +32,7 @@ interface WorkspaceNavigationItem {
     /** 导航序号。 */
     index: string
     /** 目标业务路径。 */
-    path: '/' | '/skills-x' | '/theme' | '/settings'
+    path: '/' | '/skills-x' | '/settings' | '/bridge'
     /** 本地图标名称。 */
     icon: AskxIconName
     /** 标题翻译键。 */
@@ -71,10 +71,10 @@ const navigationItems: WorkspaceNavigationItem[] = [
     },
     {
         index: '02',
-        path: '/theme',
-        icon: 'askx-objects:palette',
-        titleKey: 'common.themeNav',
-        descriptionKey: 'layout.themeDescription',
+        path: '/bridge',
+        icon: 'askx-objects:chat',
+        titleKey: 'common.bridgeNav',
+        descriptionKey: 'layout.bridgeDescription',
     },
     {
         index: '03',
