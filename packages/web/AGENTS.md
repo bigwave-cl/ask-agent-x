@@ -24,6 +24,7 @@
 - 项目自有组件统一通过 `@nuxt/icon` 使用 `askx-*` 本地 SVG 集合；`@lucide/vue` 仅允许 shadcn 管理的 `app/components/ui/**` 使用。新增图标必须同步维护 `app/lib/iconCatalog.ts`，不得启用 Iconify 公网回退。
 - 保持当前 shadcn-vue CLI `init` 生成的 Tailwind 基础导入（`tw-animate-css` 与 `shadcn-vue/tailwind.css`）；不要把上游 variants、keyframes 和 utilities 复制进项目 CSS。
 - 颜色从 `app/assets/css/main.css` 的 PG DS/shadcn token 获取，不在业务组件中扩散无语义品牌色。
+- 新增或修改的长内容和独立面板滚动区域必须复用 `app/components/ui/scroll-area` 的 `ScrollArea`；业务组件不得新增直接用 `overflow-y-auto` 代替滚动组件的实现。Flex 布局中的滚动区域需要明确 `min-h-0`、`flex-1` 或有界高度，避免内容高度撑开容器或形成无意的嵌套滚动。
 - Web 工作台用户文案统一通过 `@nuxtjs/i18n` 管理，并同时提供 `zh-CN` 和 `en`；公开 Demo 可以生成 locale 路由，但固定使用中文静态文案，不解析翻译资源，也不提供独立语言切换入口。禁止在组件内新增双语 `messages` 对象或独立 locale 状态。CLI/Web 共享的偏好必须写回 Core 配置。
 - Three.js、复杂动画和其他大体积浏览器能力使用客户端懒加载；页面隐藏或 `prefers-reduced-motion` 时暂停/降级。
 - 代码高亮必须通过单例 Web Worker 按语言异步加载；禁止在入口、SSR 或 Vue 主线程中同步导入完整语法集合。编辑器保持 textarea 为数据源，高亮层只负责展示，并持续验证 Worker 数量、输入帧耗时和释放后的内存回收。

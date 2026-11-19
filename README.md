@@ -47,7 +47,27 @@ pnpm askx skills usage record my-skill
 pnpm askx skills manager repair
 pnpm askx ui
 pnpm askx ui token
+pnpm askx bridge service status --json
+pnpm askx bridge config show --json
+pnpm askx bridge work-time show --json
+# 写操作需要显式确认
+pnpm askx bridge work-time set --mode windows --window 09:00-19:00 --yes
+pnpm askx bridge work-time set --mode always --yes
+pnpm askx bridge service start --yes
+pnpm askx bridge service stop --yes
+pnpm askx bridge service restart --yes
+pnpm askx bridge service update --yes
 ```
+
+桥接服务是与 Skills 平行的独立模块。默认工作时间为 `Asia/Shanghai` 的 `09:00-19:00`，窗口外停止 Feishu/Codex runtime；可以通过 `--window` 重复传入多个窗口，或使用 `--mode always` 全天运行。`askx ui start` 启动的本地 Web 工作台提供 `/bridge` 控制页，CLI 与 Web 共用 `~/.askx/config.json` 的 revision、锁和配置 schema。
+
+项目与会话使用 Codex App Server 的实验性项目 API（`project/list`、`project/create`、`project/read`），需要支持这些 API 的 Codex 版本。thread 列表接纳协议来源为 `appServer` 的会话；兼容当前 Codex 将 App Server 会话标为 `vscode` 的行为，仅接纳 originator 为 `askagent_x_bridge_chat` 或 `feishu_codex_bridge` 的桥接会话。项目、thread 列表和历史在桥接停止时仍可读取；新建 thread 和发起 turn 必须处于服务运行状态及工作时间窗口内。项目以现有目录的真实路径为身份，多 root 项目展开为目录选项；不再使用本地项目 registry、cwd 重绑定或默认 workspace。新增项目只登记现有目录，不创建目录、切换分支或修改 Git；创建 thread 必须先明确选择项目，继续旧 thread 始终核验其 Codex 原始 cwd。
+
+Projects and threads use the experimental Codex App Server project APIs (`project/list`, `project/create`, and `project/read`). A compatible Codex version is required. Thread lists accept the `appServer` protocol source. For current Codex versions that label App Server sessions as `vscode`, they also accept sessions whose originator is `askagent_x_bridge_chat` or `feishu_codex_bridge`. Projects, thread lists, and thread history remain readable while the bridge is stopped. Creating threads and starting turns require the running service and an active work window. Existing real directory paths identify projects, with each root exposed separately. There is no local project registry, cwd rebinding, or default workspace. Registering a project does not create directories or change Git state. New threads require an explicit project, and existing threads retain their original Codex cwd.
+
+Feishu 凭据来源可选本机 OpenClaw（`~/.openclaw/openclaw.json`），或自定义凭据并存入本机 Keychain；AskAgent X 配置只保存应用 ID 和凭据引用，不保存 App Secret，也不将其写入日志。群、项目和可选 thread 的多对多关联保存在桥接状态目录的 `relations.json`。配置的管理员通过私聊选择关联；待选操作 15 分钟后过期，重启时丢弃。同一 thread 可由多个群共享上下文；跨群请求按 thread 串行执行，回复仍发送到请求来源群。
+
+Feishu credentials can come from local OpenClaw (`~/.openclaw/openclaw.json`) or custom credentials stored in the local Keychain. AskAgent X configuration stores only the app ID and credential reference; App Secrets are excluded from configuration and logs. Many-to-many associations between groups, projects, and optional threads are stored in `relations.json` under the bridge state directory. The configured administrator selects associations through direct messages. Pending selections expire after 15 minutes and are discarded on restart. Multiple groups can share the context of one thread; requests are serialized per thread, and replies return to the originating group.
 
 ## 本地开发
 
@@ -190,6 +210,7 @@ packages/
 ├── core/                 # 安全契约、计划签名、配置与模块注册
 ├── platform-adapters/    # Codex / Claude / Cursor 检测
 ├── modules/skills/       # Skills 拓扑扫描与模块入口
+├── modules/feishu-bridge/ # Feishu/Codex 桥接、工作时间与服务生命周期
 ├── cli/                  # Commander + Ink 命令行
 └── web/                  # Nuxt 4 + shadcn-vue + Tailwind CSS v4 本地界面
 ```
