@@ -307,13 +307,19 @@ const lookStyle = computed(() => ({
 </template>
 
 <style scoped>
+[data-expression] {
+    /* 表情图形不经过整图阴影滤镜，避免低像素密度下眼睛被重复采样。 */
+    filter: none;
+}
+
 .brand-look {
     transform-origin: 24px 24px;
     transition: transform 140ms ease-out;
 }
 
 [data-expression] .brand-look {
-    transform: perspective(220px) rotateY(calc(var(--look-x) * 8deg)) rotateX(calc(var(--look-y) * -5deg)) rotate(calc(var(--look-x) * 1.2deg));
+    /* 使用二维姿态，避免 SVG 内部三维合成在放大后使眼睛模糊。 */
+    transform: rotate(calc(var(--look-x) * 1.2deg)) skewY(calc(var(--look-x) * 2deg)) skewX(calc(var(--look-y) * -1.5deg));
 }
 
 .face-look {
