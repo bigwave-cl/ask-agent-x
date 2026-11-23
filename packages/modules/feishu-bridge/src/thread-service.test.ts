@@ -54,7 +54,7 @@ describe('current Codex paginated protocol', () => {
       return method === 'thread/read' ? { thread: { id: 't', cwd: '/tmp' } } : { data: [{ turnId: 'turn', item: { type: 'userMessage', id: 'item', content: [{ type: 'text', text: 'hello' }] } }], nextCursor: 'page2' }
     } })
     expect(await service.readThread('t', 'page1', 1)).toMatchObject({ messages: [{ id: 'item', role: 'user', content: 'hello', turnId: 'turn' }], nextCursor: 'page2' })
-    expect(calls).toEqual([{ method: 'thread/read', params: { threadId: 't' } }, { method: 'thread/items/list', params: { threadId: 't', turnId: undefined, cursor: 'page1', limit: 1 } }])
+    expect(calls).toEqual([{ method: 'thread/read', params: { threadId: 't' } }, { method: 'thread/items/list', params: { threadId: 't', turnId: undefined, cursor: 'page1', limit: 1, sortDirection: 'desc' } }])
   })
 })
 

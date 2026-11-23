@@ -16,6 +16,9 @@ import { commandOf, isLocalDeletionRequest, parseMentionedMessage, referencedCon
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const configPath = process.env.ASKX_FEISHU_BRIDGE_CONFIG ?? path.join(root, "config.json");
 const config = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, "utf8")) : {};
+const codexHome = config.codexHome ?? path.join(os.homedir(), ".askx", "bridge", "codex-home");
+const authFile = config.authFile ?? path.join(os.homedir(), ".codex", "auth.json");
+const configFile = config.configFile ?? path.join(os.homedir(), ".codex", "config.toml");
 
 async function createFeishu() {
   const account = await resolveFeishuCredentials(config.feishu);
@@ -146,7 +149,14 @@ export class Bridge {
       try {
         incoming.route = await this.router.resolve(incoming, { fresh: command === "new" });
         if (this.closed) return;
-      } catch (error) { console.error(`[bridge] routing failed: ${error.message}`); return; }
+      } catch (error) {
+        console.error(`[bridge] routing failed: ${error.message}`);
+        // 路由条件不满足时也回复原消息，让群成员知道事件已被桥接接收。
+        await this.reply(incoming.messageId, `消息已收到，但当前群组还不能执行任务：${error.message}。请先在 AskX Relay 中绑定项目后重试。`, incoming.senderId).catch((replyError) => {
+          console.error(`[bridge] routing failure reply failed: ${replyError.message}`);
+        });
+        return;
+      }
     }
     const groupActive = this.activeGroups.get(incoming.chatId) ?? 0;
     const queued = this.pendingJobs.length > 0 || this.activeCount >= this.maxConcurrent ||
@@ -311,7 +321,12 @@ export class Bridge {
       if (job.threadId) this.activeThreads.delete(job.threadId);
       this.activeJobs.delete(incoming.messageId);
       if (command === "new" || command === "clear") this.resettingGroups.delete(incoming.chatId);
-      client.stop();
+      client.stop({ preserveNaming: true });
+      if (client.titleTasks?.size) {
+        this.backgroundClients ??= new Set();
+        this.backgroundClients.add(client);
+        void client.waitForTitles().finally(() => this.backgroundClients.delete(client));
+      }
       if (client === this.codex) this.primaryBusy = false;
       else this.parallelClients.delete(client);
       this.activeCount -= 1;
@@ -429,7 +444,13 @@ export class Bridge {
       }
       if (job.cancelRequested) throw new Error("Cancelled before Codex turn started");
       if (threadId) await lockAndVerify(threadId);
+      const { readFeishuProfile } = await import("../feishu-profile.js").catch(() => import("../src/feishu-profile.ts"));
+      // 资料查询并行启动，发送端最多等待一秒，失败时保留用户标识。
+      const sourceProfile = readFeishuProfile(this.client, incoming.senderId);
       const result = await client.runTurn({
+        sourceProfile,
+        sourceCreatedAt: new Date(incoming.receivedAt ?? Date.now()).toISOString(),
+        sourceChatName: (await this.relations.read()).groups.find(group => group.chatId === incoming.chatId)?.name,
         chatId: incoming.chatId,
         sourceMessageId: incoming.messageId,
         senderId: incoming.senderId,
@@ -559,6 +580,8 @@ export class Bridge {
     this.router.close();
     this.ws.close();
     this.codex.stop();
+    for (const client of this.backgroundClients ?? []) client.stop();
+    this.backgroundClients?.clear();
     for (const client of this.parallelClients) client.stop();
     for (const job of this.activeJobs.values()) { job.cancelRequested = true; job.abortController.abort(); }
     for (const job of this.pendingJobs.splice(0)) {
@@ -585,7 +608,7 @@ async function check() {
 
 async function serve() {
   const { client, ws } = await createFeishu();
-  const bridge = new Bridge({ client, ws, botId: await botOpenId(client), state: new BridgeState(config.stateDir), codex: new CodexClient({ binary: config.codexBinary }), codexFactory: () => new CodexClient({ binary: config.codexBinary }), maxConcurrent: 3, perGroupConcurrent: 1 });
+  const bridge = new Bridge({ client, ws, botId: await botOpenId(client), state: new BridgeState(config.stateDir), codex: new CodexClient({ binary: config.codexBinary, codexHome, authFile, configFile, stateDir: config.stateDir }), codexFactory: () => new CodexClient({ binary: config.codexBinary, codexHome, authFile, configFile, stateDir: config.stateDir }), maxConcurrent: 3, perGroupConcurrent: 1 });
   process.once("SIGTERM", () => { bridge.stop(); process.exit(0); });
   process.once("SIGINT", () => { bridge.stop(); process.exit(0); });
   await bridge.start();

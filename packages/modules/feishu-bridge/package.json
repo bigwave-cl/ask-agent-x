@@ -43,11 +43,35 @@
     "./group-service": {
       "types": "./dist/group-service.d.ts",
       "import": "./dist/group-service.js"
+    },
+    "./session-catalog": {
+      "types": "./dist/session-catalog.d.ts",
+      "import": "./dist/session-catalog.js"
+    },
+    "./conversation-contract": {
+      "types": "./dist/conversation-contract.d.ts",
+      "import": "./dist/conversation-contract.js"
+    },
+    "./conversation-normalizer": {
+      "types": "./dist/conversation-normalizer.d.ts",
+      "import": "./dist/conversation-normalizer.js"
+    },
+    "./conversation-store": {
+      "types": "./dist/conversation-store.d.ts",
+      "import": "./dist/conversation-store.js"
+    },
+    "./thread-title": {
+      "types": "./dist/thread-title.d.ts",
+      "import": "./dist/thread-title.js"
+    },
+    "./feishu-profile": {
+      "types": "./dist/feishu-profile.d.ts",
+      "import": "./dist/feishu-profile.js"
     }
   },
   "scripts": {
-    "build": "tsup src/bridge-module.ts src/bridge-runtime.ts src/service-manager.ts src/work-time.ts src/state.ts src/thread-service.ts src/thread-session.ts src/project-service.ts src/group-service.ts src/catalog-actions.ts src/runtime-entry.ts --format esm --dts --clean && rm -rf dist/runtime && cp -R runtime dist/runtime",
-    "dev": "tsup src/bridge-module.ts src/bridge-runtime.ts src/service-manager.ts src/work-time.ts src/state.ts src/thread-service.ts src/thread-session.ts src/project-service.ts src/group-service.ts src/catalog-actions.ts src/runtime-entry.ts --format esm --dts --watch",
+    "build": "tsup src/bridge-module.ts src/bridge-runtime.ts src/service-manager.ts src/work-time.ts src/state.ts src/thread-service.ts src/thread-session.ts src/project-service.ts src/group-service.ts src/session-catalog.ts src/catalog-actions.ts src/conversation-contract.ts src/conversation-normalizer.ts src/conversation-store.ts src/thread-title.ts src/feishu-profile.ts src/runtime-entry.ts --format esm --dts --clean && rm -rf dist/runtime && cp -R runtime dist/runtime",
+    "dev": "tsup src/bridge-module.ts src/bridge-runtime.ts src/service-manager.ts src/work-time.ts src/state.ts src/thread-service.ts src/thread-session.ts src/project-service.ts src/group-service.ts src/session-catalog.ts src/catalog-actions.ts src/conversation-contract.ts src/conversation-normalizer.ts src/conversation-store.ts src/thread-title.ts src/feishu-profile.ts src/runtime-entry.ts --format esm --dts --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

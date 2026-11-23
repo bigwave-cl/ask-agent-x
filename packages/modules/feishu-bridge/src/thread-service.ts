@@ -1,3 +1,5 @@
+import type { BridgeConversationItem, BridgeConversationTurn } from './conversation-contract.js'
+import { normalizeConversationItem, normalizeLegacyContent } from './conversation-normalizer.js'
 import { bridgeThreadSourceKinds, isBridgeThreadSource } from '../runtime/codex_identity.mjs'
 import { normalizeProjectPath } from './project-service.js'
 /** Codex App Server 请求能力。 */
@@ -25,21 +27,14 @@ export interface BridgeThreadSummary {
 }
 
 /** 桥接界面展示的一条会话消息。 */
-export interface BridgeThreadMessage {
-  /** 消息或 item 标识。 */
-  id: string
-  /** 消息角色。 */
-  role: 'user' | 'assistant' | 'system' | 'tool' | 'unknown'
-  /** Markdown 或纯文本内容。 */
-  content: string
-  /** 所属 turn 标识。 */
-  turnId: string | null
-  /** 创建时间。 */
-  createdAt: string | null
-}
+export interface BridgeThreadMessage extends BridgeConversationItem {}
 
 /** thread 历史结果。 */
 export interface BridgeThreadHistory {
+  /** 跨进程事件命名空间。 */
+  namespace?: string
+  /** 最近执行状态。 */
+  turn?: BridgeConversationTurn | null
   /** thread 摘要。 */
   thread: BridgeThreadSummary
   /** 已归一化的消息。 */
@@ -85,26 +80,23 @@ function threadSummary(value: unknown): BridgeThreadSummary | null {
     cwd: text(item.cwd) || null,
     projectId: text(item.projectId) || null,
     gitInfo: item.gitInfo && typeof item.gitInfo === 'object' ? record(item.gitInfo) : null,
-    title: text(item.name ?? item.title ?? item.preview) || id,
+    title: normalizeLegacyContent([item.name, item.title].map(text).find(value => value.trim()) ?? '') || 'AskX Relay',
     updatedAt: date(item.updatedAt ?? item.updated_at ?? item.lastUpdatedAt),
     createdAt: date(item.createdAt ?? item.created_at),
   }
 }
 
+/** 历史与实时协议共用同一归一化入口。 */
 function message(value: unknown, fallbackIndex: number): BridgeThreadMessage | null {
   const entry = record(value)
   const item = entry.item ? { ...record(entry.item), turnId: entry.turnId } : entry
-  const id = text(item.id ?? item.itemId ?? item.messageId) || `item-${fallbackIndex}`
-  const rawRole = text(item.role ?? item.authorRole ?? item.type)
-  const role: BridgeThreadMessage['role'] = ['user', 'assistant', 'system', 'tool'].includes(rawRole)
-    ? rawRole as BridgeThreadMessage['role']
-    : rawRole === 'agentMessage' ? 'assistant' : rawRole === 'userMessage' ? 'user' : 'unknown'
-  const content = Array.isArray(item.content) ? item.content.map(part => text(record(part).text)).filter(Boolean).join('\n') : text(item.text ?? item.content ?? item.message)
-  return content ? { id, role, content, turnId: text(item.turnId) || null, createdAt: date(item.createdAt ?? item.created_at) } : null
+  return normalizeConversationItem({ ...item, id: item.id ?? `item-${fallbackIndex}` }, text(item.turnId) || null)
 }
 
 /** 负责 Codex thread 协议调用与字段归一化的唯一 owner。 */
 export class BridgeThreadService {
+  /** 恢复响应中的实际模型配置，仅用于本轮命名。 */
+  private executionMetadata: Record<string, unknown> = {}
   constructor(private readonly client: BridgeRpcClient, private readonly cwd?: string, private readonly developerInstructions?: string, private readonly projectId?: string, private readonly beforeWrite?: () => Promise<void>) {}
 
   /** 按共享来源契约补齐一页项目会话，保持服务端游标连续。 */
@@ -153,6 +145,7 @@ export class BridgeThreadService {
     if (!threadId) throw new Error('Thread ID is required')
     await this.verifyThread(threadId)
     const result = await this.client.request('thread/resume', { threadId, excludeTurns: true, developerInstructions: this.developerInstructions })
+    this.executionMetadata = payload(result)
     const thread = threadSummary(payload(result).thread ?? payload(result))
     if (!thread) throw new Error('Codex did not return a thread')
     return thread
@@ -168,23 +161,24 @@ export class BridgeThreadService {
   }
 
   /** 分页读取 turn 中的消息 item。 */
-  async listItems(threadId: string, turnId?: string, cursor?: string, limit = 100): Promise<{ items: BridgeThreadMessage[]; nextCursor: string | null }> {
+  async listItems(threadId: string, turnId?: string, cursor?: string, limit = 100, sortDirection: 'asc' | 'desc' = 'asc'): Promise<{ items: BridgeThreadMessage[]; nextCursor: string | null }> {
     if (!threadId) throw new Error('Thread ID is required')
-    const result = await this.client.request('thread/items/list', { threadId, turnId, cursor, limit })
+    const result = await this.client.request('thread/items/list', { threadId, turnId, cursor, limit, sortDirection })
     const body = payload(result)
     const source = Array.isArray(body.items) ? body.items : Array.isArray(body.data) ? body.data : []
-    return { items: source.map(message).filter((item): item is BridgeThreadMessage => Boolean(item)), nextCursor: text(body.nextCursor ?? body.next_cursor) || null }
+    return { items: (sortDirection === 'desc' ? [...source].reverse() : source).map(message).filter((item): item is BridgeThreadMessage => Boolean(item)), nextCursor: text(body.nextCursor ?? body.next_cursor) || null }
   }
 
   /** 读取一个 thread 的历史消息。 */
   async readThread(threadId: string, cursor?: string, limit = 100): Promise<BridgeThreadHistory> {
     if (!threadId) throw new Error('Thread ID is required')
     const result = await this.client.request('thread/read', { threadId })
-    const body = payload(result)
-    const thread = threadSummary(body.thread ?? body) ?? { id: threadId, title: threadId, cwd: null, projectId: null, gitInfo: null, updatedAt: null, createdAt: null }
-    const source = Array.isArray(body.messages) ? body.messages : Array.isArray(body.items) ? body.items : Array.isArray(body.turns) ? body.turns.flatMap((turn) => record(turn).items ?? []) : []
-    if (!source.length) {
-      const page = await this.listItems(threadId, undefined, cursor, limit)
+    const root = payload(result)
+    const body = { ...record(root.thread), ...root }
+    const thread = threadSummary(body.thread ?? body) ?? { id: threadId, title: 'AskX Relay', cwd: null, projectId: null, gitInfo: null, updatedAt: null, createdAt: null }
+    const source = Array.isArray(body.messages) ? body.messages : Array.isArray(body.items) ? body.items : Array.isArray(body.turns) ? body.turns.flatMap((turn) => Array.isArray(record(turn).items) ? (record(turn).items as unknown[]).map(item => ({ ...record(item), turnId: record(turn).id })) : []) : []
+    if (cursor || !source.length) {
+      const page = await this.listItems(threadId, undefined, cursor, limit, 'desc')
       return { thread, messages: page.items, nextCursor: page.nextCursor }
     }
     return { thread, messages: source.map(message).filter((item): item is BridgeThreadMessage => Boolean(item)), nextCursor: text(body.nextCursor ?? body.next_cursor) || null }
@@ -201,12 +195,14 @@ export class BridgeThreadService {
   }
 
   /** 向 thread 发送一轮消息。 */
-  async startTurn(threadId: string, textValue: string): Promise<{ turnId: string | null }> {
+  async startTurn(threadId: string, textValue: string, clientMessageId?: string, beforeStart?: (metadata: Record<string, unknown>) => Promise<void>): Promise<{ turnId: string | null }> {
     if (!threadId) throw new Error('Thread ID is required')
     if (!textValue.trim()) throw new Error('Message is required')
     await this.resumeThread(threadId)
     await this.beforeWrite?.()
-    const result = await this.client.request('turn/start', { threadId, input: [{ type: 'text', text: textValue }] })
+    await beforeStart?.(this.executionMetadata)
+    await this.beforeWrite?.()
+    const result = await this.client.request('turn/start', { threadId, clientUserMessageId: clientMessageId, summary: 'auto', input: [{ type: 'text', text: textValue }] })
     const body = payload(result)
     return { turnId: text(record(body.turn).id ?? body.turnId) || null }
   }

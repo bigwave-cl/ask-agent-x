@@ -3,6 +3,7 @@ import { PassThrough } from 'node:stream'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defaultBridgeConfig } from '@askx/core'
@@ -10,13 +11,14 @@ import type { AskXConfig } from '@askx/core'
 import { BridgeThreadSession, BridgeThreadSessionManager } from './thread-session.js'
 import { BridgeProjectService } from './project-service.js'
 
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs() })
+const eventHome = mkdtempSync(join(tmpdir(), 'askx-session-events-'))
+afterEach(() => { rmSync(eventHome, { recursive: true, force: true }); vi.restoreAllMocks(); vi.unstubAllEnvs() })
 
 describe('BridgeThreadSessionManager', () => {
   it('reads projects while stopped but blocks thread creation', async () => {
     vi.spyOn(BridgeThreadSession.prototype, 'start').mockResolvedValue()
     const request = vi.spyOn(BridgeThreadSession.prototype, 'request').mockResolvedValue({ data: [], nextCursor: null })
-    const manager = new BridgeThreadSessionManager({ read: async () => ({ bridge: defaultBridgeConfig() }) as AskXConfig }, async () => false)
+    const manager = new BridgeThreadSessionManager({ read: async () => ({ bridge: { ...defaultBridgeConfig(), paths: { ...defaultBridgeConfig().paths, codexHome: eventHome, stateDir: eventHome } } }) as AskXConfig }, async () => false)
     try {
       expect(await new BridgeProjectService(manager).listProjects()).toEqual([])
       await expect(manager.startThread('/tmp')).rejects.toThrow('not running')
@@ -26,7 +28,7 @@ describe('BridgeThreadSessionManager', () => {
   it('shares one management initialization across concurrent requests', async () => {
     const start = vi.spyOn(BridgeThreadSession.prototype, 'start').mockResolvedValue()
     vi.spyOn(BridgeThreadSession.prototype, 'request').mockResolvedValue({ data: [], nextCursor: null })
-    const manager = new BridgeThreadSessionManager({ read: async () => ({ bridge: defaultBridgeConfig() }) as AskXConfig }, async () => true)
+    const manager = new BridgeThreadSessionManager({ read: async () => ({ bridge: { ...defaultBridgeConfig(), paths: { ...defaultBridgeConfig().paths, codexHome: eventHome, stateDir: eventHome } } }) as AskXConfig }, async () => true)
     try {
       await Promise.all([manager.request('project/list'), manager.request('project/list')])
       expect(start).toHaveBeenCalledTimes(1)
@@ -41,7 +43,7 @@ describe('BridgeThreadSessionManager', () => {
       if (method === 'project/read') return { project: { roots: [{ path }] } }
       return { thread: { id: 't', cwd: path, projectId: 'opaque' } }
     })
-    const manager = new BridgeThreadSessionManager({ read: async () => ({ bridge: defaultBridgeConfig() }) as AskXConfig }, async () => true)
+    const manager = new BridgeThreadSessionManager({ read: async () => ({ bridge: { ...defaultBridgeConfig(), paths: { ...defaultBridgeConfig().paths, codexHome: eventHome, stateDir: eventHome } } }) as AskXConfig }, async () => true)
     try {
       await expect(manager.startThread()).rejects.toThrow('Project path is required')
       expect(await manager.startThread(path)).toMatchObject({ id: 't', cwd: path, projectId: 'opaque' })
@@ -80,7 +82,7 @@ describe('per-turn execution ownership', () => {
       }
       return { thread: { id: 't', cwd: path } }
     })
-    const manager = new BridgeThreadSessionManager({ read: async () => ({ bridge: { ...defaultBridgeConfig(), paths: { ...defaultBridgeConfig().paths, stateDir: temp } } }) as AskXConfig }, async () => true)
+    const manager = new BridgeThreadSessionManager({ read: async () => ({ bridge: { ...{ ...defaultBridgeConfig(), paths: { ...defaultBridgeConfig().paths, codexHome: eventHome, stateDir: eventHome } }, paths: { ...{ ...defaultBridgeConfig(), paths: { ...defaultBridgeConfig().paths, codexHome: eventHome, stateDir: eventHome } }.paths, stateDir: temp } } }) as AskXConfig }, async () => true)
     try {
       await expect(manager.interrupt('t', 'other')).rejects.toThrow('No matching')
       expect(await manager.startTurn('t', 'hello')).toEqual({ turnId: 'turn' })
@@ -120,7 +122,7 @@ describe('queued execution cancellation', () => {
       return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(new Error('cancelled')), { once: true }))
     })
     const start = vi.spyOn(BridgeThreadSession.prototype, 'start').mockResolvedValue()
-    const manager = new BridgeThreadSessionManager({ read: async () => ({ bridge: defaultBridgeConfig() }) as AskXConfig }, async () => true)
+    const manager = new BridgeThreadSessionManager({ read: async () => ({ bridge: { ...defaultBridgeConfig(), paths: { ...defaultBridgeConfig().paths, codexHome: eventHome, stateDir: eventHome } } }) as AskXConfig }, async () => true)
     const pending = manager.startTurn('t', 'hello')
     await queued
     manager.stop()
@@ -142,7 +144,7 @@ describe('offline thread management', () => {
       if (method === 'thread/items/list') return { data: [{ turnId: 'turn', item: { type: 'agentMessage', id: 'item', text: 'hello' } }] }
       return { thread: { id: 't', cwd: path } }
     })
-    const manager = new BridgeThreadSessionManager({ read: async () => ({ bridge: defaultBridgeConfig() }) as AskXConfig }, async () => false)
+    const manager = new BridgeThreadSessionManager({ read: async () => ({ bridge: { ...defaultBridgeConfig(), paths: { ...defaultBridgeConfig().paths, codexHome: eventHome, stateDir: eventHome } } }) as AskXConfig }, async () => false)
     try {
       expect(await manager.listThreads(undefined, 50, path)).toMatchObject({ threads: [{ id: 't', cwd: path }] })
       expect(await manager.readThread('t')).toMatchObject({ messages: [{ content: 'hello' }] })
@@ -178,16 +180,62 @@ describe('Codex child process identity', () => {
       return { data: [{ hooks: [{ enabled: true, eventName: 'preToolUse', command }] }] }
     })
     /** 待验证的独立执行会话。 */
-    const session = new BridgeThreadSession('codex', '/tmp')
+    const session = new BridgeThreadSession('codex', '/tmp', '/tmp/askx-codex-home')
     try {
       await session.start()
       /** 实际传递给子进程的启动选项。 */
       const options = vi.mocked(spawn).mock.calls.at(-1)?.[2]
-      /** 子进程应继承覆盖项以外的全部环境。 */
+      /** 子进程应继承覆盖项以外的全部环境，并使用桥接专用 Codex Home。 */
       const { CODEX_INTERNAL_ORIGINATOR_OVERRIDE: _override, ...expectedEnvironment } = parentEnvironment
+      expectedEnvironment.CODEX_HOME = '/tmp/askx-codex-home'
       expect(options?.env).toEqual(expectedEnvironment)
       expect(process.env).toEqual(parentEnvironment)
       expect(request).toHaveBeenCalledWith('initialize', { capabilities: { experimentalApi: true }, clientInfo: { name: 'askagent_x_bridge_chat', title: 'AskAgent X Bridge Chat', version: '1.0.0' } })
     } finally { session.stop() }
   })
+})
+
+
+it('names a resumed unnamed thread after a manager restart and publishes its title', async () => {
+  /** 隔离项目和来源数据，不创建或改动真实会话。 */
+  const temp = await mkdtemp(join(tmpdir(), 'askx-resumed-title-'))
+  const path = await realpath(temp)
+  /** 模拟已存在但未命名的 thread，与 manager 新建记录无关。 */
+  let name: string | null = null
+  /** 每个协议会话的独立订阅集合。 */
+  const listeners = new Map<BridgeThreadSession, Set<(event: { method: string; params: Record<string, unknown> }) => void>>()
+  lockMocks.acquire.mockResolvedValue(async () => {})
+  vi.spyOn(BridgeThreadSession.prototype, 'start').mockResolvedValue()
+  vi.spyOn(BridgeThreadSession.prototype, 'stop').mockImplementation(() => {})
+  vi.spyOn(BridgeThreadSession.prototype, 'subscribe').mockImplementation(function(this: BridgeThreadSession, listener) {
+    const set = listeners.get(this) ?? new Set()
+    set.add(listener)
+    listeners.set(this, set)
+    return () => { set.delete(listener) }
+  })
+  const request = vi.spyOn(BridgeThreadSession.prototype, 'request').mockImplementation(async function(this: BridgeThreadSession, method, params) {
+    if (method === 'project/list') return { data: [{ id: 'p', name: 'Project', roots: [{ path }] }] }
+    if (method === 'project/read') return { project: { roots: [{ path }] } }
+    if (method === 'config/read') return { config: { model: 'model' } }
+    if (method === 'thread/start') return { thread: { id: 'title-draft' }, sandbox: { type: 'readOnly' } }
+    if (method === 'thread/name/set') { name = String(params?.name); return {} }
+    if (method === 'turn/start') {
+      const threadId = params?.threadId
+      setImmediate(() => {
+        if (threadId === 'title-draft') for (const listener of listeners.get(this) ?? []) listener({ method: 'item/completed', params: { threadId, turnId: 'turn', item: { type: 'agentMessage', text: '{"title":"继续项目讨论"}' } } })
+        for (const listener of listeners.get(this) ?? []) listener({ method: 'turn/completed', params: { threadId, turn: { id: 'turn', status: 'completed' } } })
+      })
+      return { turn: { id: 'turn' } }
+    }
+    return { thread: { id: 'existing', cwd: path, name, turns: [{ id: 'historical-turn' }] }, model: 'model', modelProvider: 'provider' }
+  })
+  const manager = new BridgeThreadSessionManager({ read: async () => ({ bridge: { ...defaultBridgeConfig(), paths: { ...defaultBridgeConfig().paths, codexHome: temp, stateDir: temp } } }) as AskXConfig }, async () => true)
+  try {
+    await manager.startTurn('existing', '继续项目讨论', path)
+    await vi.waitFor(() => expect(name).toBe('继续项目讨论'))
+    const store = await manager.getConversationStore()
+    await vi.waitFor(() => expect(store.events('existing').some(event => event.type === 'thread.title' && event.title === name)).toBe(true))
+    expect(request.mock.calls.filter(([method]) => method === 'thread/start')).toHaveLength(1)
+    expect(request.mock.calls.find(([method]) => method === 'thread/start')?.[1]).toMatchObject({ ephemeral: true })
+  } finally { manager.stop(); await rm(temp, { recursive: true, force: true }) }
 })

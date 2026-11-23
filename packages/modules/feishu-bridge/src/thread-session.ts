@@ -1,4 +1,10 @@
+import { prepareThreadTitle } from './thread-title.js'
+import { BridgeConversationStore } from './conversation-store.js'
+import type { BridgeConversationSource } from './conversation-contract.js'
+import { randomUUID } from 'node:crypto'
 import { bridgeWebClientName, createBridgeCodexEnvironment } from '../runtime/codex_identity.mjs'
+import { ensureBridgeCodexAuth, ensureBridgeProviderConfig } from '../runtime/codex_auth.mjs'
+import { resolveCodexBinary } from '../runtime/codex_binary.mjs'
 import { acquireBridgeThreadLock } from '@askx/core/bridge-thread-lock'
 import { homedir } from 'node:os'
 import { BridgeProjectService } from './project-service.js'
@@ -24,16 +30,18 @@ export class BridgeThreadSession implements BridgeRpcClient {
   private pending = new Map<number, { resolve: (value: unknown) => void, reject: (error: Error) => void, timer: NodeJS.Timeout }>()
   private listeners = new Set<(event: BridgeThreadEvent) => void>()
 
-  constructor(private readonly binary: string, private readonly cwd: string) {}
+  constructor(private readonly binary: string, private readonly cwd: string, private readonly codexHome?: string, private readonly authFile?: string, private readonly configFile?: string) {}
 
   /** 启动并初始化 Codex App Server。 */
   async start(): Promise<void> {
     if (this.child && !this.child.killed) return
+    ensureBridgeProviderConfig(this.codexHome ?? join(homedir(), '.askx', 'bridge', 'codex-home'), this.configFile ?? join(homedir(), '.codex', 'config.toml'))
+    const binary = await resolveCodexBinary(this.binary)
     const deleteGuard = join(dirname(fileURLToPath(import.meta.url)), 'runtime', 'delete_guard.py')
     const deleteHook = `hooks.PreToolUse=[{matcher="^(Bash|apply_patch)$",hooks=[{type="command",command="/usr/bin/python3 ${deleteGuard}",timeout=3}]}]`
-    this.child = spawn(this.binary, ['--dangerously-bypass-hook-trust', 'app-server', '--listen', 'stdio://', '--enable', 'hooks', '--config', deleteHook], {
+    this.child = spawn(binary, ['--dangerously-bypass-hook-trust', 'app-server', '--listen', 'stdio://', '--enable', 'hooks', '--config', deleteHook], {
       cwd: this.cwd,
-      env: createBridgeCodexEnvironment(),
+      env: createBridgeCodexEnvironment(this.codexHome ? { ...process.env, CODEX_HOME: this.codexHome } : process.env),
       stdio: ['pipe', 'pipe', 'pipe'],
     })
     this.child.stdout.setEncoding('utf8')
@@ -61,6 +69,7 @@ export class BridgeThreadSession implements BridgeRpcClient {
       clientInfo: { name: bridgeWebClientName, title: 'AskAgent X Bridge Chat', version: '1.0.0' },
     })
     this.send({ method: 'initialized', params: {} })
+    await ensureBridgeCodexAuth((method, params) => this.request(method, params), this.authFile ?? join(homedir(), '.codex', 'auth.json'))
     const listed = await this.request('hooks/list', { cwds: [this.cwd] }) as Record<string, unknown>
     const hookEntries = Array.isArray(listed.data) ? listed.data : []
     const hooks = hookEntries.flatMap(entry => entry && typeof entry === 'object' && Array.isArray((entry as Record<string, unknown>).hooks) ? (entry as Record<string, unknown>).hooks as unknown[] : [])
@@ -175,36 +184,43 @@ export class BridgeThreadSessionManager {
   /** 读取指定 thread 的历史消息。 */
   async readThread(threadId: string, cursor?: string, limit?: number, workspace?: string): Promise<BridgeThreadHistory> {
     const service = await this.getServiceForThread(threadId, workspace, false)
-    return service.readThread(threadId, cursor, limit)
+    const history = await service.readThread(threadId, cursor, limit)
+    const snapshot = (await this.getConversationStore()).mergeHistory(threadId, history.messages, !cursor)
+    if (snapshot.turn) snapshot.turn.canInterrupt = snapshot.turn.status === 'inProgress' && this.executions.has(threadId)
+    return { ...history, ...snapshot }
   }
 
   /** 创建一个新的 thread。 */
   async startThread(workspace?: string): Promise<BridgeThreadSummary> {
     const project = await this.requireProject(workspace, true)
     const config = await this.configStore.read()
-    const session = new BridgeThreadSession(config.bridge.paths.codexBinary, project.path)
+    const session = new BridgeThreadSession(config.bridge.paths.codexBinary, project.path, config.bridge.paths.codexHome, config.bridge.paths.authFile, config.bridge.paths.configFile)
     const generation = this.generation
     try {
       await session.start()
       if (generation !== this.generation || !(await this.canOperate())) throw new Error('Bridge session cancelled')
-      return await this.createExecutionService(session, project.path, project.projectId).startThread()
+      const thread = await this.createExecutionService(session, project.path, project.projectId).startThread()
+      return thread
     } finally { session.stop() }
   }
 
   /** 排队取得跨进程锁后，为每轮发送建立独立执行进程。 */
-  async startTurn(threadId: string, text: string, workspace?: string): Promise<{ turnId: string | null }> {
+  async startTurn(threadId: string, text: string, workspace?: string, clientMessageId: string = randomUUID(), source: BridgeConversationSource = { channel: 'web' }): Promise<{ turnId: string | null }> {
     if (!text.trim()) throw new Error('Message is required')
     if (!(await this.canOperate())) throw new Error('Bridge service is not running or outside work time')
     const generation = this.generation
     const signal = this.lifecycle.signal
     const config = await this.configStore.read()
     const release = await acquireBridgeThreadLock(config.bridge.paths.stateDir, threadId, { signal })
+    let run: ReturnType<BridgeConversationStore['begin']> | undefined
     let session: BridgeThreadSession | null = null
     let finished = false
     let unsubscribe = () => {}
     const finish = async (): Promise<void> => {
       if (finished) return
       finished = true
+      run?.status('interrupted')
+      run?.flush()
       unsubscribe()
       if (this.executions.get(threadId)?.session === session) this.executions.delete(threadId)
       session?.stop()
@@ -215,11 +231,14 @@ export class BridgeThreadSessionManager {
       const metadata = await new BridgeThreadService(await this.getManagementSession()).verifyThread(threadId)
       const project = await this.requireProject(workspace ?? metadata.cwd ?? undefined, true)
       if (signal.aborted || generation !== this.generation) throw new Error('Bridge session cancelled')
-      session = new BridgeThreadSession(config.bridge.paths.codexBinary, project.path)
+      session = new BridgeThreadSession(config.bridge.paths.codexBinary, project.path, config.bridge.paths.codexHome, config.bridge.paths.authFile, config.bridge.paths.configFile)
       const service = this.createExecutionService(session, project.path, project.projectId)
+      run = (await this.getConversationStore()).begin(threadId, { ...source, projectPath: project.path }, clientMessageId, text)
       const entry = { session, service, turnId: null as string | null, finish }
       this.executions.set(threadId, entry)
       unsubscribe = session.subscribe(event => {
+        if (event.method === 'thread/name/updated') new BridgeConversationStore(config.bridge.paths.codexHome, config.bridge.paths.stateDir).ingestTitleNotification(event.method, event.params)
+        run?.ingest(event.method, event.params)
         const eventTurn = event.params.turn && typeof event.params.turn === 'object' ? (event.params.turn as Record<string, unknown>).id : event.params.turnId
         const terminal = ['turn/completed', 'turn/failed', 'turn/interrupted', 'turn/aborted'].includes(event.method) || (event.method === 'error' && event.params.willRetry === false)
         if (event.method === 'bridge/sessionClosed' || (terminal && event.params.threadId === threadId && (!entry.turnId || eventTurn === entry.turnId))) {
@@ -228,12 +247,40 @@ export class BridgeThreadSessionManager {
       })
       await session.start()
       if (finished || signal.aborted || generation !== this.generation || !(await this.canOperate())) throw new Error('Bridge session cancelled')
-      const result = await service.startTurn(threadId, text)
-      if (!finished) entry.turnId = result.turnId
+      const result = await service.startTurn(threadId, text, clientMessageId, async metadata => {
+        await prepareThreadTitle(session!, threadId, text, {
+          metadata, stateDir: config.bridge.paths.stateDir, codexHome: config.bridge.paths.codexHome, signal,
+          getClient: () => this.getManagementSession(),
+          isValid: async () => {
+            const current = await this.configStore.read()
+            return !signal.aborted && generation === this.generation && current.bridge.paths.codexHome === config.bridge.paths.codexHome
+          },
+          onTitle: title => { new BridgeConversationStore(config.bridge.paths.codexHome, config.bridge.paths.stateDir).notifyCatalog(threadId, title) },
+        })
+      })
+      run?.catalogChanged()
+      if (!finished) {
+        entry.turnId = result.turnId
+        if (result.turnId) run?.ingest('turn/started', { threadId, turn: { id: result.turnId } })
+      }
       if (!result.turnId) await finish()
       return result
-    } catch (error) { await finish(); throw error }
+    } catch (error) { run?.status('failed', 'Turn could not start / 无法启动执行'); await finish(); throw error }
   }
+
+  /** 复用当前配置的事件读取缓存，配置改变时替换整个实例。 */
+  private conversationStore: { key: string; store: BridgeConversationStore } | undefined
+
+  /** 返回与飞书运行时共用的命名空间事件存储。 */
+  async getConversationStore(): Promise<BridgeConversationStore> {
+    const config = await this.configStore.read()
+    const key = `${config.bridge.paths.codexHome}\0${config.bridge.paths.stateDir}`
+    if (this.conversationStore?.key !== key) this.conversationStore = { key, store: new BridgeConversationStore(config.bridge.paths.codexHome, config.bridge.paths.stateDir) }
+    return this.conversationStore.store
+  }
+
+  /** 读取跨进程可恢复的对话快照。 */
+  async readConversation(threadId: string) { return (await this.getConversationStore()).read(threadId) }
 
   /** 仅中断当前 Web owner 持有且回合标识匹配的执行会话。 */
   async interrupt(threadId: string, turnId?: string, workspace?: string): Promise<void> {
@@ -267,9 +314,10 @@ export class BridgeThreadSessionManager {
     const existing = this.sessions.get('management')
     if (existing) return existing.session
     const config = await this.configStore.read()
-    const session = new BridgeThreadSession(config.bridge.paths.codexBinary, homedir())
+    const session = new BridgeThreadSession(config.bridge.paths.codexBinary, homedir(), config.bridge.paths.codexHome, config.bridge.paths.authFile, config.bridge.paths.configFile)
     try { await session.start() } catch (error) { session.stop(); throw error }
     session.subscribe(event => {
+      if (event.method === 'thread/name/updated') new BridgeConversationStore(config.bridge.paths.codexHome, config.bridge.paths.stateDir).ingestTitleNotification(event.method, event.params)
       if (event.method === 'bridge/sessionClosed' && this.sessions.get('management')?.session === session) this.sessions.delete('management')
     })
     if (generation !== this.generation) { session.stop(); throw new Error('Bridge session initialization cancelled') }

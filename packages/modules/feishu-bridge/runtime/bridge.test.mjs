@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { test, expect, vi } from 'vitest';
 vi.mock('@askx/core/bridge-credentials', () => ({ resolveFeishuCredentials: vi.fn() }));
 vi.mock('@askx/core/bridge-thread-lock', () => ({ acquireBridgeThreadLock: vi.fn(async () => async () => {}) }));
@@ -5,7 +8,7 @@ import { Bridge } from './bridge.mjs';
 
 /** 用内存假客户端验证调度，不发出飞书业务消息。 */
 function fixture() {
-  let data = { revision: 0, groups: ['a', 'b', 'c'].map(chatId => ({ chatId, name: chatId })), projectGroups: ['a', 'b', 'c'].map(chatId => ({ chatId, projectPath: '/project' })), threadGroups: ['a', 'b', 'c'].map(chatId => ({ chatId, projectPath: '/project', threadId: chatId === 'c' ? 'other' : 'shared' })) };
+  let data = { revision: 0, groups: ['a', 'b', 'c'].map(chatId => ({ chatId, name: chatId })), projectGroups: ['a', 'b', 'c'].map(chatId => ({ chatId, projectPath: '/project', active: true })), threadGroups: ['a', 'b', 'c'].map(chatId => ({ chatId, projectPath: '/project', threadId: chatId === 'c' ? 'other' : 'shared' })) };
   const relations = { read: async () => structuredClone(data), replace: async (next, revision) => { expect(revision).toBe(data.revision); data = { ...next, revision: revision + 1 }; return data; } };
   const runs = [];
   let release;
@@ -62,11 +65,14 @@ test('cancel in another group cannot interrupt a shared thread job', async () =>
 
 test('failed resume never silently creates a replacement thread', async () => {
   const { CodexClient } = await import('./codex_client.mjs');
-  const client = new CodexClient({ binary: 'mock', cwd: '/project' });
+  const eventHome = fs.mkdtempSync(path.join(os.tmpdir(), 'askx-runtime-events-'));
+  const client = new CodexClient({ binary: 'mock', cwd: '/project', codexHome: eventHome });
   client.start = vi.fn(async () => {});
   client.request = vi.fn(async () => { throw new Error('resume unavailable'); });
-  await expect(client.runTurn({ chatId: 'group-a', threadId: 'shared', prompt: 'test' })).rejects.toThrow('resume unavailable');
-  expect(client.request.mock.calls.map(call => call[0])).toEqual(['thread/resume']);
+  try {
+    await expect(client.runTurn({ chatId: 'group-a', threadId: 'shared', prompt: 'test' })).rejects.toThrow('resume unavailable');
+    expect(client.request.mock.calls.map(call => call[0])).toEqual(['thread/resume']);
+  } finally { fs.rmSync(eventHome, { recursive: true, force: true }); }
 });
 
 test('stale reply cache cannot route to a thread without current group authorization', async () => {
@@ -81,20 +87,14 @@ test('stale reply cache cannot route to a thread without current group authoriza
   expect(replies).toHaveLength(1);
 });
 
-test('waiting for a private project selection does not hold an unrelated execution slot', async () => {
+test('an unbound group does not hold an unrelated execution slot', async () => {
   const { bridge, runs } = fixture();
-  bridge.router.notify = async () => {};
-  const waiting = bridge.router.resolve({ chatId: 'unassociated', messageId: 'waiting' });
-  const rejected = waiting.catch(error => error);
-  try {
-    await vi.waitFor(() => expect(bridge.router.pending.size).toBe(1));
-    const task = job('c', 'other', []);
-    bridge.pendingJobs = [task];
-    bridge.drain();
-    await task.done;
-    expect(runs).toEqual([{ chatId: 'c', threadId: 'other' }]);
-  } finally { bridge.router.close(); }
-  expect((await rejected).message).toBe('Bridge stopped');
+  await expect(bridge.router.resolve({ chatId: 'unassociated', messageId: 'waiting' })).rejects.toThrow('Group is not registered');
+  const task = job('c', 'other', []);
+  bridge.pendingJobs = [task];
+  bridge.drain();
+  await task.done;
+  expect(runs).toEqual([{ chatId: 'c', threadId: 'other' }]);
 });
 
 test('after a shared cross-process lease wait, revoked authorization prevents resume and releases lease', async () => {
@@ -131,7 +131,8 @@ test('every completed bridge job stops its Codex client to discard loaded histor
 
 test('new thread invokes lease hook after association and before turn/start', async () => {
   const { CodexClient } = await import('./codex_client.mjs');
-  const client = new CodexClient({ binary: 'mock', cwd: '/project' });
+  const eventHome = fs.mkdtempSync(path.join(os.tmpdir(), 'askx-runtime-events-'));
+  const client = new CodexClient({ binary: 'mock', cwd: '/project', codexHome: eventHome });
   const order = [];
   client.start = async () => {};
   client.request = async (method) => {
@@ -144,5 +145,6 @@ test('new thread invokes lease hook after association and before turn/start', as
     throw new Error('Unexpected RPC');
   };
   await client.runTurn({ chatId: 'group-a', prompt: 'test', onThread: async () => order.push('associate'), beforeTurn: async () => order.push('lease') });
-  expect(order).toEqual(['thread/start', 'associate', 'lease', 'turn/start']);
+  fs.rmSync(eventHome, { recursive: true, force: true });
+  expect(order).toEqual(['thread/start', 'associate', 'lease', 'thread/read', 'turn/start']);
 });
