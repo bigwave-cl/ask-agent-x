@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BridgeRelationsConflictError, BridgeRelationsStore, type BridgeRelationsInput } from '@askx/core/bridge-relations'
-import { BridgeGroupService } from './group-service.js'
+import { BridgeAssociationValidationError, BridgeGroupService } from './group-service.js'
 import { BridgeProjectService } from './project-service.js'
 
 /** SDK 与凭据仅在测试进程内模拟，不发送网络请求。 */
@@ -34,8 +34,8 @@ async function setup() {
   const otherPath = join(directory, 'other')
   await Promise.all([mkdir(projectPath), mkdir(otherPath)])
   const request = vi.fn(async (method: string, params?: Record<string, unknown>): Promise<unknown> => {
-    if (method === 'project/list') return { data: [{ id: 'project-1', name: 'Demo', roots: [{ path: projectPath }] }], nextCursor: null }
-    if (method === 'project/read') return { project: { id: 'project-1', roots: [{ path: projectPath }] } }
+    if (method === 'project/list') return { data: [{ id: 'project-1', name: 'Demo', roots: [{ path: projectPath }, { path: otherPath }] }], nextCursor: null }
+    if (method === 'project/read') return { project: { id: 'project-1', roots: [{ path: projectPath }, { path: otherPath }] } }
     if (method === 'thread/read') return { thread: { id: params?.threadId, cwd: projectPath } }
     throw new Error(`Unexpected test RPC: ${method}`)
   })
@@ -51,6 +51,30 @@ async function setup() {
 }
 
 describe('BridgeGroupService', () => {
+  it('创建群会话后持久化关联，保留现有历史关系', async () => {
+    const { service, input, projectPath, store } = await setup()
+    const initial = await service.save(input, 0)
+    const created = { id: 'new-thread', cwd: projectPath, projectId: null, gitInfo: null, title: 'AskX Relay', updatedAt: null, createdAt: null }
+    const create = vi.fn(async () => created)
+    await expect(service.createThread('oc_A', projectPath, create)).resolves.toEqual(created)
+    expect(create).toHaveBeenCalledWith(projectPath)
+    expect((await store.read()).threadGroups).toEqual([...initial.threadGroups, { chatId: 'oc_A', projectPath, threadId: created.id }])
+  })
+
+  it('创建期间撤销当前项目时拒绝关联，未授权项目不创建会话', async () => {
+    const { service, input, projectPath, otherPath, store } = await setup()
+    const initial = await service.save(input, 0)
+    const create = vi.fn(async () => {
+      await store.replace({ ...input, projectGroups: initial.projectGroups.map(link => ({ ...link, active: false })) }, initial.revision)
+      return { id: 'new-thread', cwd: projectPath, projectId: null, gitInfo: null, title: 'AskX Relay', updatedAt: null, createdAt: null }
+    })
+    await expect(service.createThread('oc_A', otherPath, create)).rejects.toThrow('read-only')
+    expect(create).not.toHaveBeenCalled()
+    await expect(service.createThread('oc_A', projectPath, create)).rejects.toBeInstanceOf(BridgeRelationsConflictError)
+    expect((await store.read()).threadGroups).toEqual(initial.threadGroups)
+    expect((await store.read()).projectGroups.every(link => !link.active)).toBe(true)
+  })
+
   it('保存前核验项目真实归属，并且共享 thread 只读取一次', async () => {
     const { service, input, request } = await setup()
     const saved = await service.save(input, 0)
@@ -64,8 +88,8 @@ describe('BridgeGroupService', () => {
   it('未注册的项目不能授予群权限，磁盘快照保持不变', async () => {
     const { service, input, otherPath, store } = await setup()
     const saved = await service.save(input, 0)
-    const invalid = { ...input, projectGroups: [{ chatId: 'oc_A', projectPath: otherPath }], threadGroups: [] }
-    await expect(service.save(invalid, 1)).rejects.toThrow('Unknown Codex project')
+    const invalid = { ...input, projectGroups: [{ chatId: 'oc_A', projectPath: `${otherPath}-missing` }], threadGroups: [] }
+    await expect(service.save(invalid, 1)).rejects.toMatchObject({ code: 'project_unavailable' })
     expect(await store.read()).toEqual(saved)
   })
 
@@ -94,6 +118,69 @@ describe('BridgeGroupService', () => {
     expect(await store.read()).toEqual(saved)
   })
 
+  it('切换当前项目时保留历史项目和会话关系', async () => {
+    const { service, store, input, projectPath, otherPath } = await setup()
+    const initial = await service.save({ ...input, projectGroups: [{ chatId: 'oc_A', projectPath, active: true }, { chatId: 'oc_A', projectPath: otherPath, active: false }], threadGroups: input.threadGroups.filter(link => link.chatId === 'oc_A') }, 0)
+    const switched = await service.activateProject('oc_A', otherPath, initial.revision)
+    expect(switched.projectGroups).toEqual([{ chatId: 'oc_A', projectPath, active: false }, { chatId: 'oc_A', projectPath: otherPath, active: true }])
+    expect(switched.threadGroups).toEqual(initial.threadGroups)
+    expect(await store.read()).toEqual(switched)
+  })
+
+  it('失效历史项目和会话不阻塞合法新增及主动移除', async () => {
+    const { service, store, input, projectPath, otherPath, request } = await setup()
+    const initial = await service.save(input, 0)
+    const original = request.getMockImplementation()!
+    request.mockImplementation(async (method, params) => {
+      if (method === 'project/list') return { data: [{ id: 'other', name: 'Other', roots: [{ path: otherPath }] }] }
+      if (method === 'thread/read') throw new Error('private RPC details')
+      return original(method, params)
+    })
+    request.mockClear()
+    const saved = await service.save({ ...input, projectGroups: [...initial.projectGroups, { chatId: 'oc_A', projectPath: otherPath, active: false }] }, initial.revision)
+    expect(saved.threadGroups).toEqual(initial.threadGroups)
+    expect(request.mock.calls.filter(([method]) => method === 'thread/read')).toHaveLength(0)
+    const removed = await service.save({ ...input, projectGroups: saved.projectGroups.filter(link => link.projectPath !== projectPath), threadGroups: [] }, saved.revision)
+    expect(removed.projectGroups).toEqual([{ chatId: 'oc_A', projectPath: otherPath, active: false }])
+    expect(await store.read()).toEqual(removed)
+  })
+
+  it('历史不可用项目重新激活或新增共享仍拒绝', async () => {
+    const { service, store, input, projectPath, otherPath, request } = await setup()
+    const initial = await store.replace({ ...input, projectGroups: [{ chatId: 'oc_A', projectPath, active: false }, { chatId: 'oc_A', projectPath: otherPath, active: true }, { chatId: 'oc_B', projectPath, active: true }], threadGroups: [input.threadGroups[0]!] }, 0)
+    request.mockResolvedValue({ data: [] })
+    await expect(service.activateProject('oc_A', projectPath, initial.revision)).rejects.toMatchObject({ code: 'project_unavailable', projectPath })
+    await expect(service.save({ ...input, projectGroups: initial.projectGroups, threadGroups: input.threadGroups }, initial.revision)).rejects.toBeInstanceOf(BridgeAssociationValidationError)
+    expect(await store.read()).toEqual(initial)
+  })
+
+  it('新增群共享旧会话也重新读取并隐藏 RPC 失败详情', async () => {
+    const { service, input, request, store } = await setup()
+    const initial = await service.save({ ...input, threadGroups: [input.threadGroups[0]!] }, 0)
+    const original = request.getMockImplementation()!
+    request.mockImplementation(async (method, params) => {
+      if (method === 'thread/read') throw new Error('private RPC details')
+      return original(method, params)
+    })
+    await expect(service.save(input, initial.revision)).rejects.toMatchObject({ code: 'thread_unavailable', threadId: 'thread-1', message: 'Thread unavailable / 会话不可用' })
+    expect(await store.read()).toEqual(initial)
+  })
+
+  it('过期版本不触发远端核验，核验期间并发提交仍由 CAS 拒绝', async () => {
+    const { service, input, request, store } = await setup()
+    const initial = await store.replace({ ...input, threadGroups: [] }, 0)
+    request.mockClear()
+    await expect(service.save(input, 0)).rejects.toBeInstanceOf(BridgeRelationsConflictError)
+    expect(request).not.toHaveBeenCalled()
+    const original = request.getMockImplementation()!
+    request.mockImplementation(async (method, params) => {
+      if (method === 'thread/read') await store.replace({ ...input, threadGroups: [] }, initial.revision)
+      return original(method, params)
+    })
+    await expect(service.save(input, initial.revision)).rejects.toBeInstanceOf(BridgeRelationsConflictError)
+    expect((await store.read()).threadGroups).toEqual([])
+  })
+
   it('同步群更新名称与新群，保留已有群和全部关联', async () => {
     const { service, store, input } = await setup()
     await service.save(input, 0)
@@ -102,7 +189,7 @@ describe('BridgeGroupService', () => {
       .mockResolvedValueOnce({ code: 0, data: { items: [{ chat_id: 'oc_C', name: 'C' }], has_more: false } })
     const synced = await service.sync({ source: 'custom', appId: 'cli_test' })
     expect(synced.groups).toEqual([{ chatId: 'oc_A', name: 'A renamed' }, { chatId: 'oc_B', name: 'B' }, { chatId: 'oc_C', name: 'C' }])
-    expect(synced.projectGroups).toEqual(input.projectGroups)
+    expect(synced.projectGroups).toEqual(input.projectGroups.map(link => ({ ...link, active: true })))
     expect(synced.threadGroups).toEqual(input.threadGroups)
     expect(synced.revision).toBe(2)
     expect(mocks.list.mock.calls[1]).toEqual([{ params: { page_size: 100, page_token: 'next' } }])

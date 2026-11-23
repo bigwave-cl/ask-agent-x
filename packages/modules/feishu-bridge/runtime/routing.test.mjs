@@ -1,57 +1,43 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { BridgeRelationsConflictError } from '@askx/core/bridge-relations';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { BridgeRelationsConflictError, BridgeRelationsStore } from '@askx/core/bridge-relations';
 import { RoutingCoordinator } from './routing.mjs';
 
 const incoming = { chatId: 'group-a', messageId: 'message-a' };
-function fixture(state = { revision: 0, groups: [], projectGroups: [], threadGroups: [] }, timeoutMs = 1000) {
+function fixture(state = { revision: 0, groups: [{ chatId: 'group-a', name: 'A' }], projectGroups: [{ chatId: 'group-a', projectPath: '/project', active: true }], threadGroups: [] }) {
   const notices = [];
-  const relations = { read: async () => structuredClone(state), replace: async (next, expected) => { assert.deepEqual(Object.keys(next).sort(), ["groups", "projectGroups", "threadGroups"]); assert.equal(expected, state.revision); state = { ...next, revision: expected + 1 }; } };
-  const router = new RoutingCoordinator({ relations, adminOpenId: 'admin', listProjects: async () => ['/project'], notify: async (text) => notices.push(text), timeoutMs });
+  const relations = { read: async () => structuredClone(state), replace: async (next, expected) => { assert.equal(expected, state.revision); state = { ...next, revision: expected + 1 }; } };
+  const router = new RoutingCoordinator({ relations, adminOpenId: 'admin', listProjects: async () => ['/project'], notify: async (text) => notices.push(text) });
   return { router, notices, relations };
 }
-const answer = (requestId, sender = 'admin', number = 1) => ({ sender: { sender_type: 'user', sender_id: { open_id: sender } }, message: { chat_type: 'p2p', message_type: 'text', content: JSON.stringify({ text: `${requestId} ${number}` }) } });
 
-test('unassociated original waits for admin; wrong sender and duplicate cannot consume it', async () => {
-  const { router, notices, relations } = fixture();
-  const pending = router.resolve(incoming);
-  await new Promise(setImmediate);
-  assert.equal(notices.length, 1);
-  const id = [...router.pending.keys()][0];
-  assert.equal(await router.answer(answer(id, 'outsider')), false);
-  assert.equal(await router.answer(answer(id, 'admin', 8)), false);
-  assert.equal(await router.answer(answer(id)), true);
-  assert.deepEqual(await pending, { projectPath: '/project', threadId: null });
-  assert.equal(await router.answer(answer(id)), false);
-  assert.equal((await relations.read()).projectGroups[0].chatId, incoming.chatId);
-  router.close();
+test('unbound group is rejected without creating a pending project selection', async () => {
+  const { router, notices } = fixture({ revision: 0, groups: [{ chatId: 'group-a', name: 'A' }], projectGroups: [], threadGroups: [] });
+  await assert.rejects(router.resolve(incoming), /No active project/);
+  assert.equal(notices.length, 0);
+  assert.equal(router.pending.size, 0);
+});
+
+test('one active project routes new messages without administrator selection', async () => {
+  const { router } = fixture();
+  assert.deepEqual(await router.resolve(incoming), { projectPath: '/project', threadId: null });
+});
+
+test('historical project cannot be used for a write route', async () => {
+  const { router } = fixture({ revision: 0, groups: [{ chatId: 'group-a', name: 'A' }], projectGroups: [{ chatId: 'group-a', projectPath: '/project', active: false }], threadGroups: [] });
+  await assert.rejects(router.resolve(incoming), /No active project/);
+  await assert.rejects(router.validate('group-a', { projectPath: '/project', threadId: null }), /not active/);
 });
 
 test('shared thread explicit links survive clearing one group', async () => {
-  const { router, relations } = fixture({ revision: 0, groups: [], projectGroups: ['group-a', 'group-b'].map(chatId => ({ chatId, projectPath: '/project' })), threadGroups: [] });
+  const { router, relations } = fixture({ revision: 0, groups: [{ chatId: 'group-a', name: 'A' }, { chatId: 'group-b', name: 'B' }], projectGroups: [{ chatId: 'group-a', projectPath: '/project', active: true }, { chatId: 'group-b', projectPath: '/project', active: true }], threadGroups: [] });
   await router.link('group-a', '/project', 'shared');
   await router.link('group-b', '/project', 'shared');
   await router.clear('group-a');
   assert.deepEqual((await relations.read()).threadGroups, [{ chatId: 'group-b', projectPath: '/project', threadId: 'shared' }]);
-});
-
-test('expiry and cross-group cancellation do not consume another request', async () => {
-  const { router } = fixture(undefined, 20);
-  const pending = router.resolve(incoming);
-  await new Promise(setImmediate);
-  assert.equal(router.cancel({ chatId: 'group-b' }), false);
-  await assert.rejects(pending, /expired/);
-  assert.equal(router.pending.size, 0);
-});
-
-test('multiple explicit threads require private selection; a request cannot select another request', async () => {
-  const { router } = fixture({ revision: 0, groups: [], projectGroups: [{ chatId: 'group-a', projectPath: '/project' }], threadGroups: [{ chatId: 'group-a', projectPath: '/project', threadId: 'one' }, { chatId: 'group-a', projectPath: '/project', threadId: 'two' }] });
-  const pending = router.resolve(incoming);
-  await new Promise(setImmediate);
-  const id = [...router.pending.keys()][0];
-  assert.equal(await router.answer(answer('00000000-0000-0000-0000-000000000000')), false);
-  await router.answer(answer(id, 'admin', 2));
-  assert.deepEqual(await pending, { projectPath: '/project', threadId: 'two' });
 });
 
 test('typed revision conflicts retry even when error text has no conflict keyword', async () => {
@@ -66,27 +52,20 @@ test('typed revision conflicts retry even when error text has no conflict keywor
   assert.equal(attempts, 2);
 });
 
-test('project removal while private selection waits cannot resurrect its group association', async () => {
-  const { router, relations } = fixture({ revision: 0, groups: [], projectGroups: [{ chatId: 'group-a', projectPath: '/project' }, { chatId: 'group-a', projectPath: '/other' }], threadGroups: [] });
-  const pending = router.resolve(incoming);
-  await new Promise(setImmediate);
-  const id = [...router.pending.keys()][0];
-  const state = await relations.read();
-  await relations.replace({ groups: state.groups, projectGroups: [], threadGroups: [] }, state.revision);
-  await router.answer(answer(id));
-  await assert.rejects(pending, /revoked/);
-  assert.deepEqual((await relations.read()).projectGroups, []);
-});
 
-test('project disappearance and session removal invalidate administrator choices', async () => {
-  const { router, relations } = fixture({ revision: 0, groups: [], projectGroups: [{ chatId: 'group-a', projectPath: '/project' }], threadGroups: ['one', 'two'].map(threadId => ({ chatId: 'group-a', projectPath: '/project', threadId })) });
-  const pending = router.resolve(incoming);
-  await new Promise(setImmediate);
-  const id = [...router.pending.keys()][0];
-  const state = await relations.read();
-  await relations.replace({ groups: [], projectGroups: state.projectGroups, threadGroups: [] }, state.revision);
-  await router.answer(answer(id));
-  await assert.rejects(pending, /revoked/);
-  router.listProjects = async () => [];
-  await assert.rejects(router.validate('group-a', { projectPath: '/project', threadId: null }), /no longer exists/);
+test('removing the current project keeps historical threads read-only after storage reload', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'askx-unlinked-route-'));
+  try {
+    const store = new BridgeRelationsStore(directory);
+    const first = await store.replace({ groups: [{ chatId: 'oc_A', name: 'A' }], projectGroups: [{ chatId: 'oc_A', projectPath: '/current', active: true }, { chatId: 'oc_A', projectPath: '/history', active: false }], threadGroups: [{ chatId: 'oc_A', projectPath: '/history', threadId: 'old-thread' }] }, 0);
+    await store.replace({ groups: first.groups, projectGroups: first.projectGroups.filter(link => link.projectPath !== '/current'), threadGroups: first.threadGroups }, first.revision);
+    const reloaded = new BridgeRelationsStore(directory);
+    const router = new RoutingCoordinator({ relations: reloaded, listProjects: async () => ['/history'] });
+    const snapshot = await reloaded.read();
+    assert.deepEqual(snapshot.threadGroups, first.threadGroups);
+    assert.equal(snapshot.projectGroups[0].active, false);
+    await assert.rejects(router.resolve({ chatId: 'oc_A', messageId: 'next-message' }), /No active project/);
+    await assert.rejects(router.validate('oc_A', { projectPath: '/history', threadId: 'old-thread' }), /not active/);
+    router.close();
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });

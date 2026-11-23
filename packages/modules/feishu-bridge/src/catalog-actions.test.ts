@@ -23,7 +23,7 @@ async function fixture() {
     deleted: false, rejectDelete: false, archived: false, running: true, failAfterWrite: false, failVerification: false, guarded: false,
   }
   /** 当前关系由测试直接模拟跨请求版本变化。 */
-  const relations: BridgeRelations = { version: 1, revision: 0, groups: [], projectGroups: [], threadGroups: [] }
+  const relations: BridgeRelations = { version: 2, revision: 0, groups: [], projectGroups: [], threadGroups: [], migrationConflicts: [] }
   /** 锁顺序的可审查记录。 */
   const order: string[] = []
   /** Codex 协议模拟，禁止触达真实 App Server。 */
@@ -114,7 +114,7 @@ describe('BridgeCatalogActions', () => {
   it.each(['remove-project', 'archive-thread'] as const)('rejects linked target %s', async action => {
     /** 当前用例协议夹具。 */
     const context = await fixture()
-    context.relations.projectGroups = [{ chatId: 'oc_group', projectPath: directory }]
+    context.relations.projectGroups = [{ chatId: 'oc_group', projectPath: directory, active: true }]
     context.relations.threadGroups = [{ chatId: 'oc_group', projectPath: directory, threadId: 't' }]
     await expect(context.execute({ action, threadId: 't' })).rejects.toThrow('Unlink')
     expect(context.request.mock.calls.some(([method]) => ['project/update', 'project/delete', 'thread/archive'].includes(method))).toBe(false)

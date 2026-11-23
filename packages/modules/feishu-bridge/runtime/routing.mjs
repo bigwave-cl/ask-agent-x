@@ -17,7 +17,7 @@ export class RoutingCoordinator {
         if (this.closed) throw new Error("Bridge stopped");
         const snapshot = await this.relations.read();
         const next = await update(snapshot);
-        try { return await this.relations.replace({ groups: next.groups, projectGroups: next.projectGroups, threadGroups: next.threadGroups }, snapshot.revision); }
+        try { return await this.relations.replace({ groups: next.groups, projectGroups: next.projectGroups, threadGroups: next.threadGroups, migrationConflicts: next.migrationConflicts }, snapshot.revision); }
         catch (error) {
           if (!(error instanceof BridgeRelationsConflictError) || attempt === 4) throw error;
         }
@@ -68,22 +68,14 @@ export class RoutingCoordinator {
   /** 原消息等待选择；已有显式关联才允许复用会话。 */
   async resolve(incoming, { fresh = false } = {}) {
     let snapshot = await this.relations.read();
-    const groupWasKnown = snapshot.groups.some((row) => row.chatId === incoming.chatId);
-    const projects = snapshot.projectGroups.filter((row) => row.chatId === incoming.chatId).map((row) => row.projectPath);
-    const candidates = projects.length ? projects : await this.listProjects();
-    const projectPath = projects.length === 1 ? projects[0] : await this.choose(`选择项目 / Select project: ${incoming.chatId} (${incoming.messageId})`, candidates, incoming);
-    await this.mutate(async (state) => {
-      if (!(await this.listProjects()).includes(projectPath)) throw new Error("Selected project no longer exists");
-      if (groupWasKnown && !state.groups.some((row) => row.chatId === incoming.chatId)) throw new Error("Group association was revoked");
-      const current = state.projectGroups.filter((row) => row.chatId === incoming.chatId).map((row) => row.projectPath);
-      if (projects.length && !current.includes(projectPath)) throw new Error("Project association was revoked");
-      if (!projects.length && current.length && !current.includes(projectPath)) throw new Error("Project associations changed during selection");
-      return { ...state,
-        groups: state.groups.some((row) => row.chatId === incoming.chatId) ? state.groups : [...state.groups, { chatId: incoming.chatId, name: incoming.chatId }],
-        projectGroups: current.includes(projectPath) ? state.projectGroups : [...state.projectGroups, { chatId: incoming.chatId, projectPath }],
-      };
-    });
+    const group = snapshot.groups.find((row) => row.chatId === incoming.chatId);
+    if (!group) throw new Error("Group is not registered; sync Feishu groups before starting a conversation");
+    const activeProject = snapshot.projectGroups.find((row) => row.chatId === incoming.chatId && row.active);
+    if (!activeProject) throw new Error("No active project is bound to this group; bind a project before starting a conversation");
+    const projectPath = activeProject.projectPath;
+    if (!(await this.listProjects()).includes(projectPath)) throw new Error("The active project no longer exists");
     snapshot = await this.relations.read();
+    if (!snapshot.projectGroups.some((row) => row.chatId === incoming.chatId && row.projectPath === projectPath && row.active)) throw new Error("The active project changed; retry the message");
     const threads = snapshot.threadGroups.filter((row) => row.chatId === incoming.chatId && row.projectPath === projectPath);
     if (fresh || threads.length === 0) return { projectPath, threadId: null, ...(fresh ? { explicitNew: true } : {}) };
     if (threads.length === 1) return { projectPath, threadId: threads[0].threadId };
@@ -99,7 +91,7 @@ export class RoutingCoordinator {
     if (this.closed) throw new Error("Bridge stopped");
     if (!(await this.listProjects()).includes(route.projectPath)) throw new Error("Selected project no longer exists");
     const state = await this.relations.read();
-    if (!state.projectGroups.some((row) => row.chatId === chatId && row.projectPath === route.projectPath)) throw new Error("Project association was revoked");
+    if (!state.projectGroups.some((row) => row.chatId === chatId && row.projectPath === route.projectPath && row.active)) throw new Error("Project is not active for this group");
     if (route.threadId && !state.threadGroups.some((row) => row.chatId === chatId && row.projectPath === route.projectPath && row.threadId === route.threadId)) throw new Error("Thread association was revoked");
     return state;
   }
@@ -108,7 +100,7 @@ export class RoutingCoordinator {
   link(chatId, projectPath, threadId) {
     return this.mutate(async (state) => {
       if (!(await this.listProjects()).includes(projectPath)) throw new Error("Selected project no longer exists");
-      if (!state.projectGroups.some((row) => row.chatId === chatId && row.projectPath === projectPath)) throw new Error("Project association was revoked");
+      if (!state.projectGroups.some((row) => row.chatId === chatId && row.projectPath === projectPath && row.active)) throw new Error("Project is not active for this group");
       return { ...state, threadGroups: state.threadGroups.some((row) => row.chatId === chatId && row.threadId === threadId) ? state.threadGroups : [...state.threadGroups, { chatId, projectPath, threadId }] };
     });
   }

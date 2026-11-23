@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -32,6 +32,43 @@ function barrier() {
 }
 
 describe('BridgeRelationsStore', () => {
+  it('migrates one v1 project relation to the active project state', async () => {
+    const [store] = await stores()
+    await writeFile(store.path, JSON.stringify({ version: 1, revision: 4, groups: [{ chatId: 'oc_A', name: 'A' }], projectGroups: [{ chatId: 'oc_A', projectPath: '/projects/demo' }], threadGroups: [] }))
+    const snapshot = await store.read()
+    expect(snapshot.version).toBe(2)
+    expect(snapshot.projectGroups).toEqual([{ chatId: 'oc_A', projectPath: '/projects/demo', active: true }])
+    expect(snapshot.migrationConflicts).toEqual([])
+  })
+
+  it('keeps v1 multi-project ambiguity as an explicit migration conflict', async () => {
+    const [store] = await stores()
+    await writeFile(store.path, JSON.stringify({ version: 1, revision: 2, groups: [{ chatId: 'oc_A', name: 'A' }], projectGroups: [{ chatId: 'oc_A', projectPath: '/projects/a' }, { chatId: 'oc_A', projectPath: '/projects/b' }], threadGroups: [] }))
+    const snapshot = await store.read()
+    expect(snapshot.projectGroups.every(link => !link.active)).toBe(true)
+    expect(snapshot.migrationConflicts).toEqual([{ chatId: 'oc_A', projectPaths: ['/projects/a', '/projects/b'] }])
+  })
+
+  it.each([1, 2])('保留 %s 个显式停用的历史项目，重新读取时不激活或伪造迁移冲突', async count => {
+    /** 独立读取者验证持久化后仍保持显式状态。 */
+    const [writer, reader] = await stores()
+    /** 当前快照允许没有活动项目，同时保留历史关联。 */
+    const input: BridgeRelationsInput = {
+      groups: [{ chatId: 'oc_A', name: 'A' }],
+      projectGroups: Array.from({ length: count }, (_, index) => ({ chatId: 'oc_A', projectPath: `/projects/history-${index}`, active: false })),
+      threadGroups: [],
+    }
+    const saved = await writer.replace(input, 0)
+    expect(saved.projectGroups).toEqual(input.projectGroups)
+    expect(saved.migrationConflicts).toEqual([])
+    expect(await reader.read()).toEqual(saved)
+  })
+
+  it('rejects two active projects for one group', async () => {
+    const [store] = await stores()
+    await expect(store.replace({ groups: [{ chatId: 'oc_A', name: 'A' }], projectGroups: [{ chatId: 'oc_A', projectPath: '/projects/a', active: true }, { chatId: 'oc_A', projectPath: '/projects/b', active: true }], threadGroups: [] }, 0)).rejects.toThrow('only one active project')
+  })
+
   it('目标变更持锁时仍可读取，等待的旧版本保存会在变更成功后冲突', async () => {
     /** 两个独立 owner 共用磁盘文件锁。 */
     const [first, second] = await stores()

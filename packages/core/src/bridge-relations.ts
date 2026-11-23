@@ -10,36 +10,71 @@ export const bridgeGroupSchema = z.object({
   /** 飞书返回的群名称。 */
   name: z.string().min(1).max(256),
 })
+
 /** 边界只接受规范化绝对路径；真实路径核验由项目服务负责。 */
 const projectPathSchema = z.string().refine(value => isAbsolute(value) && normalize(value) === value, 'Project path must be an absolute normalized path')
-/** 群与项目的授权关系。 */
-export const projectGroupSchema = z.object({
+
+/** 群与项目关系的输入结构，兼容 v1 中缺失 active 的旧数据。 */
+const projectGroupInputSchema = z.object({
   /** 群标识。 */
   chatId: bridgeGroupSchema.shape.chatId,
   /** 项目真实路径。 */
   projectPath: projectPathSchema,
+  /** 当前项目标记；旧数据迁移时由关系 owner 补齐。 */
+  active: z.boolean().optional(),
 })
+
+/** 规范化后的群与项目授权关系。 */
+export const projectGroupSchema = projectGroupInputSchema.extend({
+  /** 当前群唯一可写入的项目。 */
+  active: z.boolean(),
+})
+
 /** 群与会话的显式共享关系。 */
-export const threadGroupSchema = projectGroupSchema.extend({
+export const threadGroupSchema = projectGroupSchema.omit({ active: true }).extend({
   /** Codex 会话标识。 */
   threadId: z.string().min(1).max(128),
 })
-/** 双向查询共用一份关系集合，不持久化反向副本。 */
-export const bridgeRelationsInputSchema = z.object({
+
+/** v1 迁移时需要用户明确选择当前项目的冲突记录。 */
+export const bridgeMigrationConflictSchema = z.object({
+  /** 发生冲突的群标识。 */
+  chatId: bridgeGroupSchema.shape.chatId,
+  /** 等待用户选择的项目路径。 */
+  projectPaths: z.array(projectPathSchema).min(2).max(100),
+})
+
+/** 关系输入的原始结构；提交前统一归一化 active 和迁移冲突。 */
+const bridgeRelationsRawSchema = z.object({
   /** 已发现群组，包括尚未关联项目的群。 */
   groups: z.array(bridgeGroupSchema).max(2000),
-  /** 项目与群的多对多关系。 */
-  projectGroups: z.array(projectGroupSchema).max(10000),
-  /** 会话与群的多对多关系。 */
+  /** 项目与群的历史关系。 */
+  projectGroups: z.array(projectGroupInputSchema).max(10000),
+  /** 会话与群的历史关系。 */
   threadGroups: z.array(threadGroupSchema).max(10000),
+  /** v1 多项目关系迁移冲突。 */
+  migrationConflicts: z.array(bridgeMigrationConflictSchema).max(2000).optional(),
+}).strict()
+
+/** 规范化后的关系结构，供所有业务模块消费。 */
+const bridgeRelationsNormalizedSchema = z.object({
+  groups: z.array(bridgeGroupSchema).max(2000),
+  projectGroups: z.array(projectGroupSchema).max(10000),
+  threadGroups: z.array(threadGroupSchema).max(10000),
+  migrationConflicts: z.array(bridgeMigrationConflictSchema).max(2000),
 }).strict().superRefine((value, context) => {
   const groups = new Set(value.groups.map(group => group.chatId))
   if (groups.size !== value.groups.length) context.addIssue({ code: 'custom', message: 'Duplicate group' })
   const projects = new Set<string>()
+  const activeProjects = new Map<string, number>()
   for (const link of value.projectGroups) {
     const key = JSON.stringify([link.chatId, link.projectPath])
     if (!groups.has(link.chatId) || projects.has(key)) context.addIssue({ code: 'custom', message: 'Unknown or duplicate project-group link' })
     projects.add(key)
+    if (link.active) activeProjects.set(link.chatId, (activeProjects.get(link.chatId) || 0) + 1)
+  }
+  for (const [chatId, count] of activeProjects) {
+    if (count > 1) context.addIssue({ code: 'custom', message: `A group can have only one active project: ${chatId}` })
   }
   const threads = new Set<string>()
   const threadPaths = new Map<string, string>()
@@ -51,51 +86,89 @@ export const bridgeRelationsInputSchema = z.object({
     threads.add(key)
     threadPaths.set(link.threadId, link.projectPath)
   }
+  const conflictKeys = new Set<string>()
+  for (const conflict of value.migrationConflicts) {
+    if (!groups.has(conflict.chatId) || conflictKeys.has(conflict.chatId)) context.addIssue({ code: 'custom', message: 'Invalid migration conflict' })
+    conflictKeys.add(conflict.chatId)
+  }
 })
-/** 可提交的关系数据。 */
-export type BridgeRelationsInput = z.infer<typeof bridgeRelationsInputSchema>
+
+/** 可提交的关系数据；active 对旧调用方保持可选，进入 owner 后会被归一化。 */
+export type BridgeRelationsInput = z.input<typeof bridgeRelationsRawSchema>
+/** 归一化后的关系数据。 */
+export type BridgeRelationsData = z.output<typeof bridgeRelationsNormalizedSchema>
+
+/** 将旧关系转换为唯一当前项目模型，不自动猜测多项目冲突。 */
+function normalizeRelations(input: BridgeRelationsInput): BridgeRelationsData {
+  const parsed = bridgeRelationsRawSchema.parse(input)
+  const projectGroups = parsed.projectGroups.map(link => ({ ...link, active: link.active ?? false }))
+  const migrationConflicts = [...(parsed.migrationConflicts || [])]
+  /** 显式激活状态表示用户已作选择，不能再套用旧版推断。 */
+  const explicitGroups = new Set(parsed.projectGroups.filter(link => link.active !== undefined).map(link => link.chatId))
+  const grouped = new Map<string, typeof projectGroups>()
+  for (const link of projectGroups) grouped.set(link.chatId, [...(grouped.get(link.chatId) || []), link])
+  for (const [chatId, links] of grouped) {
+    if (explicitGroups.has(chatId)) continue
+    if (links.length === 1) links[0]!.active = true
+    if (links.length > 1 && !migrationConflicts.some(conflict => conflict.chatId === chatId)) {
+      migrationConflicts.push({ chatId, projectPaths: links.map(link => link.projectPath) })
+    }
+  }
+  return bridgeRelationsNormalizedSchema.parse({
+    groups: parsed.groups,
+    projectGroups,
+    threadGroups: parsed.threadGroups,
+    migrationConflicts,
+  })
+}
+
+/** 对外提供的关系解析器；所有入口共享同一份归一化结果。 */
+export const bridgeRelationsInputSchema = bridgeRelationsRawSchema.transform(value => normalizeRelations(value))
+
 /** 带并发版本的关系快照。 */
-export interface BridgeRelations extends BridgeRelationsInput {
+export interface BridgeRelations extends BridgeRelationsData {
   /** 存储格式版本。 */
-  version: 1
+  version: 2
   /** 每次提交递增的版本。 */
   revision: number
 }
+
 /** 版本冲突时保留最新快照供调用方重载。 */
 export class BridgeRelationsConflictError extends Error {
   /** 创建关系版本冲突。 */
   constructor(readonly current: BridgeRelations) { super('Bridge relations changed; reload before saving') }
 }
-/** 关系存储的唯一写入入口，提供跨进程锁和原子提交。 */
+
+/** 关系存储的唯一写入入口，提供跨进程锁、迁移和原子提交。 */
 export class BridgeRelationsStore {
   /** 内部固定存储路径。 */
   readonly path: string
   /** 根据模块数据目录定位关系文件。 */
   constructor(private readonly directory: string) { this.path = join(directory, 'relations.json') }
 
-  /** 读取快照；读取操作不会创建或迁移用户文件。 */
+  /** 读取快照；旧文件在内存中迁移，下一次提交写入 v2。 */
   async read(): Promise<BridgeRelations> {
     try {
       const raw = JSON.parse(await readFile(this.path, 'utf8')) as Record<string, unknown>
-      if (raw.version !== 1 || !Number.isSafeInteger(raw.revision) || Number(raw.revision) < 0) throw new Error('Invalid bridge relations version')
-      const data = bridgeRelationsInputSchema.parse({ groups: raw.groups, projectGroups: raw.projectGroups, threadGroups: raw.threadGroups })
-      return { version: 1, revision: Number(raw.revision), ...data }
+      if (!Number.isSafeInteger(raw.revision) || Number(raw.revision) < 0) throw new Error('Invalid bridge relations revision')
+      if (raw.version !== 1 && raw.version !== 2) throw new Error('Invalid bridge relations version')
+      const data = normalizeRelations({ groups: raw.groups, projectGroups: raw.projectGroups, threadGroups: raw.threadGroups, migrationConflicts: raw.migrationConflicts } as BridgeRelationsInput)
+      return { version: 2, revision: Number(raw.revision), ...data }
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { version: 1, revision: 0, groups: [], projectGroups: [], threadGroups: [] }
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { version: 2, revision: 0, groups: [], projectGroups: [], threadGroups: [], migrationConflicts: [] }
       throw error
     }
   }
 
   /** 持锁核对版本后一次性替换关系，验证失败不改变已有数据。 */
   async replace(input: BridgeRelationsInput, expectedRevision: number): Promise<BridgeRelations> {
-    /** 提交前校验的标准关系结构。 */
-    const data = bridgeRelationsInputSchema.parse(input)
+    const data = normalizeRelations(input)
     return this.withLock(async () => {
       /** 持锁读取的最新版本。 */
       const current = await this.read()
       if (current.revision !== expectedRevision) throw new BridgeRelationsConflictError(current)
       /** 本次关系事务的唯一提交快照。 */
-      const next: BridgeRelations = { version: 1, revision: current.revision + 1, ...data }
+      const next: BridgeRelations = { version: 2, revision: current.revision + 1, ...data }
       await this.writeSnapshot(next)
       return next
     })
