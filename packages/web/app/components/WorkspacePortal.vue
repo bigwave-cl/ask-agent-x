@@ -1,67 +1,152 @@
 <script setup lang="ts">
 import type { AskXThemeColor } from '@askx/core'
-import type { AskxIconName } from '@/lib/iconCatalog'
+import { useDocumentVisibility, useEventListener, usePreferredReducedMotion } from '@vueuse/core'
 
+/** 首页可进入的工作台目标。 */
 type PortalDestination = 'skills-x' | 'bridge' | 'settings'
 
+/** 保持首页调用方的属性契约。 */
 const props = defineProps<{
+    /** 已启用的平台数量。 */
     enabledCount: number
+    /** 当前配置版本。 */
     revision?: number
+    /** 是否启用备份。 */
     backupEnabled: boolean
+    /** 当前主题颜色。 */
     themeColor: AskXThemeColor
 }>()
 
+/** 立即通知调用方进入目标页面。 */
 const emit = defineEmits<{
+    /** 用户选择的导航目标。 */
     select: [destination: PortalDestination]
 }>()
 
-const { t } = useI18n()
+/** 首页本地化文案。 */
 const copy = useMessageSection('portal')
+/** 保持现有粒子背景配色。 */
 const particleColor = computed(() => props.themeColor === 'rose' ? '#e7659f' : '#31bbc5')
+/** 页面不可见时暂停动画并重置视线。 */
+const visibility = useDocumentVisibility()
+/** 不受入场与姿态变换影响的布局锚点。 */
+const logoAnchor = ref<HTMLElement | null>(null)
+/** 首次挂载后启动一次入场，不随预览更新。 */
+const entered = ref(false)
+/** 用户的动态效果偏好。 */
+const reducedMotion = usePreferredReducedMotion()
+/** 相对 Logo 中心的标准化视线方向。 */
+const gaze = ref({
+    /** 水平方向，范围为负一到一。 */
+    x: 0,
+    /** 垂直方向，范围为负一到一。 */
+    y: 0,
+})
+/** 待提交的最新鼠标坐标，同一帧仅消费一次。 */
+let pendingPointer: { /** 视口横坐标。 */ x: number, /** 视口纵坐标。 */ y: number } | null = null
+/** 事件驱动的单次动画帧，不保持空转循环。 */
+let gazeFrame: number | null = null
 
-const portalCardTone: Record<PortalDestination, string> = {
-    'skills-x': '[--portal-accent:var(--ds-color-brand-default)] min-[801px]:rotate-[-0.7deg]',
-    bridge: '[--portal-accent:var(--chart-3)] min-[801px]:translate-y-3 min-[801px]:rotate-[0.8deg]',
-    settings: '[--portal-accent:var(--chart-4)] min-[801px]:rotate-[-0.2deg]',
+/** 取消尚未提交的跟随并恢复正面视线。 */
+function resetGaze() {
+    if (gazeFrame !== null) cancelAnimationFrame(gazeFrame)
+    gazeFrame = null
+    pendingPointer = null
+    gaze.value = { x: 0, y: 0 }
 }
 
+/** 在当前帧读取稳定布局，提交最新鼠标方向。 */
+function updateGaze() {
+    gazeFrame = null
+    if (!pendingPointer || !logoAnchor.value || visibility.value === 'hidden' || reducedMotion.value === 'reduce') return
+    /** 当前布局容器在视口中的稳定位置。 */
+    const bounds = logoAnchor.value.getBoundingClientRect()
+    /** 相对中心的水平偏移。 */
+    const x = (pendingPointer.x - bounds.left - bounds.width / 2) / 350
+    /** 相对中心的垂直偏移。 */
+    const y = (pendingPointer.y - bounds.top - bounds.height / 2) / 350
+    /** 径向归一化避免对角线追随超过单位范围。 */
+    const radius = Math.max(1, Math.hypot(x, y))
+    gaze.value = { x: x / radius, y: y / radius }
+    pendingPointer = null
+}
+
+/** 合并鼠标移动；触控不创建跟随任务。 */
+function trackPointer(event: PointerEvent) {
+    if (event.pointerType !== 'mouse' || visibility.value === 'hidden' || reducedMotion.value === 'reduce') return
+    pendingPointer = { x: event.clientX, y: event.clientY }
+    if (gazeFrame === null) gazeFrame = requestAnimationFrame(updateGaze)
+}
+
+useEventListener('pointermove', trackPointer, { passive: true })
+useEventListener('blur', resetGaze)
+useEventListener('pointerout', (event: PointerEvent) => {
+    if (!event.relatedTarget) resetGaze()
+})
+watch([visibility, reducedMotion], resetGaze)
+onMounted(() => { entered.value = true })
+onBeforeUnmount(resetGaze)
+/** 当前获得键盘或点击焦点的目标。 */
+const focusedDestination = ref<PortalDestination | null>(null)
+/** 指针当前悬停的目标。 */
+const hoveredDestination = ref<PortalDestination | null>(null)
+/** 最近一次有效交互；空值表示首页空闲。 */
+const previewTarget = ref<PortalDestination | null>(null)
+/** 空闲时仍显示技能入口介绍。 */
+const previewDestination = computed(() => previewTarget.value ?? 'skills-x')
+/** 导航目标对应的品牌表情，只负责接线。 */
+const expressions = {
+    /** 技能入口展现好奇与兴奋。 */
+    'skills-x': 'curious',
+    /** 中继入口展现交流状态。 */
+    bridge: 'speaking',
+    /** 设置入口展现专注状态。 */
+    settings: 'focused',
+} as const
+/** 表情与说明、高亮共用同一预览状态。 */
+const expression = computed(() => previewTarget.value ? expressions[previewTarget.value] : 'idle')
+
+/** 记录最新焦点或鼠标交互，立即更新预览。 */
+function preview(destination: PortalDestination, source: 'focus' | 'pointer') {
+    if (source === 'focus') focusedDestination.value = destination
+    else hoveredDestination.value = destination
+    previewTarget.value = destination
+}
+
+/** 指针离开后恢复仍存在的焦点，否则回到空闲。 */
+function leavePointer() {
+    hoveredDestination.value = null
+    previewTarget.value = focusedDestination.value
+}
+
+/** 焦点离开后恢复仍存在的悬停，否则回到空闲。 */
+function leaveFocus() {
+    focusedDestination.value = null
+    previewTarget.value = hoveredDestination.value
+}
+/** 菜单预览的单一数据来源。 */
 const portals = computed<Array<{
+    /** 导航目标标识。 */
     id: PortalDestination
-    index: string
+    /** 菜单名称。 */
     title: string
+    /** 目标的简短介绍。 */
     description: string
-    meta: string
-    icon: AskxIconName
 }>>(() => [
-    {
-        id: 'skills-x',
-        index: '01',
-        title: copy.value.skillsTitle,
-        description: copy.value.skillsDescription,
-        meta: t('portal.skillsMeta', { count: props.enabledCount }),
-        icon: 'askx-objects:agent',
-    },
-    {
-        id: 'bridge',
-        index: '02',
-        title: copy.value.bridgeTitle,
-        description: copy.value.bridgeDescription,
-        meta: copy.value.bridgeMeta,
-        icon: 'askx-objects:chat',
-    },
-    {
-        id: 'settings',
-        index: '03',
-        title: copy.value.settingsTitle,
-        description: copy.value.settingsDescription,
-        meta: t('portal.settingsMeta', { revision: props.revision ?? '—' }),
-        icon: 'askx-actions:settings',
-    },
+    { id: 'skills-x', title: copy.value.skillsTitle, description: copy.value.skillsDescription },
+    { id: 'bridge', title: copy.value.bridgeTitle, description: copy.value.bridgeDescription },
+    { id: 'settings', title: copy.value.settingsTitle, description: copy.value.settingsDescription },
 ])
+/** 当前目标的介绍，不触发请求或延迟导航。 */
+const previewDescription = computed(() => portals.value.find(portal => portal.id === previewDestination.value)?.description)
 </script>
 
 <template>
-    <main class="relative isolate min-h-svh overflow-hidden [background:radial-gradient(circle_at_20%_5%,color-mix(in_srgb,var(--ds-color-brand-default)_14%,transparent),transparent_34rem),linear-gradient(145deg,var(--background)_15%,color-mix(in_srgb,var(--ds-color-bg-surface-raised)_76%,var(--background))_100%)]">
+    <main
+        :data-entered="entered"
+        :data-paused="visibility === 'hidden'"
+        class="relative isolate min-h-svh overflow-hidden [background:radial-gradient(circle_at_20%_5%,color-mix(in_srgb,var(--ds-color-brand-default)_14%,transparent),transparent_34rem),linear-gradient(145deg,var(--background)_15%,color-mix(in_srgb,var(--ds-color-bg-surface-raised)_76%,var(--background))_100%)]"
+    >
         <ClientOnly>
             <LazyAntigravityBackground
                 :count="190"
@@ -102,41 +187,49 @@ const portals = computed<Array<{
             </section>
 
             <section
-                class="mt-[clamp(2.5rem,5vh,3.6rem)] grid gap-[clamp(0.9rem,2vw,1.35rem)] min-[801px]:grid-cols-3 min-[801px]:[perspective:1200px]"
-                :aria-label="copy.destinations"
+                class="portal-menu mx-auto mt-[clamp(2.5rem,5vh,3.6rem)] flex min-h-72 flex-col items-center justify-center gap-8 sm:flex-row sm:gap-20"
             >
-                <button
-                    v-for="portal in portals"
-                    :key="portal.id"
-                    type="button"
-                    class="group relative flex min-h-60 flex-col overflow-hidden rounded-[1.55rem] border border-[color-mix(in_srgb,var(--portal-accent)_22%,var(--border))] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--card)_86%,transparent),color-mix(in_srgb,var(--card)_64%,transparent))] p-[1.35rem] text-left text-foreground shadow-[0_22px_70px_rgb(18_47_51_/_8%),inset_0_1px_rgb(255_255_255_/_76%)] outline-none transition-[transform,border-color,box-shadow] duration-[260ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] [backdrop-filter:blur(18px)_saturate(1.15)] hover:z-2 hover:border-[color-mix(in_srgb,var(--portal-accent)_52%,var(--border))] hover:shadow-[0_32px_90px_color-mix(in_srgb,var(--portal-accent)_15%,transparent),inset_0_1px_rgb(255_255_255_/_80%)] hover:[transform:translateY(-0.65rem)_rotate(0)_scale(1.012)] focus-visible:z-2 focus-visible:border-[color-mix(in_srgb,var(--portal-accent)_52%,var(--border))] focus-visible:shadow-[0_32px_90px_color-mix(in_srgb,var(--portal-accent)_15%,transparent),inset_0_1px_rgb(255_255_255_/_80%)] focus-visible:[transform:translateY(-0.65rem)_rotate(0)_scale(1.012)] motion-reduce:transition-none min-[801px]:min-h-72"
-                    :class="portalCardTone[portal.id]"
-                    :data-testid="`portal-${portal.id}`"
-                    @click="emit('select', portal.id)"
+                <div
+                    ref="logoAnchor"
+                    class="size-24 shrink-0 sm:size-44"
+                    aria-hidden="true"
                 >
-                    <span
-                        class="absolute -right-20 -top-24 size-52 rounded-full bg-portal-accent opacity-20 blur-[26px] transition-[opacity,transform] duration-[400ms] group-hover:translate-x-[-1.5rem] group-hover:translate-y-6 group-hover:scale-115 group-hover:opacity-35 motion-reduce:transition-none"
-                        aria-hidden="true"
-                    />
-                    <span class="relative flex items-center justify-between gap-4">
-                        <span class="font-mono text-[0.68rem] tracking-[0.13em] text-muted-foreground">{{ portal.index }}</span>
-                        <span class="grid size-[2.8rem] rotate-4 place-items-center rounded-[0.9rem] border border-[color-mix(in_srgb,var(--portal-accent)_27%,transparent)] bg-[color-mix(in_srgb,var(--portal-accent)_10%,var(--card))] text-[color-mix(in_srgb,var(--portal-accent)_82%,var(--foreground))] transition-transform duration-[260ms] group-hover:rotate-[-4deg] group-hover:scale-108 motion-reduce:transition-none"><Icon
-                            :name="portal.icon"
-                            class="size-[1.15rem]"
-                        /></span>
-                    </span>
-                    <span class="relative mt-auto grid gap-3 py-[2.5rem_1.8rem]">
-                        <strong class="text-[clamp(1.65rem,2.4vw,2.2rem)] font-semibold tracking-[-0.045em]">{{ portal.title }}</strong>
-                        <span class="max-w-xs text-[0.82rem] leading-[1.65] text-muted-foreground">{{ portal.description }}</span>
-                    </span>
-                    <span class="relative flex items-center justify-between gap-4 border-t border-foreground/8 pt-4 text-[0.7rem] text-muted-foreground">
-                        <span>{{ portal.meta }}</span>
-                        <span class="inline-flex items-center gap-1.5 font-medium text-foreground">{{ copy.enter }}<Icon
-                            name="askx-actions:external-link"
-                            class="size-3.5 transition-transform duration-180 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 motion-reduce:transition-none"
-                        /></span>
-                    </span>
-                </button>
+                    <div class="portal-logo-enter size-full">
+                        <BrandMark
+                            class="pointer-events-none size-full"
+                            :expression="expression"
+                            :paused="visibility === 'hidden'"
+                            :look-x="gaze.x"
+                            :look-y="gaze.y"
+                        />
+                    </div>
+                </div>
+                <div class="w-full max-w-[280px] sm:w-[216px] sm:max-w-none">
+                    <nav
+                        class="grid gap-2"
+                        :aria-label="copy.destinations"
+                        @pointerleave="leavePointer"
+                    >
+                        <button
+                            v-for="(portal, index) in portals"
+                            :key="portal.id"
+                            type="button"
+                            class="portal-row-enter h-12 rounded-xl px-4 text-left text-xl font-medium outline-none transition-colors duration-180 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-reduce:transition-none"
+                            :class="previewDestination === portal.id ? 'bg-muted text-foreground' : 'text-muted-foreground'"
+                            :data-testid="`portal-${portal.id}`"
+                            :style="{ '--entry-delay': `${180 + index * 90}ms` }"
+                            @pointerenter="$event.pointerType === 'mouse' && preview(portal.id, 'pointer')"
+                            @focus="preview(portal.id, 'focus')"
+                            @blur="leaveFocus"
+                            @click="emit('select', portal.id)"
+                        >
+                            {{ portal.title }}
+                        </button>
+                    </nav>
+                    <p class="portal-description-enter mt-5 min-h-[4.5rem] px-4 text-sm leading-6 text-muted-foreground">
+                        {{ previewDescription }}
+                    </p>
+                </div>
             </section>
 
             <footer class="mt-9 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-[0.68rem] text-muted-foreground">
@@ -153,3 +246,53 @@ const portals = computed<Array<{
         </CsWorkspaceContent>
     </main>
 </template>
+
+<style scoped>
+.portal-logo-enter, .portal-row-enter, .portal-description-enter {
+    opacity: 0;
+}
+
+[data-entered="true"] .portal-logo-enter {
+    animation: portal-logo-enter 600ms cubic-bezier(0.2, 0.8, 0.3, 1.12) both;
+}
+
+[data-entered="true"] .portal-row-enter {
+    animation: portal-row-enter 400ms ease-out var(--entry-delay) both;
+}
+
+[data-entered="true"] .portal-description-enter {
+    animation: portal-description-enter 400ms ease-out 450ms both;
+}
+
+[data-entered] .portal-row-enter:focus {
+    opacity: 1 !important;
+    transform: none !important;
+}
+
+[data-paused="true"] .portal-logo-enter,
+[data-paused="true"] .portal-row-enter,
+[data-paused="true"] .portal-description-enter {
+    animation-play-state: paused;
+}
+
+@keyframes portal-logo-enter {
+    from { opacity: 0; transform: translateY(12px) scale(0.85); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes portal-row-enter {
+    from { opacity: 0; transform: translateX(12px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes portal-description-enter {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    [data-entered] .portal-logo-enter,
+    [data-entered] .portal-row-enter,
+    [data-entered] .portal-description-enter { animation: none; opacity: 1; }
+}
+</style>
