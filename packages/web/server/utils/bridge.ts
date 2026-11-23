@@ -5,6 +5,7 @@ import { BridgeServiceManager } from '@askx/module-feishu-bridge/service-manager
 import { createFeishuBridgeModule } from '@askx/module-feishu-bridge'
 import { BridgeProjectService } from '@askx/module-feishu-bridge/project-service'
 import { BridgeCatalogActions } from '@askx/module-feishu-bridge/catalog-actions'
+import { BridgeSessionCatalogService } from '@askx/module-feishu-bridge/session-catalog'
 import { BridgeThreadSessionManager } from '@askx/module-feishu-bridge/thread-session'
 import { settingsStore } from './settings.js'
 
@@ -23,12 +24,15 @@ export const bridgeThreadSessionManager = new BridgeThreadSessionManager(
     settingsStore,
     async () => {
         const status = await bridgeServiceManager.status()
-        return status.runtimeStatus === 'running' && status.insideWindow
+        return status.runtimeStatus === 'running' && status.healthy && status.insideWindow
     },
 )
 
 /** Web 项目能力由 Codex API 提供，不使用本地 registry。 */
 export const bridgeProjectService = new BridgeProjectService(bridgeThreadSessionManager)
+
+/** Web 会话目录的唯一聚合 owner。 */
+export const bridgeSessionCatalogService = new BridgeSessionCatalogService(bridgeProjectService, bridgeThreadSessionManager)
 
 /** 页面菜单的唯一写入入口，计划、授权和恢复均由模块执行。 */
 export const bridgeCatalogActions = new BridgeCatalogActions({

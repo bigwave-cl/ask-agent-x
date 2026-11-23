@@ -1,360 +1,269 @@
 <script setup lang="ts">
-import Button from '@/components/ui/button/Button.vue'
-import Input from '@/components/ui/input/Input.vue'
-import Checkbox from '@/components/ui/checkbox/Checkbox.vue'
+import BusBridgeRelationsContent from './BusBridgeRelationsContent.vue'
+import BusBridgeRelationsShell from './BusBridgeRelationsShell.vue'
+import BusBridgeProjectList from './BusBridgeProjectList.vue'
+import BusBridgeProjectEditor from './BusBridgeProjectEditor.vue'
+import BusBridgeItemMenu from './BusBridgeItemMenu.vue'
 import { useBridgeServiceControl } from '@/composables/useBridgeServiceControl'
-/** 项目摘要。 */
+import { useConfirm } from '@/composables/useConfirm'
+import type { ConfirmController } from '@/composables/useConfirm'
+/** 项目目录摘要。 */
 interface Project {
-    /** 唯一路径。 */
+    /** 项目身份。 */
     path: string
     /** 显示名称。 */
     name: string
+    /** 当前目录可用性。 */
+    available?: boolean
 }
-/** 群关系注册表，所有编辑只更新此来源。 */
+/** 服务端关系快照，保留全部历史会话。 */
 interface Registry {
     /** 格式版本。 */
     version: number
     /** 并发版本。 */
     revision: number
-    /** 已同步群。 */
+    /** 群目录。 */
     groups: { chatId: string, name: string }[]
-    /** 项目群关联。 */
-    projectGroups: { chatId: string, projectPath: string }[]
-    /** 会话群关联。 */
+    /** 项目关系。 */
+    projectGroups: { chatId: string, projectPath: string, active?: boolean }[]
+    /** 会话关系。 */
     threadGroups: { chatId: string, threadId: string, projectPath: string }[]
+    /** 待处理迁移冲突。 */
+    migrationConflicts?: { chatId: string, projectPaths: string[] }[]
 }
-/** 面板参数。 */
-const props = withDefaults(defineProps<{ mode?: 'projects' | 'groups', projectPath?: string, projects: Project[], threads: Record<string, { id: string, title?: string }[]> }>(), { mode: 'projects', projectPath: '' })
-/** 面板开关。 */
+/** 兼容管理页与独立导入入口。 */
+const props = withDefaults(defineProps<{ page?: boolean, projectPath?: string, projects: Project[], threads: Record<string, { id: string, title?: string }[]>, showModeTabs?: boolean, importOnly?: boolean }>(), { page: false, projectPath: '', showModeTabs: false, importOnly: false })
+/** 外层入口开关。 */
 const open = defineModel<boolean>('open', { default: false })
-/** 新增项目通知。 */
+/** 页级管理分类。 */
+const mode = defineModel<'projects' | 'groups'>('mode', { default: 'projects' })
+/** 通知父级刷新目录。 */
 const emit = defineEmits<{ added: [path: string], saved: [] }>()
 /** 翻译入口。 */
 const { t } = useI18n()
-/** 页面唯一的操作准入检查。 */
-const { requireRunning, refreshStatus, ready, openSettings } = useBridgeServiceControl()
-/** 写入失败后区分服务已停止与真实 API 错误，始终保留草稿。 */
-async function recoverWrite(cause: unknown, current: number): Promise<void> {
-    await refreshStatus(true)
-    if (current !== generation || !open.value) return
-    if (!ready.value) { openSettings(); return }
-    const candidate = cause as { data?: { statusMessage?: string }, statusMessage?: string }
-    error.value = candidate.data?.statusMessage || candidate.statusMessage || t('bridge.loadError')
-}
-/** 群选择器受控开关。 */
-const groupSelectOpen = ref(false)
-/** 等待服务检查后确认面板生命周期仍有效。 */
-async function allow(): Promise<boolean> {
-    const current = generation
-    return await requireRunning() && current === generation && open.value
-}
-/** 选择器只在检查通过后展开。 */
-async function setGroupSelectOpen(value: boolean): Promise<void> {
-    if (!value) { groupSelectOpen.value = false; return }
-    if (await allow()) groupSelectOpen.value = true
-}
-/** 切换群前检查服务，不重放旧选择。 */
-async function selectGroup(value: string | undefined): Promise<void> {
-    if (await allow()) chatId.value = value || ''
-}
-/** 表单明确点击时才恢复焦点，避免设置关闭后的自动恢复循环。 */
-async function focusField(event: PointerEvent): Promise<void> {
-    const target = event.currentTarget as HTMLInputElement
-    if (target === document.activeElement) return
-    event.preventDefault()
-    if (await allow()) target.focus()
-}
-/** 添加项目路径。 */
-const path = ref('')
-/** 可选项目名称。 */
-const name = ref('')
-/** 唯一关系草稿。 */
+/** 统一操作反馈。 */
+const toast = useToast()
+/** 服务准入检查。 */
+const { requireRunning } = useBridgeServiceControl()
+/** 唯一持久化关系快照。 */
 const registry = ref<Registry | null>(null)
-/** 最近确认的关系快照，用于识别同步和保存期间的新编辑。 */
-const savedRelations = ref('')
-/** 关系语义快照，不包含服务端版本和只读群列表。 */
-function relationSnapshot(value: Registry): string {
-    return JSON.stringify({ projectGroups: value.projectGroups, threadGroups: value.threadGroups })
-}
-/** 关系面板按需读取的会话缓存。 */
-const relationThreads = ref<Record<string, { id: string, title?: string }[]>>({})
-/** 防止相同项目重复读取。 */
-const threadFlights = new Map<string, AbortController>()
-/** 点击加载指定项目的历史会话，不遍历所有项目。 */
-async function loadProjectThreads(projectPath: string): Promise<void> {
-    if (!await allow() || threadFlights.has(projectPath)) return
-    const current = generation
-    const controller = new AbortController()
-    threadFlights.set(projectPath, controller)
-    try {
-        const result = await $fetch<{ threads: { id: string, title?: string }[] }>(`/api/bridge/threads?projectPath=${encodeURIComponent(projectPath)}`, { signal: controller.signal, timeout: 15000, retry: 0 })
-        if (current === generation) relationThreads.value[projectPath] = result.threads
-    }
-    catch { if (current === generation && !controller.signal.aborted) error.value = t('bridge.loadError') }
-    finally { if (threadFlights.get(projectPath) === controller) threadFlights.delete(projectPath) }
-}
-/** 释放关系面板会话读取。 */
-function cancelThreadReads(): void {
-    for (const controller of threadFlights.values()) controller.abort()
-    threadFlights.clear()
-}
-/** 当前群。 */
-const chatId = ref('')
-/** 操作状态。 */
-const busy = ref(false)
-/** 错误提示。 */
-const error = ref('')
-/** 异步生命周期。 */
+/** 当前群项目弹窗身份。 */
+const groupId = ref('')
+/** 项目弹窗开关。 */
+const groupOpen = ref(false)
+/** 项目编辑器开关。 */
+const editorOpen = ref(false)
+/** 待编辑项目，缺省表示导入。 */
+const editingProject = ref<Project>()
+/** 已排队的项目路径，允许其他项目继续排队。 */
+const pendingPaths = ref<string[]>([])
+/** 群同步状态。 */
+const syncing = ref(false)
+/** 本轮服务端确认失效的项目。 */
+const failedProjects = ref<string[]>([])
+/** 生命周期序号。 */
 let generation = 0
-/** 加载关系。 */
-async function load(): Promise<void> {
-    if (!await allow()) return
-    const current = ++generation
-    try {
-        const result = await $fetch<Registry>('/api/bridge/groups')
-        if (current === generation) { registry.value = result; savedRelations.value = relationSnapshot(result); chatId.value = result.groups[0]?.chatId || '' }
-    }
-    catch { if (current === generation) error.value = t('bridge.loadError') }
-}
-/** 同步飞书群列表。 */
-async function sync(): Promise<void> {
-    if (!await allow() || busy.value) return
-    if (registry.value && relationSnapshot(registry.value) !== savedRelations.value) { error.value = t('bridge.saveBeforeSync'); return }
-    busy.value = true
-    const current = generation
-    const baseline = savedRelations.value
-    try {
-        const result = await $fetch<Registry>('/api/bridge/groups/sync', { method: 'POST' })
-        if (current !== generation) return
-        const edited = registry.value && relationSnapshot(registry.value) !== baseline
-        if (edited && relationSnapshot(result) !== baseline) { error.value = t('bridge.draftConflict'); return }
-        if (edited && registry.value) { registry.value.groups = result.groups; registry.value.revision = result.revision }
-        else { registry.value = result; savedRelations.value = relationSnapshot(result) }
-        chatId.value = result.groups.some(group => group.chatId === chatId.value) ? chatId.value : result.groups[0]?.chatId || ''
-    }
-    catch (cause) { if (current === generation) await recoverWrite(cause, current) }
-    finally { if (current === generation) busy.value = false }
-}
-/** 切换项目群关系，解除时清理从属会话关系。 */
-async function toggle(projectPath: string, groupId: string): Promise<void> {
-    if (!await allow() || !registry.value) return
-    const index = registry.value.projectGroups.findIndex(item => item.projectPath === projectPath && item.chatId === groupId)
-    if (index < 0) registry.value.projectGroups.push({ projectPath, chatId: groupId })
-    else {
-        registry.value.projectGroups.splice(index, 1)
-        registry.value.threadGroups = registry.value.threadGroups.filter(item => item.projectPath !== projectPath || item.chatId !== groupId)
-    }
-}
-/** 独立切换一条会话群关系，保留同群同项目的其他会话。 */
-async function toggleThread(projectPath: string, groupId: string, threadId: string): Promise<void> {
-    if (!await allow() || !registry.value) return
-    const index = registry.value.threadGroups.findIndex(item => item.projectPath === projectPath && item.chatId === groupId && item.threadId === threadId)
-    if (index < 0) registry.value.threadGroups.push({ projectPath, chatId: groupId, threadId })
-    else registry.value.threadGroups.splice(index, 1)
-}
-/** 包含尚未在当前页加载的已关联会话，避免隐藏历史关系。 */
-function availableThreads(projectPath: string, groupId: string): { id: string, title?: string }[] {
-    const result = [...(relationThreads.value[projectPath] || props.threads[projectPath] || [])]
-    for (const item of registry.value?.threadGroups || []) {
-        if (item.projectPath === projectPath && item.chatId === groupId && !result.some(thread => thread.id === item.threadId)) result.push({ id: item.threadId })
+/** 组件有效标记。 */
+let active = true
+/** 关系写入串行链。 */
+let queue = Promise.resolve()
+/** 动态确认框。 */
+let confirmation: ConfirmController | undefined
+/** 当前界面是否仍有效。 */
+function valid(current: number): boolean { return active && current === generation && (props.page || open.value) }
+/** 可见项目包含目录中已失效的历史关联。 */
+const projects = computed<Project[]>(() => {
+    /** 合并目录可用性与本轮校验结果。 */
+    const result = props.projects.map(item => ({ ...item, available: item.available !== false && !failedProjects.value.includes(item.path) }))
+    for (const item of registry.value?.projectGroups || []) {
+        if (!result.some(project => project.path === item.projectPath)) result.push({ path: item.projectPath, name: item.projectPath.split('/').pop() || item.projectPath, available: false })
     }
     return result
-}
-/** 保存新增项目或关系草稿。 */
-async function save(): Promise<void> {
-    if (!await allow() || busy.value) return
-    busy.value = true
-    const current = generation
-    const submittedPath = path.value.trim()
-    const submittedName = name.value
-    const submittedRegistry = registry.value ? JSON.parse(JSON.stringify(registry.value)) as Registry : null
-    try {
-        if (props.mode === 'projects' && !props.projectPath) {
-            if (!path.value.trim()) { error.value = t('bridge.pathRequired'); return }
-            await $fetch('/api/bridge/projects', { method: 'POST', body: { path: submittedPath, name: submittedName.trim() || undefined } })
-            if (current !== generation) return
-            emit('added', submittedPath)
-            if (path.value.trim() !== submittedPath || name.value !== submittedName) return
-        }
-        else if (submittedRegistry) {
-            const result = await $fetch<Registry>('/api/bridge/groups', { method: 'PUT', body: submittedRegistry })
-            if (current !== generation) return
-            emit('saved')
-            savedRelations.value = relationSnapshot(submittedRegistry)
-            if (registry.value && relationSnapshot(registry.value) !== savedRelations.value) {
-                registry.value.revision = result.revision
-                error.value = t('bridge.savedMoreEdits')
-                return
-            }
-        }
-        if (current === generation) open.value = false
-    }
-    catch (cause) {
-        if (current !== generation) return
-        if ((cause as { statusCode?: number }).statusCode === 409) error.value = t('bridge.draftConflict')
-        else await recoverWrite(cause, current)
-    }
-    finally { if (current === generation) busy.value = false }
-}
-watch(open, value => {
-    generation += 1
-    groupSelectOpen.value = false
-    cancelThreadReads()
-    relationThreads.value = {}
-    error.value = ''; path.value = ''; name.value = ''; busy.value = false
-    if (value && (props.mode === 'groups' || props.projectPath)) void load()
-    else { generation += 1; registry.value = null }
 })
-onUnmounted(() => { generation += 1; cancelThreadReads() })
+/** 当前群关联的项目路径。 */
+const linkedPaths = computed(() => registry.value?.projectGroups.filter(item => item.chatId === groupId.value).map(item => item.projectPath) || [])
+/** 当前群激活的项目。 */
+const activePath = computed(() => registry.value?.projectGroups.find(item => item.chatId === groupId.value && item.active)?.projectPath || '')
+/** 已知校验错误使用本地化反馈。 */
+function report(cause: unknown): void {
+    /** Nitro 错误信封。 */
+    const error = cause as { statusCode?: number, data?: { statusCode?: number, statusMessage?: string, data?: { code?: string, projectPath?: string, threadId?: string } } }
+    /** 结构化业务校验详情。 */
+    const detail = error.data?.data
+    /** 业务错误与双语文案映射。 */
+    const keys: Record<string, string> = { project_unavailable: 'projectUnavailableError', project_path_mismatch: 'projectPathMismatchError', thread_unavailable: 'threadUnavailableError', thread_project_mismatch: 'threadProjectMismatchError' }
+    if (detail?.code && keys[detail.code]) {
+        if (detail.projectPath && ['project_unavailable', 'project_path_mismatch'].includes(detail.code)) failedProjects.value = [...new Set([...failedProjects.value, detail.projectPath])]
+        toast.error(t(`bridge.${keys[detail.code]}`, { path: detail.projectPath || '', id: detail.threadId || '' }))
+    }
+    else toast.error(t(error.statusCode === 409 || error.data?.statusCode === 409 ? 'bridge.relationsConflictReloaded' : 'bridge.loadError'))
+}
+/** 只读取关系，不修改项目和会话历史。 */
+async function load(current = generation): Promise<void> {
+    try {
+        /** 服务端确认的唯一关系快照。 */
+        const result = await $fetch<Registry>('/api/bridge/groups')
+        if (valid(current)) registry.value = result
+    }
+    catch (cause) { if (valid(current)) report(cause) }
+}
+/** 将每次点击依次提交，失败后使排队旧请求失效并重新读取。 */
+function enqueue(project: Project, chatId: string, action: 'link' | 'unlink' | 'activate'): void {
+    /** 点击时的生命周期。 */
+    const current = generation
+    if (pendingPaths.value.includes(project.path)) return
+    pendingPaths.value.push(project.path)
+    queue = queue.then(async () => {
+        if (!valid(current) || !await requireRunning() || !valid(current) || !registry.value) return
+        /** 仅从最近确认快照准备本次事务。 */
+        const draft = JSON.parse(JSON.stringify(registry.value)) as Registry
+        /** 执行时重新确认关联是否存在。 */
+        const linked = draft.projectGroups.some(item => item.chatId === chatId && item.projectPath === project.path)
+        if (action !== 'unlink' && projects.value.find(item => item.path === project.path)?.available === false) return
+        if (action === 'link' && !linked) draft.projectGroups.push({ chatId, projectPath: project.path, active: !draft.projectGroups.some(item => item.chatId === chatId && item.active) })
+        if (action === 'activate' && linked) {
+            draft.projectGroups = draft.projectGroups.map(item => item.chatId === chatId ? { ...item, active: item.projectPath === project.path } : item)
+            draft.migrationConflicts = draft.migrationConflicts?.filter(item => item.chatId !== chatId)
+        }
+        if (action === 'unlink') {
+            draft.projectGroups = draft.projectGroups.filter(item => item.chatId !== chatId || item.projectPath !== project.path)
+            draft.threadGroups = draft.threadGroups.filter(item => item.chatId !== chatId || item.projectPath !== project.path)
+            draft.migrationConflicts = draft.migrationConflicts?.map(item => item.chatId === chatId ? { ...item, projectPaths: item.projectPaths.filter(path => path !== project.path) } : item).filter(item => item.chatId !== chatId || item.projectPaths.length > 1)
+        }
+        try {
+            /** 服务端确认的唯一关系快照。 */
+            const result = await $fetch<Registry>('/api/bridge/groups', { method: 'PUT', body: draft })
+            if (!valid(current)) return
+            registry.value = result
+            emit('saved')
+        }
+        catch (cause) {
+            if (!valid(current)) return
+            report(cause)
+            generation += 1
+            pendingPaths.value = []
+            confirmation?.destroy()
+            await load()
+        }
+    }).finally(() => { if (valid(current)) pendingPaths.value = pendingPaths.value.filter(path => path !== project.path) })
+}
+/** 取消关联须确认，仅删除指定群关系。 */
+function toggle(project: Project): void {
+    if (!linkedPaths.value.includes(project.path)) { enqueue(project, groupId.value, 'link'); return }
+    /** 确认框绑定的群身份。 */
+    const chatId = groupId.value
+    /** 点击时的生命周期。 */
+    const current = generation
+    confirmation?.destroy()
+    confirmation = useConfirm({ title: t('bridge.unlinkProject'), desc: `${project.path}\n${t('bridge.unlinkProjectHint')}`, okText: t('bridge.unlinkProject'), cancelText: t('common.cancel'), onOk: done => { if (valid(current)) enqueue(project, chatId, 'unlink'); done() } })
+}
+/** 同步群列表也进入同一串行链，防止覆盖关联写入。 */
+function sync(): void {
+    if (syncing.value) return
+    /** 点击时的生命周期。 */
+    const current = generation
+    syncing.value = true
+    queue = queue.then(async () => {
+        if (!valid(current) || !await requireRunning() || !valid(current)) return
+        try {
+            /** 服务端确认的唯一关系快照。 */
+            const result = await $fetch<Registry>('/api/bridge/groups/sync', { method: 'POST' })
+            if (valid(current)) registry.value = result
+        }
+        catch (cause) { if (valid(current)) report(cause) }
+    }).finally(() => { if (valid(current)) syncing.value = false })
+}
+/** 打开群项目列表。 */
+function settings(chatId: string): void { groupId.value = chatId; groupOpen.value = true; queue = queue.then(() => load()) }
+/** 导入或编辑项目。 */
+function edit(project?: Project): void { editingProject.value = project; editorOpen.value = true }
+/** 项目变化后交由父级刷新目录，同时重新读取关系。 */
+function changed(): void { emit('saved'); queue = queue.then(() => load()) }
+/** 导入完成通知目录 owner。 */
+function projectSaved(path: string): void { emit('added', path); queue = queue.then(() => load()); if (props.importOnly) open.value = false }
+/** 切换入口使旧异步操作失效。 */
+function invalidate(): void { generation += 1; pendingPaths.value = []; syncing.value = false; confirmation?.destroy(); groupOpen.value = false }
+watch(() => props.projects, () => { failedProjects.value = [] }, { deep: true })
+watch(groupOpen, value => { confirmation?.destroy(); if (!value) { generation += 1; pendingPaths.value = []; syncing.value = false } })
+watch(mode, () => { invalidate(); if (props.page || open.value) queue = queue.then(() => load()) })
+watch(open, value => {
+    invalidate(); if (value) { if (props.importOnly) edit(); else queue = queue.then(() => load()) }
+    else editorOpen.value = false
+})
+watch(editorOpen, value => { if (!value && props.importOnly) open.value = false })
+onMounted(() => { if (props.page || open.value) { if (props.importOnly) edit(); else queue = queue.then(() => load()) } })
+onUnmounted(() => { active = false; invalidate() })
 </script>
 
 <template>
-    <CsResponsiveOverlayDialogDrawer
+    <BusBridgeRelationsShell
+        v-if="!importOnly"
         v-model:open="open"
-        :title="t(mode === 'groups' ? 'bridge.groups' : projectPath ? 'bridge.projectSettings' : 'bridge.addProject')"
-        :description="projectPath || undefined"
-        :dialog="{ content: { class: 'h-[min(38rem,90dvh)] sm:max-w-xl' } }"
-        :drawer="{ content: { class: 'h-[90dvh]' } }"
-        shell-class="h-full min-h-0"
-        body-class="min-h-0 overflow-y-auto p-6"
-        footer-class="shrink-0 border-t p-4"
+        :page="page"
+        :title="t('bridge.managementTitle')"
         :close-label="t('common.close')"
     >
-        <p
-            v-if="error"
-            role="alert"
-            class="mb-4 text-sm text-destructive"
+        <BusBridgeRelationsContent
+            :mode="mode"
+            :show-mode-tabs="showModeTabs"
+            :groups="registry?.groups || []"
+            :syncing="syncing"
+            @update:mode="mode = $event"
+            @settings="settings"
+            @sync="sync"
         >
-            {{ error }}
-        </p>
-        <div
-            v-if="mode === 'projects' && !projectPath"
-            class="space-y-5"
+            <BusBridgeProjectList
+                :projects="projects"
+                @import="edit()"
+                @edit="edit"
+                @changed="changed"
+            >
+                <template #operations="{ project }">
+                    <BusBridgeItemMenu
+                        kind="project"
+                        :item-id="project.path"
+                        :label="project.name"
+                        :disabled="project.available === false"
+                        @settings="edit(project)"
+                        @changed="changed"
+                    />
+                </template>
+            </BusBridgeProjectList>
+        </BusBridgeRelationsContent>
+    </BusBridgeRelationsShell>
+    <BusBridgeRelationsShell
+        v-model:open="groupOpen"
+        :title="t('bridge.projectSettings')"
+        :description="registry?.groups.find(item => item.chatId === groupId)?.name"
+        :close-label="t('common.close')"
+    >
+        <BusBridgeProjectList
+            :projects="projects"
+            relation-mode
+            :linked-paths="linkedPaths"
+            :active-path="activePath"
+            :pending-paths="pendingPaths"
+            @import="edit()"
+            @edit="edit"
+            @changed="changed"
+            @toggle="toggle"
+            @activate="enqueue($event, groupId, 'activate')"
         >
-            <label class="block space-y-2 text-sm"><span>{{ t('bridge.projectPath') }}</span><Input
-                v-model="path"
-                placeholder="/Users/…"
-                @pointerdown="focusField"
-            /></label>
-            <label class="block space-y-2 text-sm"><span>{{ t('bridge.optionalName') }}</span><Input
-                v-model="name"
-                @pointerdown="focusField"
-            /></label>
-        </div>
-        <template v-else-if="registry">
-            <div class="mb-5 flex items-center gap-3">
-                <CsResponsiveSelect
-                    v-if="mode === 'groups'"
-                    :model-value="chatId"
-                    :open="groupSelectOpen"
-                    :title="t('bridge.groups')"
-                    :placeholder="t('bridge.groups')"
-                    :close-label="t('common.close')"
-                    :clear-label="t('common.close')"
-                    :empty-text="t('bridge.noGroups')"
-                    :options="registry.groups.map(group => ({ value: group.chatId, label: group.name }))"
-                    @update:open="setGroupSelectOpen"
-                    @update:model-value="selectGroup"
+            <template #operations="{ project }">
+                <BusBridgeItemMenu
+                    kind="project"
+                    :item-id="project.path"
+                    :label="project.name"
+                    :disabled="project.available === false"
+                    @settings="edit(project)"
+                    @changed="changed"
                 />
-                <Button
-                    variant="outlined"
-                    :size="36"
-                    class="ml-auto shrink-0"
-                    :disabled="busy"
-                    @click="sync"
-                >
-                    <Icon name="askx-actions:refresh" />{{ t('bridge.syncGroups') }}
-                </Button>
-            </div>
-            <p class="mb-5 text-xs text-muted-foreground">
-                {{ t('bridge.relationHint') }}
-            </p>
-            <template v-if="mode === 'groups' && chatId">
-                <div
-                    v-for="project in projects"
-                    :key="project.path"
-                    class="mb-3 space-y-3 rounded-xl border p-4"
-                >
-                    <label class="flex items-center gap-3 text-sm"><Checkbox
-                        :model-value="registry.projectGroups.some(item => item.projectPath === project.path && item.chatId === chatId)"
-                        @update:model-value="toggle(project.path, chatId)"
-                    />{{ project.name }}</label>
-                    <div
-                        v-if="registry.projectGroups.some(item => item.projectPath === project.path && item.chatId === chatId)"
-                        class="space-y-3 border-t pt-3"
-                    >
-                        <Button
-                            variant="ghost"
-                            :size="36"
-                            @click="loadProjectThreads(project.path)"
-                        >
-                            <Icon name="askx-objects:history" />{{ t('bridge.loadSessions') }}
-                        </Button>
-                        <label
-                            v-for="thread in availableThreads(project.path, chatId)"
-                            :key="thread.id"
-                            class="flex items-center gap-3 text-xs"
-                        ><Checkbox
-                            :model-value="registry.threadGroups.some(item => item.projectPath === project.path && item.chatId === chatId && item.threadId === thread.id)"
-                            @update:model-value="toggleThread(project.path, chatId, thread.id)"
-                        />{{ thread.title || thread.id }}</label>
-                    </div>
-                </div>
             </template>
-            <template v-else-if="mode === 'projects'">
-                <div
-                    v-for="group in registry.groups"
-                    :key="group.chatId"
-                    class="mb-3 space-y-3 rounded-xl border p-4"
-                >
-                    <label class="flex items-center gap-3 text-sm"><Checkbox
-                        :model-value="registry.projectGroups.some(item => item.projectPath === projectPath && item.chatId === group.chatId)"
-                        @update:model-value="toggle(projectPath, group.chatId)"
-                    />{{ group.name }}</label>
-                    <div
-                        v-if="registry.projectGroups.some(item => item.projectPath === projectPath && item.chatId === group.chatId)"
-                        class="space-y-3 border-t pt-3"
-                    >
-                        <Button
-                            variant="ghost"
-                            :size="36"
-                            @click="loadProjectThreads(projectPath)"
-                        >
-                            <Icon name="askx-objects:history" />{{ t('bridge.loadSessions') }}
-                        </Button>
-                        <label
-                            v-for="thread in availableThreads(projectPath, group.chatId)"
-                            :key="thread.id"
-                            class="flex items-center gap-3 text-xs"
-                        ><Checkbox
-                            :model-value="registry.threadGroups.some(item => item.projectPath === projectPath && item.chatId === group.chatId && item.threadId === thread.id)"
-                            @update:model-value="toggleThread(projectPath, group.chatId, thread.id)"
-                        />{{ thread.title || thread.id }}</label>
-                    </div>
-                </div>
-            </template>
-            <p class="text-xs text-muted-foreground">
-                {{ t('bridge.sharedContext') }}
-            </p>
-        </template>
-        <template #footer>
-            <Button
-                v-if="error"
-                variant="outlined"
-                :size="36"
-                :disabled="busy"
-                @click="load(); error = ''"
-            >
-                {{ t('bridge.discardReload') }}
-            </Button>
-            <Button
-                :size="36"
-                class="ml-auto"
-                :disabled="busy"
-                @click="save"
-            >
-                {{ t('bridge.save') }}
-            </Button>
-        </template>
-    </CsResponsiveOverlayDialogDrawer>
+        </BusBridgeProjectList>
+    </BusBridgeRelationsShell>
+    <BusBridgeProjectEditor
+        v-model:open="editorOpen"
+        :project="editingProject"
+        @saved="projectSaved"
+    />
 </template>

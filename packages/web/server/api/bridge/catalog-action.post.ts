@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { bridgeCatalogActions } from '../../utils/bridge.js'
+import { bridgeCatalogActions, bridgeThreadSessionManager } from '../../utils/bridge.js'
 
 /** 所有目录写入必须明确确认，不接受额外字段。 */
 const requestSchema = z.object({
@@ -17,6 +17,7 @@ export default defineEventHandler(async event => {
         /** 模块 owner 的检测与计划结果。 */
         const plan = await bridgeCatalogActions.plan(input)
         await bridgeCatalogActions.apply(plan, { planHash: plan.hash, confirmedAt: new Date().toISOString() })
+        ;(await bridgeThreadSessionManager.getConversationStore()).notifyCatalog(input.threadId, input.action === 'rename-thread' ? input.name : undefined)
         return { ok: true }
     }
     catch (error) {
