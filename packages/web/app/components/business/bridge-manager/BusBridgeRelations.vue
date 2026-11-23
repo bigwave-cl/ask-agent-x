@@ -135,6 +135,7 @@ function enqueue(project: Project, chatId: string, action: 'link' | 'unlink' | '
             const result = await $fetch<Registry>('/api/bridge/groups', { method: 'PUT', body: draft })
             if (!valid(current)) return
             registry.value = result
+            toast.success(t(action === 'activate' ? 'bridge.projectActivated' : action === 'link' ? 'bridge.projectLinked' : 'bridge.projectUnlinked'))
             emit('saved')
         }
         catch (cause) {
@@ -168,7 +169,7 @@ function sync(): void {
         try {
             /** 服务端确认的唯一关系快照。 */
             const result = await $fetch<Registry>('/api/bridge/groups/sync', { method: 'POST' })
-            if (valid(current)) registry.value = result
+            if (valid(current)) { registry.value = result; emit('saved'); toast.success(t('bridge.groupsRefreshed')) }
         }
         catch (cause) { if (valid(current)) report(cause) }
     }).finally(() => { if (valid(current)) syncing.value = false })
@@ -237,6 +238,9 @@ onUnmounted(() => { active = false; invalidate() })
         :description="registry?.groups.find(item => item.chatId === groupId)?.name"
         :close-label="t('common.close')"
     >
+        <p class="mb-4 shrink-0 text-xs leading-5 text-muted-foreground">
+            {{ t('bridge.currentProjectHint') }}
+        </p>
         <BusBridgeProjectList
             :projects="projects"
             relation-mode
@@ -248,18 +252,7 @@ onUnmounted(() => { active = false; invalidate() })
             @changed="changed"
             @toggle="toggle"
             @activate="enqueue($event, groupId, 'activate')"
-        >
-            <template #operations="{ project }">
-                <BusBridgeItemMenu
-                    kind="project"
-                    :item-id="project.path"
-                    :label="project.name"
-                    :disabled="project.available === false"
-                    @settings="edit(project)"
-                    @changed="changed"
-                />
-            </template>
-        </BusBridgeProjectList>
+        />
     </BusBridgeRelationsShell>
     <BusBridgeProjectEditor
         v-model:open="editorOpen"

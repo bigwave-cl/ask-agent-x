@@ -794,7 +794,7 @@
   "bridge": {
     "searchProjects": "Search projects or paths",
     "importProject": "Import project",
-    "linkProject": "Link project",
+    "linkProject": "Link this project",
     "unlinkProject": "Unlink project",
     "noMatchingProjects": "No matching projects",
     "editProject": "Edit project",
@@ -937,7 +937,7 @@
     "testConnection": "Test connection",
     "scheduleSaveHint": "Schedules take effect after saving. Service controls apply immediately.",
     "revisionConflict": "Configuration changed elsewhere. Reloaded; please edit again.",
-    "syncGroups": "Sync Feishu groups",
+    "syncGroups": "Refresh Feishu group list",
     "relationHint": "Projects and groups may have zero or multiple associations.",
     "sharedContext": "Groups linked to the same session share its conversation context.",
     "noThread": "No session selected",
@@ -1011,6 +1011,12 @@
       "streamError": "The message stream is unavailable. Please retry shortly.",
       "serviceSettings": "Service settings",
       "stop": "Stop generating"
-    }
+    },
+    "refreshingGroups": "Refreshing…",
+    "groupsRefreshed": "Feishu group list refreshed",
+    "projectLinked": "Project linked",
+    "projectUnlinked": "Project unlinked",
+    "currentProject": "Current project",
+    "currentProjectHint": "Group messages run in the current project. Other linked projects keep their history and can be made current at any time."
   }
 }

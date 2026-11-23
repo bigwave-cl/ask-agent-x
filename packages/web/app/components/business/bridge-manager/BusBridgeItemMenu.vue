@@ -177,6 +177,7 @@ onUnmounted(() => { active = false; generation += 1; confirmation?.destroy() })
                             @click="settings"
                         ><Icon name="askx-actions:settings" />{{ t('bridge.projectSettings') }}</Button>
                         <Button
+                            v-if="kind === 'thread'"
                             variant="ghost"
                             :size="36"
                             class="justify-start"

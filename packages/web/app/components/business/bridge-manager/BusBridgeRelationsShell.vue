@@ -21,8 +21,8 @@ const open = defineModel<boolean>('open', { default: false })
         v-if="props.page"
         class="flex h-full min-h-0 flex-col bg-background"
     >
-        <header class="shrink-0 border-b px-6 py-5">
-            <h1 class="text-lg font-semibold tracking-tight">
+        <header class="mx-auto w-full max-w-5xl shrink-0 px-5 pb-4 pt-8 sm:px-8 sm:pt-10">
+            <h1 class="text-xl font-semibold tracking-tight">
                 {{ title }}
             </h1>
             <p
@@ -45,13 +45,26 @@ const open = defineModel<boolean>('open', { default: false })
         v-model:open="open"
         :title="title"
         :description="description"
-        :dialog="{ content: { class: 'h-[min(38rem,90dvh)] sm:max-w-xl' } }"
+        :dialog="{ content: { class: 'h-[min(40rem,90dvh)] sm:max-w-2xl' } }"
         :drawer="{ content: { class: 'h-[90dvh]' } }"
         shell-class="h-full min-h-0"
-        body-class="min-h-0 flex flex-1 flex-col p-6"
+        header-class="pb-2 md:pb-2"
+        body-class="min-h-0 flex flex-1 flex-col px-5 pb-5 pt-2 sm:px-6"
         footer-class="shrink-0 border-t p-4"
         :close-label="closeLabel"
     >
+        <div
+            v-if="description"
+            class="mb-5 flex shrink-0 items-start gap-3 rounded-xl bg-muted/50 px-4 py-3"
+        >
+            <Icon
+                name="askx-objects:users"
+                class="mt-0.5 size-4 shrink-0 text-muted-foreground"
+            />
+            <p class="min-w-0 truncate text-sm font-medium">
+                {{ description }}
+            </p>
+        </div>
         <slot />
         <template
             v-if="$slots.footer"

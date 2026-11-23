@@ -102,7 +102,7 @@ onUnmounted(() => { active = false; generation += 1 })
 <template>
     <CsResponsiveOverlayDialogDrawer
         v-model:open="open"
-        :title="t(project ? 'bridge.editProject' : 'bridge.importProject')"
+        :title="t(project ? 'bridge.projectSettings' : 'bridge.importProject')"
         :close-label="t('common.close')"
         :dialog="{ content: { class: 'sm:max-w-lg' } }"
         body-class="p-5"

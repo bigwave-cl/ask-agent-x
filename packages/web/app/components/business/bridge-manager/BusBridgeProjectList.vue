@@ -2,6 +2,9 @@
 import Button from '@/components/ui/button/Button.vue'
 import Input from '@/components/ui/input/Input.vue'
 import ScrollArea from '@/components/ui/scroll-area/ScrollArea.vue'
+import Tooltip from '@/components/ui/tooltip/Tooltip.vue'
+import TooltipTrigger from '@/components/ui/tooltip/TooltipTrigger.vue'
+import TooltipContent from '@/components/ui/tooltip/TooltipContent.vue'
 import BusBridgeItemMenu from './BusBridgeItemMenu.vue'
 import type { BridgeCatalogChange } from './BusBridgeItemMenu.vue'
 
@@ -42,76 +45,124 @@ const filteredProjects = computed(() => {
 </script>
 
 <template>
-    <div class="flex min-h-0 flex-1 flex-col gap-3">
-        <div class="flex items-center gap-2">
-            <Input
-                v-model="search"
-                :placeholder="t('bridge.searchProjects')"
-                :aria-label="t('bridge.searchProjects')"
-                class="min-w-0 flex-1"
-            />
+    <div class="flex min-h-0 flex-1 flex-col gap-5">
+        <div class="flex shrink-0 flex-wrap items-center gap-3">
+            <div
+                class="relative min-w-40 flex-1"
+                :class="relationMode ? '' : 'sm:max-w-sm'"
+            >
+                <Icon
+                    name="askx-actions:search"
+                    class="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground"
+                />
+                <Input
+                    v-model="search"
+                    :placeholder="t('bridge.searchProjects')"
+                    :aria-label="t('bridge.searchProjects')"
+                    class="h-10 bg-card pl-9"
+                />
+            </div>
             <Button
-                variant="outlined"
-                :size="36"
+                :variant="relationMode ? 'outlined' : 'primary'"
+                :size="40"
+                class="ml-auto"
                 @click="emit('import')"
             >
                 <Icon name="askx-actions:add" />{{ t('bridge.importProject') }}
             </Button>
         </div>
-        <ScrollArea
+        <component
+            :is="relationMode ? 'div' : ScrollArea"
+            v-bind="relationMode ? {} : { viewportClass: 'p-1' }"
             class="min-h-0 flex-1"
-            viewport-class="max-h-[55vh]"
+            :class="{ 'p-1': relationMode }"
         >
-            <div class="divide-y divide-border">
+            <div class="space-y-2">
                 <div
                     v-for="project in filteredProjects"
                     :key="project.path"
-                    class="flex items-center gap-2 py-3"
+                    class="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-4 transition-colors sm:gap-4"
+                    :class="relationMode && activePath === project.path ? 'border-primary/40 bg-accent/60' : 'border-border/60 hover:border-border'"
                 >
-                    <Icon
-                        name="askx-objects:folder"
-                        class="size-4 shrink-0 text-muted-foreground"
-                    />
-                    <div class="min-w-0 flex-1">
-                        <div class="flex items-center gap-2">
-                            <span class="truncate text-sm font-medium">{{ project.name }}</span>
-                            <span
-                                v-if="activePath === project.path"
-                                class="shrink-0 text-xs text-primary"
-                            >{{ t('bridge.active') }}</span>
-                            <span
-                                v-if="project.available === false"
-                                class="shrink-0 text-xs text-destructive"
-                            >{{ t('bridge.projectUnavailable') }}</span>
+                    <div
+                        class="flex size-10 shrink-0 items-center justify-center rounded-xl"
+                        :class="relationMode && activePath === project.path ? 'bg-primary/10 text-ds-text-brand' : 'bg-muted/70 text-muted-foreground'"
+                    >
+                        <Icon
+                            :name="relationMode && activePath === project.path ? 'askx-objects:folder-open' : 'askx-objects:folder'"
+                            class="size-5"
+                        />
+                    </div>
+                    <div class="min-w-0 flex-1 basis-28 space-y-1">
+                        <div class="flex min-w-0 items-center gap-2">
+                            <span class="truncate text-sm font-semibold">{{ project.name }}</span>
+                            <Tooltip v-if="project.available === false">
+                                <TooltipTrigger as-child>
+                                    <span
+                                        tabindex="0"
+                                        class="inline-flex shrink-0 items-center gap-1 text-xs text-destructive"
+                                        :aria-label="t('bridge.projectUnavailableHint')"
+                                    >
+                                        <Icon
+                                            name="askx-status:error"
+                                            class="size-3.5"
+                                        />{{ t('bridge.projectUnavailable') }}
+                                    </span>
+                                </TooltipTrigger>
+                                <TooltipContent class="max-w-64">
+                                    {{ t('bridge.projectUnavailableHint') }}
+                                </TooltipContent>
+                            </Tooltip>
                         </div>
                         <p
-                            class="truncate text-xs text-muted-foreground"
+                            class="truncate font-mono text-xs text-muted-foreground"
                             :title="project.path"
                         >
                             {{ project.path }}
                         </p>
                     </div>
-                    <Button
-                        v-if="relationMode && linkedPaths.includes(project.path) && activePath !== project.path && project.available !== false"
-                        variant="ghost"
-                        :size="36"
-                        square
-                        :disabled="pendingPaths.includes(project.path)"
-                        :aria-label="t('bridge.activateProject')"
-                        @click="emit('activate', project)"
-                    >
-                        <Icon name="askx-actions:confirm" />
-                    </Button>
-                    <Button
+                    <div
                         v-if="relationMode"
-                        :variant="linkedPaths.includes(project.path) ? 'ghost' : 'outlined'"
-                        :size="36"
-                        :disabled="pendingPaths.includes(project.path) || (project.available === false && !linkedPaths.includes(project.path))"
-                        @click="emit('toggle', project)"
+                        class="ml-auto flex shrink-0 items-center gap-2"
                     >
-                        {{ t(linkedPaths.includes(project.path) ? 'bridge.unlinkProject' : 'bridge.linkProject') }}
-                    </Button>
+                        <span
+                            v-if="activePath === project.path"
+                            class="inline-flex h-9 items-center gap-2 rounded-lg bg-primary/10 px-3 text-xs font-semibold text-ds-text-brand"
+                        >
+                            <span class="size-1.5 rounded-full bg-current" />{{ t('bridge.currentProject') }}
+                        </span>
+                        <Button
+                            v-else-if="linkedPaths.includes(project.path) && project.available !== false"
+                            variant="outlined"
+                            :size="36"
+                            :disabled="pendingPaths.includes(project.path)"
+                            :aria-label="`${t('bridge.activateProject')} · ${project.name}`"
+                            @click="emit('activate', project)"
+                        >
+                            <Icon name="askx-navigation:arrow-right" />{{ t('bridge.activateProject') }}
+                        </Button>
+                        <Tooltip>
+                            <TooltipTrigger as-child>
+                                <Button
+                                    :variant="linkedPaths.includes(project.path) ? 'ghost' : 'tertiary'"
+                                    :size="36"
+                                    square
+                                    :class="linkedPaths.includes(project.path) ? 'text-muted-foreground hover:text-destructive' : ''"
+                                    :disabled="pendingPaths.includes(project.path) || (project.available === false && !linkedPaths.includes(project.path))"
+                                    :aria-label="`${t(linkedPaths.includes(project.path) ? 'bridge.unlinkProject' : 'bridge.linkProject')} · ${project.name}`"
+                                    @click="emit('toggle', project)"
+                                >
+                                    <Icon
+                                        :name="pendingPaths.includes(project.path) ? 'askx-status:loading' : linkedPaths.includes(project.path) ? 'askx-actions:remove' : 'askx-actions:add'"
+                                        :class="{ 'animate-spin': pendingPaths.includes(project.path) }"
+                                    />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>{{ t(linkedPaths.includes(project.path) ? 'bridge.unlinkProject' : 'bridge.linkProject') }}</TooltipContent>
+                        </Tooltip>
+                    </div>
                     <slot
+                        v-else
                         name="operations"
                         :project="project"
                     >
@@ -126,12 +177,6 @@ const filteredProjects = computed(() => {
                     </slot>
                 </div>
             </div>
-            <p
-                v-if="!filteredProjects.length"
-                class="py-10 text-center text-sm text-muted-foreground"
-            >
-                {{ t('bridge.noMatchingProjects') }}
-            </p>
-        </ScrollArea>
+        </component>
     </div>
 </template>
