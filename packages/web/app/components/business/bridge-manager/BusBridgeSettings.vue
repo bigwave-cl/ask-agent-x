@@ -28,6 +28,8 @@ interface Config {
     bridge: {
         /** 工作时间。 */
         workTime: { mode: 'always' | 'windows', window: { start: string, end: string }, outsideWindow: 'stop-service' }
+        /** 桥接专用 Codex 运行目录。 */
+        paths: { codexHome: string, authFile: string, configFile: string }
         /** 飞书设置。 */
         feishu: FeishuDraft
     }
@@ -132,15 +134,24 @@ async function saveConfirmed(done: () => void): Promise<void> {
     const submittedSecret = secret.value
     const submittedTab = tab.value
     /** 仅快照本次提交区块，其他区块始终保持本地草稿。 */
-    const submittedBlock = JSON.stringify(submittedTab === 'config' ? config.value.bridge.workTime : config.value.bridge.feishu)
+    const submittedBlock = JSON.stringify(submittedTab === 'config'
+        ? { workTime: config.value.bridge.workTime, paths: { codexHome: config.value.bridge.paths.codexHome.trim(), authFile: config.value.bridge.paths.authFile.trim(), configFile: config.value.bridge.paths.configFile.trim() } }
+        : config.value.bridge.feishu)
     const { source, appId, adminOpenId } = config.value.bridge.feishu
+    const configPatch = submittedTab === 'config'
+        ? { workTime: JSON.parse(JSON.stringify(config.value.bridge.workTime)), paths: { codexHome: config.value.bridge.paths.codexHome.trim(), authFile: config.value.bridge.paths.authFile.trim(), configFile: config.value.bridge.paths.configFile.trim() } }
+        : undefined
     try {
-        const result = await $fetch<Config>('/api/bridge/config', { method: 'PUT', body: { revision: config.value.revision, patch: submittedTab === 'config' ? { workTime: JSON.parse(JSON.stringify(config.value.bridge.workTime)) } : { feishu: { source, appId, adminOpenId: adminOpenId?.trim() || undefined } }, appSecret: submittedTab === 'feishu' && secret.value ? secret.value : undefined } })
+        const result = await $fetch<Config>('/api/bridge/config', { method: 'PUT', body: { revision: config.value.revision, patch: configPatch ?? { feishu: { source, appId, adminOpenId: adminOpenId?.trim() || undefined } }, appSecret: submittedTab === 'feishu' && secret.value ? secret.value : undefined } })
         if (current !== generation) return
         if (config.value) {
             config.value.revision = result.revision
             if (submittedTab === 'config') {
-                if (JSON.stringify(config.value.bridge.workTime) === submittedBlock) config.value.bridge.workTime = result.bridge.workTime
+                const currentBlock = JSON.stringify({ workTime: config.value.bridge.workTime, paths: { codexHome: config.value.bridge.paths.codexHome.trim(), authFile: config.value.bridge.paths.authFile.trim(), configFile: config.value.bridge.paths.configFile.trim() } })
+                if (currentBlock === submittedBlock) {
+                    config.value.bridge.workTime = result.bridge.workTime
+                    config.value.bridge.paths = result.bridge.paths
+                }
             }
             else if (JSON.stringify(config.value.bridge.feishu) === submittedBlock) config.value.bridge.feishu = result.bridge.feishu
         }
@@ -175,198 +186,231 @@ onUnmounted(() => { generation += 1; secret.value = '' })
         :dialog="{ content: { class: 'h-[min(52rem,92dvh)] sm:max-w-xl' } }"
         :drawer="{ content: { class: 'h-[92dvh]' } }"
         shell-class="h-full min-h-0"
-        body-class="min-h-0 p-6"
+        header-class="pb-2 md:pb-2"
+        body-class="min-h-0 flex flex-1 flex-col overflow-hidden px-6 pb-6 pt-0"
         footer-class="shrink-0 border-t bg-card p-4"
         :close-label="t('common.close')"
     >
-        <Tabs
-            v-model="tab"
-            class="-mt-4 gap-5"
+        <ScrollArea
+            class="min-h-0 flex-1"
+            viewport-class="pr-2"
         >
-            <TabsList
-                variant="line"
-                size="40"
-                shape="regular"
-                class="w-full"
-                :aria-label="t('bridge.settingsTabs')"
+            <Tabs
+                v-model="tab"
+                class="gap-5 pt-1"
             >
-                <TabsTrigger value="server">
-                    {{ t('bridge.tabServer') }}
-                </TabsTrigger>
-                <TabsTrigger value="config">
-                    {{ t('bridge.tabConfig') }}
-                </TabsTrigger>
-                <TabsTrigger value="feishu">
-                    {{ t('bridge.feishu') }}
-                </TabsTrigger>
-            </TabsList>
-        </Tabs>
-        <template v-if="config">
-            <div
-                v-if="tab === 'server'"
-                class="mt-5 min-h-0 flex flex-col space-y-7"
-            >
-                <section class="space-y-4">
-                    <div class="flex justify-between text-sm">
-                        <strong>{{ t('bridge.serviceControl') }}</strong><span class="inline-flex items-center gap-2 text-muted-foreground"><Icon
-                            :name="serverStatusIcon"
-                            class="size-4"
-                            :class="serverStatusIcon === 'askx-status:loading' ? 'animate-spin' : ''"
-                        />{{ serverStatusLabel }}</span>
-                    </div>
-                    <div class="flex flex-wrap gap-2">
-                        <Button
-                            :size="36"
-                            :disabled="busy"
-                            @click="action(status?.desiredState === 'enabled' ? 'stop' : 'start')"
-                        >
-                            <Icon :name="status?.desiredState === 'enabled' ? 'askx-actions:stop' : 'askx-actions:play'" />{{ t(status?.desiredState === 'enabled' ? 'bridge.stop' : 'bridge.start') }}
-                        </Button>
-                        <Button
-                            :size="36"
-                            variant="outlined"
-                            :disabled="busy"
-                            @click="action('restart')"
-                        >
-                            <Icon name="askx-actions:refresh" />{{ t('bridge.restart') }}
-                        </Button>
-                        <Button
-                            :size="36"
-                            variant="outlined"
-                            class="ml-auto"
-                            :disabled="busy"
-                            @click="action('update')"
-                        >
-                            <Icon name="askx-actions:upload" />{{ t('bridge.update') }}
-                        </Button>
-                    </div>
-                    <p
-                        v-if="serviceLastError"
-                        class="rounded-lg bg-destructive/5 p-3 text-sm text-destructive"
-                    >
-                        <strong>{{ t('bridge.errorReason') }}</strong> {{ serviceLastError }}
-                    </p>
-                    <section class="space-y-3 border-t pt-5">
-                        <h3 class="text-sm font-semibold">
-                            {{ t('bridge.runtimeLogs') }}
-                        </h3>
-                        <ScrollArea
-                            class="h-[420px] shrink-0 rounded-lg bg-muted/40 font-mono text-xs"
-                            viewport-class="p-3"
-                        >
-                            <template v-if="logs.length">
-                                <p
-                                    v-for="(line, index) in logs"
-                                    :key="index"
-                                >
-                                    {{ line }}
-                                </p>
-                            </template>
-                            <p
-                                v-else
-                                class="text-sm text-muted-foreground"
-                            >
-                                {{ t('bridge.noLogs') }}
-                            </p>
-                        </ScrollArea>
-                    </section>
-                </section>
-            </div>
-            <div
-                v-else-if="tab === 'config'"
-                class="mt-5 space-y-7"
-            >
-                <section class="space-y-4">
-                    <h3 class="text-sm font-semibold">
-                        {{ t('bridge.workTime') }}
-                    </h3>
-                    <p class="text-xs text-muted-foreground">
-                        {{ t('bridge.scheduleSaveHint') }}
-                    </p>
-                    <CsResponsiveSelect
-                        :model-value="config.bridge.workTime.mode"
-                        :title="t('bridge.workTime')"
-                        :placeholder="t('bridge.workTime')"
-                        :close-label="t('common.close')"
-                        :clear-label="t('common.close')"
-                        :empty-text="t('bridge.noAccounts')"
-                        :options="[{ value: 'always', label: t('bridge.alwaysMode') }, { value: 'windows', label: t('bridge.windowMode') }]"
-                        @update:model-value="value => { if (config && (value === 'always' || value === 'windows')) config.bridge.workTime.mode = value }"
-                    />
-                    <template v-if="config.bridge.workTime.mode === 'windows'">
-                        <div class="flex items-end gap-2">
-                            <label class="min-w-0 flex-1 space-y-1 text-xs"><span>{{ t('bridge.startTime') }}</span><Input
-                                v-model="config.bridge.workTime.window.start"
-                                type="time"
-                            /></label>
-                            <label class="min-w-0 flex-1 space-y-1 text-xs"><span>{{ t('bridge.endTime') }}</span><Input
-                                v-model="config.bridge.workTime.window.end"
-                                type="time"
-                            /></label>
+                <TabsList
+                    variant="line"
+                    size="40"
+                    shape="regular"
+                    class="w-full"
+                    :aria-label="t('bridge.settingsTabs')"
+                >
+                    <TabsTrigger value="server">
+                        {{ t('bridge.tabServer') }}
+                    </TabsTrigger>
+                    <TabsTrigger value="config">
+                        {{ t('bridge.tabConfig') }}
+                    </TabsTrigger>
+                    <TabsTrigger value="feishu">
+                        {{ t('bridge.feishu') }}
+                    </TabsTrigger>
+                </TabsList>
+            </Tabs>
+            <template v-if="config">
+                <div
+                    v-if="tab === 'server'"
+                    class="mt-5 min-h-0 flex flex-col space-y-7"
+                >
+                    <section class="space-y-4">
+                        <div class="flex justify-between text-sm">
+                            <strong>{{ t('bridge.serviceControl') }}</strong><span class="inline-flex items-center gap-2 text-muted-foreground"><Icon
+                                :name="serverStatusIcon"
+                                class="size-4"
+                                :class="serverStatusIcon === 'askx-status:loading' ? 'animate-spin' : ''"
+                            />{{ serverStatusLabel }}</span>
                         </div>
-                    </template>
-                </section>
-            </div>
-            <div
-                v-else
-                class="mt-5 space-y-5"
-            >
-                <div class="space-y-2 text-sm">
-                    <p>{{ t('bridge.source') }}</p><CsResponsiveSelect
-                        :model-value="config.bridge.feishu.source"
-                        :title="t('bridge.source')"
-                        :placeholder="t('bridge.source')"
-                        :close-label="t('common.close')"
-                        :clear-label="t('common.close')"
-                        :empty-text="t('bridge.noAccounts')"
-                        :options="[{ value: 'openclaw', label: 'OpenClaw' }, { value: 'custom', label: t('bridge.custom') }]"
-                        @update:model-value="value => { if (config && (value === 'openclaw' || value === 'custom')) { config.bridge.feishu.source = value; secret = '' } }"
-                    />
+                        <div class="flex flex-wrap gap-2">
+                            <Button
+                                :size="36"
+                                :disabled="busy"
+                                @click="action(status?.desiredState === 'enabled' ? 'stop' : 'start')"
+                            >
+                                <Icon :name="status?.desiredState === 'enabled' ? 'askx-actions:stop' : 'askx-actions:play'" />{{ t(status?.desiredState === 'enabled' ? 'bridge.stop' : 'bridge.start') }}
+                            </Button>
+                            <Button
+                                :size="36"
+                                variant="outlined"
+                                :disabled="busy"
+                                @click="action('restart')"
+                            >
+                                <Icon name="askx-actions:refresh" />{{ t('bridge.restart') }}
+                            </Button>
+                            <Button
+                                :size="36"
+                                variant="outlined"
+                                class="ml-auto"
+                                :disabled="busy"
+                                @click="action('update')"
+                            >
+                                <Icon name="askx-actions:upload" />{{ t('bridge.update') }}
+                            </Button>
+                        </div>
+                        <p
+                            v-if="serviceLastError"
+                            class="rounded-lg bg-destructive/5 p-3 text-sm text-destructive"
+                        >
+                            <strong>{{ t('bridge.errorReason') }}</strong> {{ serviceLastError }}
+                        </p>
+                        <section class="space-y-3 border-t pt-5">
+                            <h3 class="text-sm font-semibold">
+                                {{ t('bridge.runtimeLogs') }}
+                            </h3>
+                            <ScrollArea
+                                class="h-[420px] shrink-0 rounded-lg bg-muted/40 font-mono text-xs"
+                                viewport-class="p-3"
+                            >
+                                <template v-if="logs.length">
+                                    <p
+                                        v-for="(line, index) in logs"
+                                        :key="index"
+                                    >
+                                        {{ line }}
+                                    </p>
+                                </template>
+                                <p
+                                    v-else
+                                    class="text-sm text-muted-foreground"
+                                >
+                                    {{ t('bridge.noLogs') }}
+                                </p>
+                            </ScrollArea>
+                        </section>
+                    </section>
                 </div>
-                <template v-if="config.bridge.feishu.source === 'openclaw'">
-                    <Button
-                        variant="outlined"
-                        :size="36"
-                        @click="detect"
-                    >
-                        <Icon name="askx-actions:search" />{{ t('bridge.detectApps') }}
-                    </Button>
-                    <div class="space-y-2 text-sm">
-                        <p>App ID</p><CsResponsiveSelect
-                            v-if="accounts.length"
-                            v-model="config.bridge.feishu.appId"
-                            title="App ID"
-                            placeholder="App ID"
+                <div
+                    v-else-if="tab === 'config'"
+                    class="mt-5 space-y-7"
+                >
+                    <section class="space-y-4">
+                        <h3 class="text-sm font-semibold">
+                            {{ t('bridge.workTime') }}
+                        </h3>
+                        <p class="text-xs text-muted-foreground">
+                            {{ t('bridge.scheduleSaveHint') }}
+                        </p>
+                        <CsResponsiveSelect
+                            :model-value="config.bridge.workTime.mode"
+                            :title="t('bridge.workTime')"
+                            :placeholder="t('bridge.workTime')"
                             :close-label="t('common.close')"
                             :clear-label="t('common.close')"
                             :empty-text="t('bridge.noAccounts')"
-                            :options="accounts.map(account => ({ value: account.appId, label: `${account.name} · ${account.appId}` }))"
-                        /><span
-                            v-else
-                            class="block rounded-lg bg-muted p-3 font-mono text-xs"
-                        >{{ config.bridge.feishu.appId || '—' }}</span>
-                    </div>
-                </template>
-                <template v-else>
-                    <label class="block space-y-2 text-sm"><span>App ID</span><Input v-model="config.bridge.feishu.appId" /></label>
-                    <label class="block space-y-2 text-sm"><span>App Secret</span><Input
-                        v-model="secret"
-                        type="password"
-                        autocomplete="new-password"
-                        :placeholder="t('bridge.secretHint')"
-                    /></label>
-                </template>
-                <label class="block space-y-2 text-sm"><span>{{ t('bridge.adminOpenId') }}</span><Input v-model="config.bridge.feishu.adminOpenId" /><span class="block text-xs text-muted-foreground">{{ t('bridge.adminHint') }}</span></label>
-                <Button
-                    variant="outlined"
-                    :size="36"
-                    :disabled="busy"
-                    @click="test"
+                            :options="[{ value: 'always', label: t('bridge.alwaysMode') }, { value: 'windows', label: t('bridge.windowMode') }]"
+                            @update:model-value="value => { if (config && (value === 'always' || value === 'windows')) config.bridge.workTime.mode = value }"
+                        />
+                        <template v-if="config.bridge.workTime.mode === 'windows'">
+                            <div class="flex items-end gap-2">
+                                <label class="min-w-0 flex-1 space-y-1 text-xs"><span>{{ t('bridge.startTime') }}</span><Input
+                                    v-model="config.bridge.workTime.window.start"
+                                    type="time"
+                                /></label>
+                                <label class="min-w-0 flex-1 space-y-1 text-xs"><span>{{ t('bridge.endTime') }}</span><Input
+                                    v-model="config.bridge.workTime.window.end"
+                                    type="time"
+                                /></label>
+                            </div>
+                        </template>
+                        <label class="block space-y-2 text-sm">
+                            <span>{{ t('bridge.codexHome') }}</span>
+                            <Input
+                                v-model="config.bridge.paths.codexHome"
+                                :placeholder="t('bridge.codexHomePlaceholder')"
+                                spellcheck="false"
+                            />
+                            <span class="block text-xs text-muted-foreground">{{ t('bridge.codexHomeHint') }}</span>
+                        </label>
+                        <label class="block space-y-2 text-sm">
+                            <span>{{ t('bridge.authFile') }}</span>
+                            <Input
+                                v-model="config.bridge.paths.authFile"
+                                :placeholder="t('bridge.authFilePlaceholder')"
+                                spellcheck="false"
+                            />
+                            <span class="block text-xs text-muted-foreground">{{ t('bridge.authFileHint') }}</span>
+                        </label>
+                        <label class="block space-y-2 text-sm">
+                            <span>{{ t('bridge.configFile') }}</span>
+                            <Input
+                                v-model="config.bridge.paths.configFile"
+                                :placeholder="t('bridge.configFilePlaceholder')"
+                                spellcheck="false"
+                            />
+                            <span class="block text-xs text-muted-foreground">{{ t('bridge.configFileHint') }}</span>
+                        </label>
+                    </section>
+                </div>
+                <div
+                    v-else
+                    class="mt-5 space-y-5"
                 >
-                    <Icon name="askx-status:check" />{{ t('bridge.testConnection') }}
-                </Button>
-            </div>
-        </template>
+                    <div class="space-y-2 text-sm">
+                        <p>{{ t('bridge.source') }}</p><CsResponsiveSelect
+                            :model-value="config.bridge.feishu.source"
+                            :title="t('bridge.source')"
+                            :placeholder="t('bridge.source')"
+                            :close-label="t('common.close')"
+                            :clear-label="t('common.close')"
+                            :empty-text="t('bridge.noAccounts')"
+                            :options="[{ value: 'openclaw', label: 'OpenClaw' }, { value: 'custom', label: t('bridge.custom') }]"
+                            @update:model-value="value => { if (config && (value === 'openclaw' || value === 'custom')) { config.bridge.feishu.source = value; secret = '' } }"
+                        />
+                    </div>
+                    <template v-if="config.bridge.feishu.source === 'openclaw'">
+                        <Button
+                            variant="outlined"
+                            :size="36"
+                            @click="detect"
+                        >
+                            <Icon name="askx-actions:search" />{{ t('bridge.detectApps') }}
+                        </Button>
+                        <div class="space-y-2 text-sm">
+                            <p>App ID</p><CsResponsiveSelect
+                                v-if="accounts.length"
+                                v-model="config.bridge.feishu.appId"
+                                title="App ID"
+                                placeholder="App ID"
+                                :close-label="t('common.close')"
+                                :clear-label="t('common.close')"
+                                :empty-text="t('bridge.noAccounts')"
+                                :options="accounts.map(account => ({ value: account.appId, label: `${account.name} · ${account.appId}` }))"
+                            /><span
+                                v-else
+                                class="block rounded-lg bg-muted p-3 font-mono text-xs"
+                            >{{ config.bridge.feishu.appId || '—' }}</span>
+                        </div>
+                    </template>
+                    <template v-else>
+                        <label class="block space-y-2 text-sm"><span>App ID</span><Input v-model="config.bridge.feishu.appId" /></label>
+                        <label class="block space-y-2 text-sm"><span>App Secret</span><Input
+                            v-model="secret"
+                            type="password"
+                            autocomplete="new-password"
+                            :placeholder="t('bridge.secretHint')"
+                        /></label>
+                    </template>
+                    <label class="block space-y-2 text-sm"><span>{{ t('bridge.adminOpenId') }}</span><Input v-model="config.bridge.feishu.adminOpenId" /><span class="block text-xs text-muted-foreground">{{ t('bridge.adminHint') }}</span></label>
+                    <Button
+                        variant="outlined"
+                        :size="36"
+                        :disabled="busy"
+                        @click="test"
+                    >
+                        <Icon name="askx-status:check" />{{ t('bridge.testConnection') }}
+                    </Button>
+                </div>
+            </template>
+        </ScrollArea>
         <template #footer>
             <Button
                 v-if="tab !== 'server'"

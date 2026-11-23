@@ -18,7 +18,11 @@ const props = withDefaults(defineProps<{
     projectPath?: string
     /** 当前显示名称。 */
     label: string
-}>(), { projectPath: '' })
+    /** 隐藏项目设置入口。 */
+    hideSettings?: boolean
+    /** 当前目录不可操作时禁用菜单。 */
+    disabled?: boolean
+}>(), { projectPath: '', hideSettings: false, disabled: false })
 /** 成功操作的最小变更通知。 */
 export interface BridgeCatalogChange {
     /** 成功的操作。 */
@@ -44,8 +48,6 @@ const menuOpen = ref(false)
 const renameOpen = ref(false)
 /** 重命名草稿，失败与受阻时保留。 */
 const renameDraft = ref('')
-/** 菜单动作错误。 */
-const error = ref('')
 /** 操作提交状态。 */
 const busy = ref(false)
 /** 生命周期序号。 */
@@ -56,13 +58,14 @@ let active = true
 let confirmation: ConfirmController | undefined
 /** 只有同一个菜单记录仍有效才允许完成入口操作。 */
 async function allow(): Promise<boolean> {
+    if (props.disabled) return false
     const current = generation
     return await requireRunning() && active && current === generation
 }
 /** 受控展开，禁止触发器先行打开菜单。 */
 async function updateOpen(value: boolean): Promise<void> {
     if (!value) { menuOpen.value = false; return }
-    if (await allow()) { menuOpen.value = true; error.value = '' }
+    if (await allow()) { menuOpen.value = true }
 }
 /** 从项目菜单进入群关联设置。 */
 async function settings(): Promise<void> {
@@ -75,7 +78,6 @@ async function rename(): Promise<void> {
     if (!await allow()) { menuOpen.value = false; return }
     if (!renameDraft.value) renameDraft.value = props.label
     menuOpen.value = false
-    error.value = ''
     renameOpen.value = true
 }
 /** 命名输入由明确点击进入，不因设置自动恢复焦点重开。 */
@@ -95,10 +97,9 @@ function errorText(cause: unknown): string {
 /** 已确认的目录操作；发送前再次核验实时服务状态。 */
 async function apply(action: BridgeCatalogChange['action'], name?: string): Promise<boolean> {
     if (busy.value) return false
-    error.value = ''
     if (!await allow()) { menuOpen.value = false; renameOpen.value = false; return false }
     if (busy.value) return false
-    if (name !== undefined && (!name || name.length > 256)) { error.value = t('bridge.nameRequired'); return false }
+    if (name !== undefined && (!name || name.length > 256)) { toast.error(t('bridge.nameRequired')); return false }
     busy.value = true
     const current = generation
     const projectPath = props.kind === 'project' ? props.itemId : props.projectPath
@@ -106,14 +107,13 @@ async function apply(action: BridgeCatalogChange['action'], name?: string): Prom
         await $fetch('/api/bridge/catalog-action', { method: 'POST', body: { action, projectPath, threadId: props.kind === 'thread' ? props.itemId : undefined, name, confirmation: true } })
         if (!active || current !== generation) return false
         emit('changed', { action, id: props.itemId, projectPath, name })
-        error.value = ''
         return true
     }
     catch (cause) {
         await refreshStatus(true)
         if (!active || current !== generation) return false
+        toast.error(errorText(cause))
         if (!ready.value) { menuOpen.value = false; renameOpen.value = false; openSettings() }
-        else { error.value = errorText(cause); toast.error(error.value) }
         return false
     }
     finally { if (active && current === generation) busy.value = false }
@@ -138,9 +138,8 @@ async function remove(): Promise<void> {
         okVariant: 'destructive',
         onOk: async done => {
             if (!active || current !== generation) { done(); return }
-            const succeeded = await apply(props.kind === 'project' ? 'remove-project' : 'archive-thread')
-            if (succeeded || (!menuOpen.value && !error.value)) done()
-            else throw new Error(error.value)
+            await apply(props.kind === 'project' ? 'remove-project' : 'archive-thread')
+            done()
         },
     })
 }
@@ -167,10 +166,11 @@ onUnmounted(() => { active = false; generation += 1; confirmation?.destroy() })
                         :size="36"
                         square
                         :aria-label="`${t('bridge.itemMenu')} · ${label}`"
+                        :disabled="disabled"
                     ><Icon name="askx-actions:more" /></Button></template>
                     <div class="grid gap-1">
                         <Button
-                            v-if="kind === 'project'"
+                            v-if="kind === 'project' && !hideSettings"
                             variant="ghost"
                             :size="36"
                             class="justify-start"
@@ -194,13 +194,6 @@ onUnmounted(() => { active = false; generation += 1; confirmation?.destroy() })
         </TooltipTrigger>
         <TooltipContent>{{ t('bridge.itemMenu') }} · {{ label }}</TooltipContent>
     </Tooltip>
-    <p
-        v-if="error && !renameOpen"
-        role="alert"
-        class="sr-only"
-    >
-        {{ error }}
-    </p>
     <CsResponsiveOverlayDialogDrawer
         v-model:open="renameOpen"
         :title="t('bridge.rename')"
@@ -218,13 +211,7 @@ onUnmounted(() => { active = false; generation += 1; confirmation?.destroy() })
                 v-model="renameDraft"
                 :maxlength="256"
                 @pointerdown="focusName"
-            /></label><p
-                v-if="error"
-                role="alert"
-                class="text-xs text-destructive"
-            >
-                {{ error }}
-            </p>
+            /></label>
         </form>
         <template #footer>
             <Button
