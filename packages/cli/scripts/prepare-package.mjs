@@ -21,14 +21,18 @@ async function assertPortableRuntimeAssets(directory) {
 async function copyRuntimeAssets() {
   const webTarget = resolve(distRoot, 'web/.output')
   const builtinTarget = resolve(distRoot, 'builtin')
+  const bridgeRuntimeTarget = resolve(distRoot, 'bridge-runtime')
   await mkdir(resolve(distRoot, 'web'), { recursive: true })
   await Promise.all([
     rm(webTarget, { recursive: true, force: true }),
     rm(builtinTarget, { recursive: true, force: true }),
+    rm(bridgeRuntimeTarget, { recursive: true, force: true }),
   ])
   await Promise.all([
     cp(resolve(workspaceRoot, 'packages/web/.output'), webTarget, { recursive: true, dereference: true }),
     cp(resolve(workspaceRoot, 'packages/modules/skills/dist/builtin'), builtinTarget, { recursive: true }),
+    // runtime 的动态导入依赖同级入口和共享 chunk，发布时保持完整构建目录。
+    cp(resolve(workspaceRoot, 'packages/modules/feishu-bridge/dist'), bridgeRuntimeTarget, { recursive: true }),
     cp(resolve(cliRoot, 'scripts/lifecycle.mjs'), resolve(distRoot, 'lifecycle.mjs')),
   ])
   await assertPortableRuntimeAssets(webTarget)

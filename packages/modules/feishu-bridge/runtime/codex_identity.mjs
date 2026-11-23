@@ -7,10 +7,11 @@ export const bridgeFeishuClientName = "feishu_codex_bridge";
 /** 兼容仍将 App Server 会话标为 vscode 的 Codex 版本。 */
 export const bridgeThreadSourceKinds = Object.freeze(["appServer", "vscode"]);
 
-/** 保留运行环境，但避免继承父进程的桌面客户端身份。 */
-export function createBridgeCodexEnvironment(environment = process.env) {
+/** 保留运行环境，但避免继承父进程的桌面客户端身份并切换到桥接专用 Codex Home。 */
+export function createBridgeCodexEnvironment(environment = process.env, codexHome) {
   const childEnvironment = { ...environment };
   delete childEnvironment.CODEX_INTERNAL_ORIGINATOR_OVERRIDE;
+  if (codexHome) childEnvironment.CODEX_HOME = codexHome;
   return childEnvironment;
 }
 

@@ -197,6 +197,7 @@ export class BridgeServiceManager {
     const runtimeEntry = this.runtimeEntryPath
     await access(runtimeEntry)
     await mkdir(config.paths.stateDir, { recursive: true, mode: 0o700 })
+    await mkdir(config.paths.codexHome, { recursive: true, mode: 0o700 })
     const logPath = join(config.paths.stateDir, 'bridge.log')
     const logHandle = await import('node:fs/promises').then(({ open }) => open(logPath, 'a', 0o600))
     const runtimeConfigPath = await this.writeRuntimeConfig(config)
@@ -301,6 +302,9 @@ export class BridgeServiceManager {
       feishu: config.feishu,
       stateDir: config.paths.stateDir,
       codexBinary: config.paths.codexBinary,
+      codexHome: config.paths.codexHome,
+      authFile: config.paths.authFile,
+      configFile: config.paths.configFile,
       pollIntervalMs: 5_000,
     }
     await writeFile(runtimeConfigPath, `${JSON.stringify(runtimeConfig, null, 2)}\n`, { mode: 0o600 })

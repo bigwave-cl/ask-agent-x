@@ -1,4 +1,7 @@
+import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { Command } from 'commander'
 import { bridgeConfigSchema, defaultBridgeConfig, ModuleRegistry, type AskXConfig, type AskXLocale, type SettingsPatch, SettingsStore } from '@askx/core'
 import { createFeishuBridgeModule } from '@askx/module-feishu-bridge'
@@ -6,7 +9,7 @@ import { BridgeServiceManager } from '@askx/module-feishu-bridge/service-manager
 
 /** 注册 bridge 独立模块的 CLI 命令树。 */
 export function registerBridgeCommands(program: Command, settingsStore: SettingsStore, locale: AskXLocale): ModuleRegistry {
-  const manager = new BridgeServiceManager({ read: () => settingsStore.read() })
+  const manager = new BridgeServiceManager({ read: () => settingsStore.read() }, undefined, resolveBridgeRuntimeEntry())
   const moduleRegistry = new ModuleRegistry()
   const bridgeModule = createFeishuBridgeModule(manager)
   moduleRegistry.register(bridgeModule)
@@ -89,6 +92,28 @@ export function registerBridgeCommands(program: Command, settingsStore: Settings
   return moduleRegistry
 }
 
+/**
+ * 解析 CLI 能实际启动的桥接 runtime 入口。
+ *
+ * 发布版会把 runtime 复制到 CLI 自身的 dist 目录；源码仓库运行时保留
+ * 模块 dist 作为回退，避免服务管理器根据被打包后的 import.meta.url 推导出错误路径。
+ */
+function resolveBridgeRuntimeEntry(): string {
+  const cliDirectory = dirname(fileURLToPath(import.meta.url))
+  const candidates = [
+    resolve(cliDirectory, '../../modules/feishu-bridge/dist/runtime-entry.js'),
+    resolve(process.cwd(), 'packages/modules/feishu-bridge/dist/runtime-entry.js'),
+    join(cliDirectory, 'bridge-runtime', 'runtime-entry.js'),
+  ]
+  const found = candidates.find(path => {
+    // 这里是同步的启动前探测，避免把无效路径交给异步子进程。
+    return existsSync(path)
+  })
+  // CLI 的其他命令不应因为 bridge 资源尚未构建而无法显示帮助或执行只读操作；
+  // 由 service manager 在真正启动时报告缺失的 runtime。
+  return found ?? candidates[0]!
+}
+
 /** 将旧 bundle 的 config.json 归一化为 Core bridge 配置补丁。 */
 function legacyBridgePatch(imported: Partial<AskXConfig> & Record<string, unknown>): SettingsPatch['bridge'] {
   const defaults = defaultBridgeConfig()
@@ -104,6 +129,7 @@ function legacyBridgePatch(imported: Partial<AskXConfig> & Record<string, unknow
     paths: {
       codexBinary: typeof imported.codexBinary === 'string' ? imported.codexBinary : typeof paths.codexBinary === 'string' ? paths.codexBinary : defaults.paths.codexBinary,
       stateDir: typeof imported.stateDir === 'string' ? imported.stateDir : typeof paths.stateDir === 'string' ? paths.stateDir : defaults.paths.stateDir,
+      codexHome: typeof imported.codexHome === 'string' ? imported.codexHome : typeof paths.codexHome === 'string' ? paths.codexHome : defaults.paths.codexHome,
     },
   })
 }

@@ -55,6 +55,12 @@ export const bridgePathsSchema = z.object({
   codexBinary: z.string().min(1),
   /** 桥接状态和日志目录。 */
   stateDir: z.string().min(1),
+  /** 桥接专用 Codex 配置、凭据和 thread 存储目录。 */
+  codexHome: z.string().min(1).default(join(homedir(), '.askx', 'bridge', 'codex-home')),
+  /** 只读复用的 Codex API key 来源文件；内容不会写回该文件。 */
+  authFile: z.string().min(1).default(join(homedir(), '.codex', 'auth.json')),
+  /** 只读读取的 Codex 配置文件；仅提取模型提供商设置。 */
+  configFile: z.string().min(1).default(join(homedir(), '.codex', 'config.toml')),
 })
 
 /** Feishu 群接入配置；不包含 App Secret。 */
@@ -165,6 +171,9 @@ export function defaultBridgeConfig(): BridgeConfig {
     paths: {
       codexBinary: 'codex',
       stateDir: join(homedir(), '.askx', 'bridge'),
+      codexHome: join(homedir(), '.askx', 'bridge', 'codex-home'),
+      authFile: join(homedir(), '.codex', 'auth.json'),
+      configFile: join(homedir(), '.codex', 'config.toml'),
     },
     feishu: {
       source: 'openclaw',

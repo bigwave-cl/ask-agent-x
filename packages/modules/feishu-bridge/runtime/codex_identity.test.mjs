@@ -10,6 +10,11 @@ test('child environment removes only the desktop override without changing the p
   expect(createBridgeCodexEnvironment(Object.freeze({ ASKX_TEST_VALUE: 'preserved' }))).toEqual({ ASKX_TEST_VALUE: 'preserved' });
 });
 
+test('child environment uses the configured isolated Codex Home', () => {
+  const parent = Object.freeze({ CODEX_HOME: '/Users/bobo/.codex', ASKX_TEST_VALUE: 'preserved' });
+  expect(createBridgeCodexEnvironment(parent, '/Users/bobo/.askx/bridge/codex-home')).toEqual({ CODEX_HOME: '/Users/bobo/.askx/bridge/codex-home', ASKX_TEST_VALUE: 'preserved' });
+});
+
 test.each([
   { source: 'appServer' },
   { source: 'vscode', originator: bridgeFeishuClientName },

@@ -37,6 +37,9 @@ describe('BridgeSettingsService', () => {
     expect(saved.bridge.feishu.credentialRef).toBeTruthy()
     const visible = publicBridgeSettings(saved)
     expect(visible.bridge.feishu.hasSecret).toBe(true)
+    expect(visible.bridge.paths.codexHome).toMatch(/\.askx\/bridge\/codex-home$/)
+    expect(visible.bridge.paths).not.toHaveProperty('stateDir')
+    expect(visible.bridge.paths).not.toHaveProperty('codexBinary')
     expect(JSON.stringify(visible)).not.toContain(saved.bridge.feishu.credentialRef!)
     expect(JSON.stringify(visible)).not.toContain('credentialRef')
     expect(JSON.stringify(visible)).not.toContain('secretA')
@@ -91,6 +94,16 @@ describe('BridgeSettingsService', () => {
     expect(put).toHaveBeenCalledOnce()
     expect(get.mock.calls.length).toBe(previousReads)
     expect(remove).not.toHaveBeenCalled()
+  })
+
+  it('保存 Codex Home 时只更新桥接运行目录', async () => {
+    const { service, settings } = await setup()
+    const current = await settings.read()
+    const codexHome = '/tmp/askx-bridge-codex-home'
+    const saved = await service.save({ revision: current.revision, patch: { paths: { codexHome } } })
+    expect(saved.bridge.paths.codexHome).toBe(codexHome)
+    expect(saved.bridge.workTime).toEqual(current.bridge.workTime)
+    expect(saved.bridge.feishu).toEqual(current.bridge.feishu)
   })
 
   it('过期 revision 在凭据写入前拒绝且不改变配置', async () => {

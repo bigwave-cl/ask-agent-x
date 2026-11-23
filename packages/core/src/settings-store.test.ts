@@ -19,6 +19,7 @@ describe('SettingsStore', () => {
     expect(settings.skills.platforms).toEqual([])
     expect(settings.bridge.workTime.window).toEqual({ start: '09:00', end: '19:00' })
     expect(settings.bridge.workTime.mode).toBe('windows')
+    expect(settings.bridge.paths.codexHome).toMatch(/\.askx\/bridge\/codex-home$/)
   })
 
   it('deep merges bridge patches without resetting sibling settings', async () => {
@@ -29,6 +30,7 @@ describe('SettingsStore', () => {
     expect(updated.bridge.workTime.mode).toBe('always')
     expect(updated.bridge.workTime.window).toEqual({ start: '09:00', end: '19:00' })
     expect(updated.bridge.paths.codexBinary).toBe('codex')
+    expect(updated.bridge.paths.codexHome).toMatch(/\.askx\/bridge\/codex-home$/)
     expect(updated.bridge.paths).not.toHaveProperty('workspace')
   })
 

@@ -11,6 +11,8 @@ export const bridgeSettingsRequestSchema = z.object({
   patch: z.object({
     /** 工作时间策略。 */
     workTime: bridgeWorkTimeSchema.optional(),
+    /** 桥接专用 Codex 运行目录。 */
+    paths: z.object({ codexHome: z.string().min(1), authFile: z.string().min(1), configFile: z.string().min(1) }).partial().strict().optional(),
     /** 飞书身份和私聊管理员。 */
     feishu: bridgeFeishuSchema.omit({ credentialRef: true }).strict().optional(),
   }).strict(),
@@ -20,7 +22,14 @@ export const bridgeSettingsRequestSchema = z.object({
 /** 返回可展示的设置，不把凭据引用暴露给浏览器。 */
 export function publicBridgeSettings(settings: AskXConfig) {
   const { credentialRef, ...feishu } = settings.bridge.feishu
-  return { revision: settings.revision, bridge: { ...settings.bridge, feishu: { ...feishu, hasSecret: Boolean(credentialRef) } } }
+  return {
+    revision: settings.revision,
+    bridge: {
+      workTime: settings.bridge.workTime,
+      paths: { codexHome: settings.bridge.paths.codexHome, authFile: settings.bridge.paths.authFile, configFile: settings.bridge.paths.configFile },
+      feishu: { ...feishu, hasSecret: Boolean(credentialRef) },
+    },
+  }
 }
 /** 保存凭据与配置的单一事务入口。 */
 export class BridgeSettingsService {
@@ -53,6 +62,7 @@ export class BridgeSettingsService {
       }
       return await this.settings.update({ bridge: {
         ...(input.patch.workTime ? { workTime: input.patch.workTime } : {}),
+        ...(input.patch.paths ? { paths: input.patch.paths } : {}),
         ...(feishu ? { feishu: { ...feishu, credentialRef } } : {}),
       } }, { source: 'web', expectedRevision: input.revision })
     } catch (error) {
