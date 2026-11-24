@@ -2,7 +2,8 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import BusBridgeRelations from './BusBridgeRelations.vue'
 import BusBridgeItemMenu from './BusBridgeItemMenu.vue'
-import BusBridgeConversation from './BusBridgeConversation.vue'
+import BusBridgeAgent from './agent/BusBridgeAgent.vue'
+import { provideAgentCore, useAgentCore } from './agent/core/useAgentCore'
 import type { BridgeCatalogChange } from './BusBridgeItemMenu.vue'
 import Button from '@/components/ui/button/Button.vue'
 import Switch from '@/components/ui/switch/Switch.vue'
@@ -293,9 +294,9 @@ function acceptThread(thread: { id: string, title: string }): void {
     selectedThreadId.value = thread.id
 }
 /** 消息、实时事件及发送生命周期统一交给会话 Core。 */
-const conversation = useBridgeConversation({ threadId: selectedThreadId, context: conversationContext, canCompose, requireRunning: requireBridge, onCreated: acceptThread, onCatalogChanged: () => { void loadCatalog() }, onTitle: updateThreadTitle })
-/** 模板自动解包顶层 Ref，组件间不传递可变 owner。 */
-const { messages, draft, loading, loadingMore, submitting, running, canStop, connection, nextCursor } = conversation
+const agentCore = useAgentCore({ threadId: selectedThreadId, context: conversationContext, canCompose, requireRunning: requireBridge, onCreated: acceptThread, onCatalogChanged: () => { void loadCatalog() }, onTitle: updateThreadTitle })
+/** 整个右侧 Agent 共用一个 Core，目录层只提供导航和目录回调。 */
+provideAgentCore(agentCore)
 /** 标题行内编辑复用既有目录写入 API 与授权链路。 */
 async function renameConversation(name: string): Promise<boolean> {
     const threadId = selectedThreadId.value
@@ -578,29 +579,15 @@ onUnmounted(() => { active = false; generation++; activationGeneration++; pendin
                     @added="loadCatalog"
                     @saved="loadCatalog"
                 />
-                <BusBridgeConversation
+                <BusBridgeAgent
                     v-else
                     ref="conversationPanel"
-                    v-model="draft"
-                    :thread-id="selectedThreadId"
                     :title="selectedThread?.title || t('bridge.newSession')"
                     :group-name="selectedGroup?.name"
                     :project-name="selectedProject?.name"
-                    :messages="messages"
-                    :loading="loading"
-                    :loading-more="loadingMore"
-                    :has-more="Boolean(nextCursor)"
-                    :submitting="submitting"
-                    :running="running"
-                    :can-stop="canStop"
-                    :can-compose="canCompose"
                     :read-only="readOnly"
-                    :connection="connection"
                     :rename="renameConversation"
-                    @send="conversation.send"
-                    @stop="conversation.interrupt"
                     @settings="openSettings"
-                    @more="conversation.loadHistory(true)"
                 />
             </section>
             <BusBridgeRelations
