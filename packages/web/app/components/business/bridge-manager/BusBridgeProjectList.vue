@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import Button from '@/components/ui/button/Button.vue'
 import Input from '@/components/ui/input/Input.vue'
+import Switch from '@/components/ui/switch/Switch.vue'
 import ScrollArea from '@/components/ui/scroll-area/ScrollArea.vue'
 import Tooltip from '@/components/ui/tooltip/Tooltip.vue'
 import TooltipTrigger from '@/components/ui/tooltip/TooltipTrigger.vue'
@@ -31,7 +32,7 @@ const props = withDefaults(defineProps<{
     pendingPaths?: string[]
 }>(), { relationMode: false, linkedPaths: () => [], activePath: '', pendingPaths: () => [] })
 /** 上层负责编辑器及关联事务。 */
-const emit = defineEmits<{ import: [], edit: [project: Project], changed: [change: BridgeCatalogChange], toggle: [project: Project], activate: [project: Project] }>()
+const emit = defineEmits<{ import: [], edit: [project: Project], changed: [change: BridgeCatalogChange], toggle: [project: Project], 'activation-change': [project: Project, active: boolean] }>()
 /** 翻译入口。 */
 const { t } = useI18n()
 /** 仅用于当前列表的搜索草稿。 */
@@ -125,22 +126,20 @@ const filteredProjects = computed(() => {
                         v-if="relationMode"
                         class="ml-auto flex shrink-0 items-center gap-2"
                     >
-                        <span
-                            v-if="activePath === project.path"
-                            class="inline-flex h-9 items-center gap-2 rounded-lg bg-primary/10 px-3 text-xs font-semibold text-ds-text-brand"
+                        <label
+                            v-if="linkedPaths.includes(project.path)"
+                            class="inline-flex min-h-9 items-center gap-3 text-xs font-medium"
+                            :class="activePath === project.path ? 'text-ds-text-brand' : 'text-muted-foreground'"
                         >
-                            <span class="size-1.5 rounded-full bg-current" />{{ t('bridge.currentProject') }}
-                        </span>
-                        <Button
-                            v-else-if="linkedPaths.includes(project.path) && project.available !== false"
-                            variant="outlined"
-                            :size="36"
-                            :disabled="pendingPaths.includes(project.path)"
-                            :aria-label="`${t('bridge.activateProject')} · ${project.name}`"
-                            @click="emit('activate', project)"
-                        >
-                            <Icon name="askx-navigation:arrow-right" />{{ t('bridge.activateProject') }}
-                        </Button>
+                            <span>{{ t(activePath === project.path ? 'bridge.currentProject' : 'bridge.activateProject') }}</span>
+                            <Switch
+                                :model-value="activePath === project.path"
+                                :disabled="pendingPaths.includes(project.path) || (project.available === false && activePath !== project.path)"
+                                :aria-busy="pendingPaths.includes(project.path)"
+                                :aria-label="`${t(activePath === project.path ? 'bridge.deactivateProject' : 'bridge.activateProject')} · ${project.name}`"
+                                @update:model-value="emit('activation-change', project, $event)"
+                            />
+                        </label>
                         <Tooltip>
                             <TooltipTrigger as-child>
                                 <Button

@@ -977,8 +977,10 @@
     "sessionsNav": "会话",
     "saveName": "保存名称",
     "activateProject": "设为当前项目",
+    "deactivateProject": "取消激活项目",
     "active": "当前",
     "projectActivated": "已切换当前项目",
+    "projectDeactivated": "已取消项目激活",
     "readOnly": "只读",
     "readOnlyHint": "这是历史项目会话，请先将项目设为当前项目后继续发送。",
     "bindProjectFirst": "请先为群组绑定当前项目",
@@ -1017,6 +1019,6 @@
     "projectLinked": "项目已绑定",
     "projectUnlinked": "已解除项目绑定",
     "currentProject": "当前项目",
-    "currentProjectHint": "群消息将在当前项目中执行。其他已绑定项目保留历史会话，可随时切换。"
+    "currentProjectHint": "打开开关可设为当前项目，群消息将在该项目中执行。关闭后仍保留关联和历史会话。"
   }
 }

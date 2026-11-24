@@ -977,8 +977,10 @@
     "sessionsNav": "Sessions",
     "saveName": "Save name",
     "activateProject": "Make current",
+    "deactivateProject": "Deactivate project",
     "active": "Current",
     "projectActivated": "Current project updated",
+    "projectDeactivated": "Project deactivated",
     "readOnly": "Read-only",
     "readOnlyHint": "This is a historical project session. Make the project current before sending.",
     "bindProjectFirst": "Bind a current project to this group first",
@@ -1017,6 +1019,6 @@
     "projectLinked": "Project linked",
     "projectUnlinked": "Project unlinked",
     "currentProject": "Current project",
-    "currentProjectHint": "Group messages run in the current project. Other linked projects keep their history and can be made current at any time."
+    "currentProjectHint": "Turn on a switch to make that project current for group messages. Turning it off keeps its links and conversation history."
   }
 }

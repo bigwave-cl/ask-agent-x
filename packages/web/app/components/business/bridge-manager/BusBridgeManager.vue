@@ -5,6 +5,7 @@ import BusBridgeItemMenu from './BusBridgeItemMenu.vue'
 import BusBridgeConversation from './BusBridgeConversation.vue'
 import type { BridgeCatalogChange } from './BusBridgeItemMenu.vue'
 import Button from '@/components/ui/button/Button.vue'
+import Switch from '@/components/ui/switch/Switch.vue'
 import Tooltip from '@/components/ui/tooltip/Tooltip.vue'
 import TooltipTrigger from '@/components/ui/tooltip/TooltipTrigger.vue'
 import TooltipContent from '@/components/ui/tooltip/TooltipContent.vue'
@@ -86,6 +87,14 @@ let active = false
 let generation = 0
 /** 目录读取期间到达的失效事件，在当前读取完成后统一校准。 */
 let catalogDirty = false
+/** 可等待的目录读取链，确保开关请求使用已确认的最新版本。 */
+let catalogRequest: Promise<void> | undefined
+/** 正在排队或提交的项目开关，仅限制同一项目重复提交。 */
+const pendingProjectActivations = ref(new Set<string>())
+/** 侧栏开关按用户操作顺序提交。 */
+let activationQueue = Promise.resolve()
+/** 失败或卸载后使尚未执行的开关意图失效。 */
+let activationGeneration = 0
 
 const selectedGroup = computed(() => catalog.value.groups.find(group => group.chatId === selectedChatId.value) ?? null)
 const selectedProjectEntry = computed(() => selectedGroup.value?.projects.find(entry => entry.project.path === selectedProjectPath.value) ?? null)
@@ -128,33 +137,40 @@ function reconcileSelection(): void {
     if (!project?.sessions.some(thread => thread.id === selectedThreadId.value)) selectedThreadId.value = ''
 }
 
-/** 读取群组为根的目录。 */
-async function loadCatalog(): Promise<void> {
-    if (catalogLoading.value) { catalogDirty = true; return }
-    catalogDirty = false
+/** 读取群组目录；调用方等待期间到达的刷新也一并完成。 */
+function loadCatalog(): Promise<void> {
+    catalogDirty = true
+    if (catalogRequest) return catalogRequest
     catalogLoading.value = true
-    const current = ++generation
-    try {
-        const [result, projectResult] = await Promise.all([
-            $fetch<BridgeCatalog>('/api/bridge/catalog', { timeout: 15000, retry: 0 }),
-            $fetch<{ projects: BridgeProject[] }>('/api/bridge/projects', { timeout: 15000, retry: 0 }),
-        ])
-        if (active && current === generation) {
-            catalog.value = result
-            registeredProjects.value = projectResult.projects
-            reconcileSelection()
-            toast.dismiss('bridge-catalog-load')
+    catalogRequest = (async () => {
+        do {
+            catalogDirty = false
+            /** 本次目录读取的有效序号。 */
+            const current = ++generation
+            try {
+                /** 同一目录读取窗口内的群目录与项目全集。 */
+                const [result, projectResult] = await Promise.all([
+                    $fetch<BridgeCatalog>('/api/bridge/catalog', { timeout: 15000, retry: 0 }),
+                    $fetch<{ projects: BridgeProject[] }>('/api/bridge/projects', { timeout: 15000, retry: 0 }),
+                ])
+                if (active && current === generation) {
+                    catalog.value = result
+                    registeredProjects.value = projectResult.projects
+                    reconcileSelection()
+                    toast.dismiss('bridge-catalog-load')
+                }
+            }
+            catch (cause) {
+                if (active && current === generation) toast.error((cause as { data?: { statusMessage?: string } }).data?.statusMessage || t('bridge.loadError'), { id: 'bridge-catalog-load' })
+            }
         }
-    }
-    catch (cause) {
-        if (active && current === generation) toast.error((cause as { data?: { statusMessage?: string } }).data?.statusMessage || t('bridge.loadError'), { id: 'bridge-catalog-load' })
-    }
-    finally {
-        if (current === generation) {
-            catalogLoading.value = false
-            if (active && catalogDirty) void loadCatalog()
-        }
-    }
+        while (active && catalogDirty)
+    })().finally(() => {
+        catalogLoading.value = false
+        catalogRequest = undefined
+        if (active && catalogDirty) return loadCatalog()
+    })
+    return catalogRequest
 }
 
 /** 切换群组，只改变导航上下文，不自动打开历史会话。 */
@@ -195,20 +211,45 @@ async function createThread(): Promise<void> {
     conversationPanel.value?.focus()
 }
 
-/** 将历史项目切换为当前项目，保留旧项目及其会话。 */
-async function activateProject(group: BridgeCatalogGroup, entry: BridgeCatalogProject): Promise<void> {
-    if (!entry.available) { toast.error(t('bridge.projectUnavailableHint')); return }
-    if (!await requireBridge()) return
-    try {
-        const result = await $fetch('/api/bridge/groups/activate', { method: 'POST', body: { chatId: group.chatId, projectPath: entry.project.path, revision: catalog.value.revision } })
-        catalog.value.revision = (result as { revision: number }).revision
-        toast.success(t('bridge.projectActivated'))
-        await loadCatalog()
-    }
-    catch (cause) {
-        await refreshStatus(true)
-        toast.error((cause as { data?: { statusMessage?: string } }).data?.statusMessage || t('bridge.loadError'))
-    }
+/** 群和项目共同确定一个待处理开关，不影响目录身份解析。 */
+function projectActivationKey(chatId: string, projectPath: string): string {
+    return JSON.stringify([chatId, projectPath])
+}
+
+/** 提交开关意图，界面只消费服务端确认后重新读取的目录。 */
+function setProjectActive(group: BridgeCatalogGroup, entry: BridgeCatalogProject, enabled: boolean): void {
+    if (enabled && !entry.available) { toast.error(t('bridge.projectUnavailableHint')); return }
+    /** 当前开关在提交队列中的身份。 */
+    const key = projectActivationKey(group.chatId, entry.project.path)
+    if (pendingProjectActivations.value.has(key) || enabled === entry.active) return
+    /** 点击时的开关事务生命周期。 */
+    const current = activationGeneration
+    pendingProjectActivations.value.add(key)
+    activationQueue = activationQueue.then(async () => {
+        if (!active || current !== activationGeneration) return
+        try {
+            if (!await requireBridge() || !active || current !== activationGeneration) return
+            await loadCatalog()
+            if (!active || current !== activationGeneration) return
+            await $fetch('/api/bridge/groups/activate', { method: 'POST', body: { chatId: group.chatId, projectPath: entry.project.path, active: enabled, revision: catalog.value.revision }, retry: 0 })
+            if (!active || current !== activationGeneration) return
+            toast.success(t(enabled ? 'bridge.projectActivated' : 'bridge.projectDeactivated'))
+            await loadCatalog()
+        }
+        catch (cause) {
+            if (!active || current !== activationGeneration) return
+            activationGeneration += 1
+            pendingProjectActivations.value.clear()
+            /** 失败后用于校准服务状态的生命周期。 */
+            const failedGeneration = activationGeneration
+            await refreshStatus(true).catch(() => undefined)
+            if (!active || failedGeneration !== activationGeneration) return
+            toast.error((cause as { data?: { statusMessage?: string } }).data?.statusMessage || t('bridge.loadError'))
+            await loadCatalog()
+        }
+    }).finally(() => {
+        if (active && current === activationGeneration) pendingProjectActivations.value.delete(key)
+    })
 }
 
 /** 项目/会话菜单操作完成后刷新唯一目录。 */
@@ -271,7 +312,7 @@ async function renameConversation(name: string): Promise<boolean> {
     }
 }
 onMounted(() => { active = true; void loadCatalog() })
-onUnmounted(() => { active = false; generation++ })
+onUnmounted(() => { active = false; generation++; activationGeneration++; pendingProjectActivations.value.clear() })
 </script>
 
 <template>
@@ -433,40 +474,43 @@ onUnmounted(() => { active = false; generation++ })
                                                     class="shrink-0 text-[10px] text-muted-foreground"
                                                 >{{ t('bridge.history') }}</span>
                                             </Button>
-                                            <Button
-                                                v-if="entry.available && !entry.active"
-                                                variant="ghost"
-                                                :size="36"
-                                                square
-                                                :aria-label="t('bridge.activateProject')"
-                                                @click="activateProject(group, entry)"
-                                            >
-                                                <Icon
-                                                    name="askx-actions:confirm"
-                                                    class="size-3.5"
+                                            <Tooltip>
+                                                <TooltipTrigger as-child>
+                                                    <span class="inline-flex h-9 shrink-0 items-center px-1">
+                                                        <Switch
+                                                            :model-value="entry.active"
+                                                            :disabled="(!entry.available && !entry.active) || pendingProjectActivations.has(projectActivationKey(group.chatId, entry.project.path))"
+                                                            :aria-busy="pendingProjectActivations.has(projectActivationKey(group.chatId, entry.project.path))"
+                                                            :aria-label="`${t(entry.active ? 'bridge.deactivateProject' : 'bridge.activateProject')} · ${entry.project.name}`"
+                                                            @update:model-value="setProjectActive(group, entry, $event)"
+                                                        />
+                                                    </span>
+                                                </TooltipTrigger>
+                                                <TooltipContent>{{ t(entry.active ? 'bridge.deactivateProject' : 'bridge.activateProject') }}</TooltipContent>
+                                            </Tooltip>
+                                            <div class="flex size-9 shrink-0 items-center justify-center">
+                                                <BusBridgeItemMenu
+                                                    v-if="entry.available && entry.active"
+                                                    kind="project"
+                                                    :item-id="entry.project.path"
+                                                    :label="entry.project.name"
+                                                    @settings="openProjectPanel(entry.project.path)"
+                                                    @changed="catalogChanged"
                                                 />
-                                            </Button>
-                                            <BusBridgeItemMenu
-                                                v-if="entry.available && entry.active"
-                                                kind="project"
-                                                :item-id="entry.project.path"
-                                                :label="entry.project.name"
-                                                @settings="openProjectPanel(entry.project.path)"
-                                                @changed="catalogChanged"
-                                            />
-                                            <Button
-                                                v-if="!entry.available"
-                                                variant="ghost"
-                                                :size="36"
-                                                square
-                                                :aria-label="`${t('bridge.projectSettings')} · ${entry.project.name}`"
-                                                @click="openProjectPanel(entry.project.path)"
-                                            >
-                                                <Icon
-                                                    name="askx-actions:settings"
-                                                    class="size-3.5"
-                                                />
-                                            </Button>
+                                                <Button
+                                                    v-if="!entry.available"
+                                                    variant="ghost"
+                                                    :size="36"
+                                                    square
+                                                    :aria-label="`${t('bridge.projectSettings')} · ${entry.project.name}`"
+                                                    @click="openProjectPanel(entry.project.path)"
+                                                >
+                                                    <Icon
+                                                        name="askx-actions:settings"
+                                                        class="size-3.5"
+                                                    />
+                                                </Button>
+                                            </div>
                                         </div>
                                         <div class="ml-2 space-y-0.5 border-l border-border/70 pl-2">
                                             <div

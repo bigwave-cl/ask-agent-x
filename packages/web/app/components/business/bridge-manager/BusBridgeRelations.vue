@@ -108,34 +108,36 @@ async function load(current = generation): Promise<void> {
     catch (cause) { if (valid(current)) report(cause) }
 }
 /** 将每次点击依次提交，失败后使排队旧请求失效并重新读取。 */
-function enqueue(project: Project, chatId: string, action: 'link' | 'unlink' | 'activate'): void {
+function enqueue(project: Project, chatId: string, action: 'link' | 'unlink' | 'activate' | 'deactivate'): void {
     /** 点击时的生命周期。 */
     const current = generation
     if (pendingPaths.value.includes(project.path)) return
     pendingPaths.value.push(project.path)
     queue = queue.then(async () => {
         if (!valid(current) || !await requireRunning() || !valid(current) || !registry.value) return
-        /** 仅从最近确认快照准备本次事务。 */
-        const draft = JSON.parse(JSON.stringify(registry.value)) as Registry
-        /** 执行时重新确认关联是否存在。 */
-        const linked = draft.projectGroups.some(item => item.chatId === chatId && item.projectPath === project.path)
-        if (action !== 'unlink' && projects.value.find(item => item.path === project.path)?.available === false) return
-        if (action === 'link' && !linked) draft.projectGroups.push({ chatId, projectPath: project.path, active: !draft.projectGroups.some(item => item.chatId === chatId && item.active) })
-        if (action === 'activate' && linked) {
-            draft.projectGroups = draft.projectGroups.map(item => item.chatId === chatId ? { ...item, active: item.projectPath === project.path } : item)
-            draft.migrationConflicts = draft.migrationConflicts?.filter(item => item.chatId !== chatId)
-        }
-        if (action === 'unlink') {
-            draft.projectGroups = draft.projectGroups.filter(item => item.chatId !== chatId || item.projectPath !== project.path)
-            draft.threadGroups = draft.threadGroups.filter(item => item.chatId !== chatId || item.projectPath !== project.path)
-            draft.migrationConflicts = draft.migrationConflicts?.map(item => item.chatId === chatId ? { ...item, projectPaths: item.projectPaths.filter(path => path !== project.path) } : item).filter(item => item.chatId !== chatId || item.projectPaths.length > 1)
-        }
+        if ((action === 'link' || action === 'activate') && projects.value.find(item => item.path === project.path)?.available === false) return
         try {
             /** 服务端确认的唯一关系快照。 */
-            const result = await $fetch<Registry>('/api/bridge/groups', { method: 'PUT', body: draft })
+            let result: Registry
+            if (action === 'activate' || action === 'deactivate') {
+                result = await $fetch<Registry>('/api/bridge/groups/activate', { method: 'POST', body: { chatId, projectPath: project.path, active: action === 'activate', revision: registry.value.revision }, retry: 0 })
+            }
+            else {
+                /** 关联修改只从最近确认快照准备，激活规则交由服务层处理。 */
+                const draft = JSON.parse(JSON.stringify(registry.value)) as Registry
+                /** 执行时重新确认关联是否存在。 */
+                const linked = draft.projectGroups.some(item => item.chatId === chatId && item.projectPath === project.path)
+                if (action === 'link' && !linked) draft.projectGroups.push({ chatId, projectPath: project.path, active: !draft.projectGroups.some(item => item.chatId === chatId && item.active) })
+                if (action === 'unlink') {
+                    draft.projectGroups = draft.projectGroups.filter(item => item.chatId !== chatId || item.projectPath !== project.path)
+                    draft.threadGroups = draft.threadGroups.filter(item => item.chatId !== chatId || item.projectPath !== project.path)
+                    draft.migrationConflicts = draft.migrationConflicts?.map(item => item.chatId === chatId ? { ...item, projectPaths: item.projectPaths.filter(path => path !== project.path) } : item).filter(item => item.chatId !== chatId || item.projectPaths.length > 1)
+                }
+                result = await $fetch<Registry>('/api/bridge/groups', { method: 'PUT', body: draft })
+            }
             if (!valid(current)) return
             registry.value = result
-            toast.success(t(action === 'activate' ? 'bridge.projectActivated' : action === 'link' ? 'bridge.projectLinked' : 'bridge.projectUnlinked'))
+            toast.success(t(action === 'activate' ? 'bridge.projectActivated' : action === 'deactivate' ? 'bridge.projectDeactivated' : action === 'link' ? 'bridge.projectLinked' : 'bridge.projectUnlinked'))
             emit('saved')
         }
         catch (cause) {
@@ -251,7 +253,7 @@ onUnmounted(() => { active = false; invalidate() })
             @edit="edit"
             @changed="changed"
             @toggle="toggle"
-            @activate="enqueue($event, groupId, 'activate')"
+            @activation-change="(project, enabled) => enqueue(project, groupId, enabled ? 'activate' : 'deactivate')"
         />
     </BusBridgeRelationsShell>
     <BusBridgeProjectEditor
