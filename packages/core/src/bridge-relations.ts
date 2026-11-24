@@ -9,6 +9,8 @@ export const bridgeGroupSchema = z.object({
   chatId: z.string().regex(/^oc_[A-Za-z0-9]+$/),
   /** 飞书返回的群名称。 */
   name: z.string().min(1).max(256),
+  /** 群资料或项目关联最近变更时间；旧记录可能尚未记录。 */
+  updatedAt: z.string().datetime().nullable().optional(),
 })
 
 /** 边界只接受规范化绝对路径；真实路径核验由项目服务负责。 */
@@ -125,6 +127,19 @@ function normalizeRelations(input: BridgeRelationsInput): BridgeRelationsData {
 /** 对外提供的关系解析器；所有入口共享同一份归一化结果。 */
 export const bridgeRelationsInputSchema = bridgeRelationsRawSchema.transform(value => normalizeRelations(value))
 
+/** 按群汇总项目关联语义，忽略列表顺序和会话活动。 */
+function groupProjectSignatures(data: BridgeRelationsData): Map<string, string> {
+  /** 每个群的项目路径与激活状态。 */
+  const links = new Map<string, string[]>()
+  for (const link of data.projectGroups) {
+    /** 群内无序关联集合。 */
+    const values = links.get(link.chatId) ?? []
+    values.push(JSON.stringify([link.projectPath, link.active]))
+    links.set(link.chatId, values)
+  }
+  return new Map([...links].map(([chatId, values]) => [chatId, JSON.stringify(values.sort())]))
+}
+
 /** 带并发版本的关系快照。 */
 export interface BridgeRelations extends BridgeRelationsData {
   /** 存储格式版本。 */
@@ -167,8 +182,23 @@ export class BridgeRelationsStore {
       /** 持锁读取的最新版本。 */
       const current = await this.read()
       if (current.revision !== expectedRevision) throw new BridgeRelationsConflictError(current)
+      /** 时间由持锁提交入口写入，调用方不能覆盖或伪造。 */
+      const updatedAt = new Date().toISOString()
+      /** 上次确认的群资料和关联语义。 */
+      const previousGroups = new Map(current.groups.map(group => [group.chatId, group]))
+      const previousLinks = groupProjectSignatures(current)
+      /** 本次归一化后的关联语义。 */
+      const nextLinks = groupProjectSignatures(data)
+      /** 仅资料或项目授权实际变化的群更新时间。 */
+      const groups = data.groups.map(group => {
+        /** 对应群的已保存记录。 */
+        const previous = previousGroups.get(group.chatId)
+        /** 新发现、重命名或关联变化均属于管理资料更新。 */
+        const changed = !previous || previous.name !== group.name || previousLinks.get(group.chatId) !== nextLinks.get(group.chatId)
+        return { ...group, updatedAt: changed ? updatedAt : previous.updatedAt ?? null }
+      })
       /** 本次关系事务的唯一提交快照。 */
-      const next: BridgeRelations = { version: 2, revision: current.revision + 1, ...data }
+      const next: BridgeRelations = { version: 2, revision: current.revision + 1, ...data, groups }
       await this.writeSnapshot(next)
       return next
     })

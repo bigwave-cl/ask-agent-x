@@ -13,6 +13,8 @@ export interface BridgeProject {
   projectId: string
   /** 可选 Git 分支。 */
   branch?: string | null
+  /** Codex 项目资料最近更新时间，协议缺失或非法时为空。 */
+  updatedAt?: string | null
 }
 
 /** 校验并归一化现有项目目录，不创建目录或修改 Git。 */
@@ -34,11 +36,13 @@ export class BridgeProjectService {
     do {
       const response = await this.client.request('project/list', { cursor, limit: 100 }) as { data?: unknown[]; nextCursor?: string | null }
       for (const value of response.data ?? []) {
-        const project = value as { id: string; name: string; roots?: { path: string }[] }
+        const project = value as { id: string; name: string; roots?: { path: string }[]; updatedAt?: number }
+        /** App Server 的项目时间使用 Unix 秒，在协议边界转换一次。 */
+        const updatedAt = typeof project.updatedAt === 'number' && Number.isFinite(project.updatedAt) ? new Date(project.updatedAt * 1000) : null
         for (const root of project.roots ?? []) {
           try {
             const path = await normalizeProjectPath(root.path)
-            if (!projects.has(path)) projects.set(path, { path, name: project.name, projectId: project.id })
+            if (!projects.has(path)) projects.set(path, { path, name: project.name, projectId: project.id, updatedAt: updatedAt && Number.isFinite(updatedAt.getTime()) ? updatedAt.toISOString() : null })
           }
           catch { /* 已失效的本地目录不能作为会话工作区。 */ }
         }

@@ -32,6 +32,17 @@ function barrier() {
 }
 
 describe('BridgeRelationsStore', () => {
+  it('records group management updates and preserves timestamps on read-only saves', async () => {
+    const [store] = await stores()
+    const input: BridgeRelationsInput = { groups: [{ chatId: 'oc_A', name: 'A' }], projectGroups: [], threadGroups: [] }
+    const first = await store.replace(input, 0)
+    expect(first.groups[0]?.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+    const second = await store.replace(input, first.revision)
+    expect(second.groups[0]?.updatedAt).toBe(first.groups[0]?.updatedAt)
+    const changed = await store.replace({ ...input, groups: [{ chatId: 'oc_A', name: 'Renamed' }] }, second.revision)
+    expect(changed.groups[0]?.updatedAt).not.toBe(second.groups[0]?.updatedAt)
+  })
+
   it('migrates one v1 project relation to the active project state', async () => {
     const [store] = await stores()
     await writeFile(store.path, JSON.stringify({ version: 1, revision: 4, groups: [{ chatId: 'oc_A', name: 'A' }], projectGroups: [{ chatId: 'oc_A', projectPath: '/projects/demo' }], threadGroups: [] }))

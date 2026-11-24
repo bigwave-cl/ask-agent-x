@@ -16,11 +16,21 @@ describe('BridgeProjectService', () => {
       const service = new BridgeProjectService({ request: async (_method, params) => {
         if (_method === 'project/read') return { project: { roots: [{ path: root }] } }
         calls.push(params)
-        return params?.cursor ? { data: [{ id: 'p2', name: 'Other', roots: [{ path: alias }] }], nextCursor: null } : { data: [{ id: 'p1', name: 'Demo', roots: [{ path: root }, { path: alias }] }], nextCursor: 'next' }
+        return params?.cursor ? { data: [{ id: 'p2', name: 'Other', roots: [{ path: alias }], updatedAt: 1767225600 }], nextCursor: null } : { data: [{ id: 'p1', name: 'Demo', roots: [{ path: root }, { path: alias }], updatedAt: 1767225600 }] , nextCursor: 'next' }
       } })
-      expect(await service.listProjects()).toEqual([{ path: root, name: 'Demo', projectId: 'p1' }])
+      expect(await service.listProjects()).toEqual([{ path: root, name: 'Demo', projectId: 'p1', updatedAt: '2026-01-01T00:00:00.000Z' }])
       expect(calls).toHaveLength(2)
       expect((await service.requireProject(alias)).path).toBe(root)
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  it('normalizes Codex project updatedAt from Unix seconds and tolerates old responses', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'askx-project-time-test-'))
+    try {
+      const service = new BridgeProjectService({ request: async method => method === 'project/list'
+        ? { data: [{ id: 'with-time', name: 'With time', roots: [{ path: directory }], updatedAt: 1767225600 }, { id: 'without-time', name: 'Without time', roots: [{ path: directory + '-missing' }] }], nextCursor: null }
+        : {} })
+      expect(await service.listProjects()).toEqual([{ path: await realpath(directory), name: 'With time', projectId: 'with-time', updatedAt: '2026-01-01T00:00:00.000Z' }])
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
   it('rejects missing directories before any create request', async () => {
