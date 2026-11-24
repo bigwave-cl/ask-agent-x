@@ -71,6 +71,8 @@ interface BridgeCatalog {
 const { ready, requireRunning, openSettings, refreshStatus } = useBridgeServiceControl()
 const { t } = useI18n()
 const localePath = useLocalePath()
+/** 当前页面路由。 */
+const route = useRoute()
 const toast = useToast()
 const catalog = ref<BridgeCatalog>({ revision: 0, groups: [] })
 const registeredProjects = ref<BridgeProject[]>([])
@@ -81,8 +83,16 @@ const composingNewSession = ref(false)
 /** 右侧聊天外壳的焦点入口。 */
 const conversationPanel = ref<{ focus: () => void } | null>(null)
 const projectPanel = ref(false)
-const activeView = ref<'sessions' | 'management'>('sessions')
-const managementMode = ref<'groups' | 'projects'>('groups')
+/** 管理页使用独立路由，路由是菜单和内容的唯一选中来源。 */
+const isManagementPage = computed(() => route.path === localePath('/bridge/management') || route.path.endsWith('/bridge/management'))
+/** 管理页分类随地址恢复，保留其他查询参数和锚点。 */
+const managementMode = computed<'groups' | 'projects'>({
+    get: () => route.query.tab === 'projects' ? 'projects' : 'groups',
+    set: tab => {
+        if (tab === managementMode.value) return
+        void navigateTo({ path: route.path, query: { ...route.query, tab }, hash: route.hash }, { replace: true })
+    },
+})
 const catalogLoading = ref(false)
 let active = false
 let generation = 0
@@ -193,7 +203,6 @@ function selectProject(entry: BridgeCatalogProject): void {
 async function selectThread(group: BridgeCatalogGroup, entry: BridgeCatalogProject, thread: BridgeThread): Promise<void> {
     if (!entry.available) { toast.error(t('bridge.projectUnavailableHint')); return }
     if (!await requireBridge()) return
-    activeView.value = 'sessions'
     selectedChatId.value = group.chatId
     selectedProjectPath.value = entry.project.path
     selectedThreadId.value = thread.id
@@ -203,7 +212,6 @@ async function selectThread(group: BridgeCatalogGroup, entry: BridgeCatalogProje
 /** 新会话只打开输入态，真正发送时才创建 Codex thread。 */
 async function createThread(): Promise<void> {
     if (!await requireBridge()) return
-    activeView.value = 'sessions'
     const group = selectedGroup.value
     selectedProjectPath.value = group?.activeProject?.path || ''
     selectedThreadId.value = ''
@@ -265,17 +273,8 @@ function catalogChanged(change: BridgeCatalogChange): void {
 
 /** 已有项目进入管理列表，新增项目打开独立导入弹窗。 */
 function openProjectPanel(path = ''): void {
-    if (path) {
-        managementMode.value = 'projects'
-        activeView.value = 'management'
-    }
+    if (path) void navigateTo({ path: localePath('/bridge/management'), query: { tab: 'projects' } })
     else projectPanel.value = true
-}
-
-/** 打开合并后的群组与项目管理页面。 */
-function openManagementPage(): void {
-    managementMode.value = 'groups'
-    activeView.value = 'management'
 }
 
 /** Core 所需的稳定导航上下文。 */
@@ -321,7 +320,7 @@ onUnmounted(() => { active = false; generation++; activationGeneration++; pendin
         <main class="bridge-manager h-svh overflow-hidden bg-background text-foreground">
             <section
                 class="grid h-full min-h-0 lg:grid-rows-1"
-                :class="activeView === 'management' ? 'grid-rows-[auto_minmax(0,1fr)] lg:grid-cols-[4rem_minmax(0,1fr)]' : 'grid-rows-[auto_12rem_minmax(0,1fr)] lg:grid-cols-[4rem_20rem_minmax(0,1fr)]'"
+                :class="isManagementPage ? 'grid-rows-[auto_minmax(0,1fr)] lg:grid-cols-[4rem_minmax(0,1fr)]' : 'grid-rows-[auto_12rem_minmax(0,1fr)] lg:grid-cols-[4rem_20rem_minmax(0,1fr)]'"
             >
                 <nav class="flex items-center gap-1 border-b px-2 py-2 lg:flex-col lg:border-b-0 lg:border-r lg:px-1.5 lg:py-4">
                     <Tooltip>
@@ -329,11 +328,15 @@ onUnmounted(() => { active = false; generation++; activationGeneration++; pendin
                             <Button
                                 as-child
                                 variant="ghost"
-                                :size="40"
-                                square
+                                :size="42"
+                                :square="true"
                                 :aria-label="t('common.home')"
                             >
-                                <NuxtLink :to="localePath('/')"><Icon name="askx-navigation:home-alt" /></NuxtLink>
+                                <NuxtLink :to="localePath('/')"><Icon
+                                    name="askx-navigation:home-alt"
+                                    class="size-5"
+                                    :size="20"
+                                /></NuxtLink>
                             </Button>
                         </TooltipTrigger>
                         <TooltipContent side="right">
@@ -342,21 +345,30 @@ onUnmounted(() => { active = false; generation++; activationGeneration++; pendin
                     </Tooltip>
                     <Tooltip
                         v-for="entry in [
-                            { key: 'sessions', icon: 'askx-objects:chat', label: t('bridge.sessionsNav') },
-                            { key: 'management', icon: 'askx-objects:project-management', label: t('bridge.managementTitle') },
+                            { key: 'sessions', path: '/bridge', selected: !isManagementPage, icon: 'askx-objects:chat', label: t('bridge.sessionsNav') },
+                            { key: 'management', path: '/bridge/management', selected: isManagementPage, icon: 'askx-objects:project-management', label: t('bridge.managementTitle') },
                         ]"
                         :key="entry.key"
                     >
                         <TooltipTrigger as-child>
                             <Button
+                                as-child
                                 variant="ghost"
-                                :size="40"
-                                square
+                                :size="42"
+                                :square="true"
                                 :aria-label="entry.label"
-                                :class="entry.key === 'sessions' ? 'bg-muted text-primary' : ''"
-                                @click="entry.key === 'management' ? openManagementPage() : (activeView = 'sessions')"
+                                :class="entry.selected ? 'bg-muted text-primary' : ''"
                             >
-                                <Icon :name="entry.icon" />
+                                <NuxtLink
+                                    :to="localePath(entry.path)"
+                                    :aria-current="entry.selected ? 'page' : undefined"
+                                >
+                                    <Icon
+                                        :name="entry.icon"
+                                        class="size-5"
+                                        :size="20"
+                                    />
+                                </NuxtLink>
                             </Button>
                         </TooltipTrigger>
                         <TooltipContent side="right">
@@ -367,13 +379,17 @@ onUnmounted(() => { active = false; generation++; activationGeneration++; pendin
                         <TooltipTrigger as-child>
                             <Button
                                 variant="ghost"
-                                :size="40"
-                                square
+                                :size="42"
+                                :square="true"
                                 class="ml-auto lg:ml-0 lg:mt-auto"
                                 :aria-label="t('bridge.serviceSettings')"
                                 @click="openSettings"
                             >
-                                <Icon name="askx-actions:settings" />
+                                <Icon
+                                    name="askx-actions:settings"
+                                    class="size-5"
+                                    :size="20"
+                                />
                             </Button>
                         </TooltipTrigger>
                         <TooltipContent side="right">
@@ -383,7 +399,7 @@ onUnmounted(() => { active = false; generation++; activationGeneration++; pendin
                 </nav>
 
                 <aside
-                    v-if="activeView === 'sessions'"
+                    v-if="!isManagementPage"
                     class="flex min-h-0 flex-col border-b bg-muted/20 lg:border-b-0 lg:border-r"
                 >
                     <header class="flex items-center gap-3 border-b px-4 py-4">
@@ -570,7 +586,7 @@ onUnmounted(() => { active = false; generation++; activationGeneration++; pendin
                 </aside>
 
                 <BusBridgeRelations
-                    v-if="activeView === 'management'"
+                    v-if="isManagementPage"
                     v-model:mode="managementMode"
                     page
                     :show-mode-tabs="true"
