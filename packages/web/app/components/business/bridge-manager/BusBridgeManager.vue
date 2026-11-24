@@ -291,7 +291,7 @@ onUnmounted(() => { active = false; generation++ })
                                 square
                                 :aria-label="t('common.home')"
                             >
-                                <NuxtLink :to="localePath('/')"><Icon name="askx-navigation:home" /></NuxtLink>
+                                <NuxtLink :to="localePath('/')"><Icon name="askx-navigation:home-alt" /></NuxtLink>
                             </Button>
                         </TooltipTrigger>
                         <TooltipContent side="right">
@@ -301,7 +301,7 @@ onUnmounted(() => { active = false; generation++ })
                     <Tooltip
                         v-for="entry in [
                             { key: 'sessions', icon: 'askx-objects:chat', label: t('bridge.sessionsNav') },
-                            { key: 'management', icon: 'askx-objects:layers', label: t('bridge.managementTitle') },
+                            { key: 'management', icon: 'askx-objects:project-management', label: t('bridge.managementTitle') },
                         ]"
                         :key="entry.key"
                     >

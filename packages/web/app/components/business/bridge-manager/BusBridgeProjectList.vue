@@ -153,7 +153,7 @@ const filteredProjects = computed(() => {
                                     @click="emit('toggle', project)"
                                 >
                                     <Icon
-                                        :name="pendingPaths.includes(project.path) ? 'askx-status:loading' : linkedPaths.includes(project.path) ? 'askx-actions:remove' : 'askx-actions:add'"
+                                        :name="pendingPaths.includes(project.path) ? 'askx-status:loading' : linkedPaths.includes(project.path) ? 'askx-actions:unlink' : 'askx-actions:link'"
                                         :class="{ 'animate-spin': pendingPaths.includes(project.path) }"
                                     />
                                 </Button>

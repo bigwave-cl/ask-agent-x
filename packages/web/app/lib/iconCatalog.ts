@@ -15,6 +15,8 @@ export const askxIconCategoryLabels: Record<AskxIconCategory, string> = {
 
 /** AskX 项目当前可用的本地图标清单。 */
 export const askxIconCatalog = [
+    { name: 'askx-actions:link', category: 'actions' },
+    { name: 'askx-actions:unlink', category: 'actions' },
     { name: 'askx-actions:add', category: 'actions' },
     { name: 'askx-actions:remove', category: 'actions' },
     { name: 'askx-actions:close', category: 'actions' },
@@ -78,6 +80,7 @@ export const askxIconCatalog = [
     { name: 'askx-actions:strikethrough', category: 'actions' },
     { name: 'askx-actions:transparency', category: 'actions' },
     { name: 'askx-actions:underline', category: 'actions' },
+    { name: 'askx-navigation:home-alt', category: 'navigation' },
     { name: 'askx-navigation:home', category: 'navigation' },
     { name: 'askx-navigation:arrow-up', category: 'navigation' },
     { name: 'askx-navigation:arrow-down', category: 'navigation' },
@@ -102,6 +105,7 @@ export const askxIconCatalog = [
     { name: 'askx-objects:skills', category: 'objects' },
     { name: 'askx-objects:layout', category: 'objects' },
     { name: 'askx-objects:layers', category: 'objects' },
+    { name: 'askx-objects:project-management', category: 'objects' },
     { name: 'askx-objects:model', category: 'objects' },
     { name: 'askx-objects:file', category: 'objects' },
     { name: 'askx-objects:folder', category: 'objects' },
