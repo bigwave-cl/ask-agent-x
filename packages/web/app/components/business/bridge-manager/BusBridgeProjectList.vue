@@ -17,6 +17,8 @@ interface Project {
     name: string
     /** 目录是否可用，省略时默认可用。 */
     available?: boolean
+    /** Codex 项目最近更新时间。 */
+    updatedAt?: string | null
 }
 /** 项目列表由调用方提供目录及关联状态。 */
 const props = withDefaults(defineProps<{
@@ -34,14 +36,27 @@ const props = withDefaults(defineProps<{
 /** 上层负责编辑器及关联事务。 */
 const emit = defineEmits<{ import: [], edit: [project: Project], changed: [change: BridgeCatalogChange], toggle: [project: Project], 'activation-change': [project: Project, active: boolean] }>()
 /** 翻译入口。 */
-const { t } = useI18n()
+const { t, locale } = useI18n()
+/** 将 ISO 时间转换为列表中的短日期时间。 */
+function formatUpdatedAt(value?: string | null): string {
+    if (!value) return t('bridge.neverUpdated')
+    const timestamp = Date.parse(value)
+    if (!Number.isFinite(timestamp)) return t('bridge.neverUpdated')
+    return new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium', timeStyle: 'short' }).format(timestamp)
+}
 /** 仅用于当前列表的搜索草稿。 */
 const search = ref('')
 /** 按名称和完整路径筛选，不建立目录身份索引。 */
 const filteredProjects = computed(() => {
     /** 忽略大小写的搜索文本。 */
     const query = search.value.trim().toLocaleLowerCase()
-    return props.projects.filter(project => `${project.name}\n${project.path}`.toLocaleLowerCase().includes(query))
+    return props.projects
+        .filter(project => `${project.name}\n${project.path}`.toLocaleLowerCase().includes(query))
+        .sort((left, right) => {
+            const leftTime = left.updatedAt ? Date.parse(left.updatedAt) : Number.NEGATIVE_INFINITY
+            const rightTime = right.updatedAt ? Date.parse(right.updatedAt) : Number.NEGATIVE_INFINITY
+            return rightTime - leftTime
+        })
 })
 </script>
 
@@ -120,6 +135,13 @@ const filteredProjects = computed(() => {
                             :title="project.path"
                         >
                             {{ project.path }}
+                        </p>
+                        <p class="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Icon
+                                name="askx-objects:calendar"
+                                class="size-3.5"
+                            />
+                            {{ t('bridge.updatedAt') }} {{ formatUpdatedAt(project.updatedAt) }}
                         </p>
                     </div>
                     <div

@@ -9,19 +9,33 @@ import Tooltip from '@/components/ui/tooltip/Tooltip.vue'
 import TooltipTrigger from '@/components/ui/tooltip/TooltipTrigger.vue'
 import TooltipContent from '@/components/ui/tooltip/TooltipContent.vue'
 /** 只读群列表与页级分类。 */
-const props = defineProps<{ mode: 'groups' | 'projects', showModeTabs: boolean, groups: { chatId: string, name: string }[], syncing: boolean }>()
+const props = defineProps<{ mode: 'groups' | 'projects', showModeTabs: boolean, groups: { chatId: string, name: string, updatedAt?: string | null }[], syncing: boolean }>()
 /** 所有关系行为交回唯一 owner。 */
 const emit = defineEmits<{ 'update:mode': [value: 'groups' | 'projects'], settings: [chatId: string], sync: [] }>()
 /** 翻译入口。 */
-const { t } = useI18n()
+const { t, locale } = useI18n()
 /** 群名称搜索。 */
 const search = ref('')
 /** 当前展示群。 */
-const groups = computed(() => props.groups.filter(group => `${group.name} ${group.chatId}`.toLocaleLowerCase().includes(search.value.trim().toLocaleLowerCase())))
+/** 页面显示的群组按管理资料最近更新时间排序。 */
+const groups = computed(() => [...props.groups]
+    .filter(group => `${group.name} ${group.chatId}`.toLocaleLowerCase().includes(search.value.trim().toLocaleLowerCase()))
+    .sort((left, right) => {
+        const leftTime = left.updatedAt ? Date.parse(left.updatedAt) : Number.NEGATIVE_INFINITY
+        const rightTime = right.updatedAt ? Date.parse(right.updatedAt) : Number.NEGATIVE_INFINITY
+        return rightTime - leftTime
+    }))
+/** 将 ISO 时间转换为当前语言环境的短日期时间。 */
+function formatUpdatedAt(value?: string | null): string {
+    if (!value) return t('bridge.neverUpdated')
+    const timestamp = Date.parse(value)
+    if (!Number.isFinite(timestamp)) return t('bridge.neverUpdated')
+    return new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium', timeStyle: 'short' }).format(timestamp)
+}
 </script>
 
 <template>
-    <div class="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col gap-6 px-5 pb-6 sm:px-8">
+    <div class="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-7 px-4 pb-7 sm:px-6 lg:px-8">
         <Tabs
             v-if="showModeTabs"
             :model-value="mode"
@@ -100,9 +114,16 @@ const groups = computed(() => props.groups.filter(group => `${group.name} ${grou
                             <p class="truncate text-sm font-semibold text-foreground">
                                 {{ group.name }}
                             </p>
-                            <p class="truncate font-mono text-xs text-muted-foreground">
-                                {{ group.chatId }}
-                            </p>
+                            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                                <span class="truncate font-mono">{{ group.chatId }}</span>
+                                <span class="inline-flex items-center gap-1">
+                                    <Icon
+                                        name="askx-objects:calendar"
+                                        class="size-3.5"
+                                    />
+                                    {{ formatUpdatedAt(group.updatedAt) }}
+                                </span>
+                            </div>
                         </div>
                         <Tooltip>
                             <TooltipTrigger as-child>

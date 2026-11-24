@@ -15,6 +15,8 @@ interface Project {
     name: string
     /** 当前目录可用性。 */
     available?: boolean
+    /** Codex 项目最近更新时间。 */
+    updatedAt?: string | null
 }
 /** 服务端关系快照，保留全部历史会话。 */
 interface Registry {
@@ -23,7 +25,7 @@ interface Registry {
     /** 并发版本。 */
     revision: number
     /** 群目录。 */
-    groups: { chatId: string, name: string }[]
+    groups: { chatId: string, name: string, updatedAt?: string | null }[]
     /** 项目关系。 */
     projectGroups: { chatId: string, projectPath: string, active?: boolean }[]
     /** 会话关系。 */
@@ -76,7 +78,7 @@ const projects = computed<Project[]>(() => {
     /** 合并目录可用性与本轮校验结果。 */
     const result = props.projects.map(item => ({ ...item, available: item.available !== false && !failedProjects.value.includes(item.path) }))
     for (const item of registry.value?.projectGroups || []) {
-        if (!result.some(project => project.path === item.projectPath)) result.push({ path: item.projectPath, name: item.projectPath.split('/').pop() || item.projectPath, available: false })
+        if (!result.some(project => project.path === item.projectPath)) result.push({ path: item.projectPath, name: item.projectPath.split('/').pop() || item.projectPath, available: false, updatedAt: null })
     }
     return result
 })
@@ -203,7 +205,8 @@ onUnmounted(() => { active = false; invalidate() })
         v-if="!importOnly"
         v-model:open="open"
         :page="page"
-        :title="t('bridge.managementTitle')"
+        :title="t('common.bridgeNav')"
+        :page-eyebrow="t('bridge.managementTitle')"
         :close-label="t('common.close')"
     >
         <BusBridgeRelationsContent

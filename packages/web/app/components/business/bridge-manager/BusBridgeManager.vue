@@ -35,6 +35,8 @@ interface BridgeProject {
     path: string
     /** 当前分支。 */
     branch?: string | null
+    /** Codex 项目资料最近更新时间。 */
+    updatedAt?: string | null
     /** 管理列表中的项目可用性，由服务端目录提供。 */
     available?: boolean
 }

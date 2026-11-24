@@ -797,6 +797,8 @@
     "linkProject": "Link this project",
     "unlinkProject": "Unlink project",
     "noMatchingProjects": "No matching projects",
+    "updatedAt": "Updated",
+    "neverUpdated": "No record",
     "editProject": "Edit project",
     "projectIdentityHint": "The path identifies this project. Renaming does not move its directory or session history.",
     "importProjectHint": "Register an existing local directory. Accessibility is verified when saving.",

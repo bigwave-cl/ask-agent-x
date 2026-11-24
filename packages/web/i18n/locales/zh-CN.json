@@ -797,6 +797,8 @@
     "linkProject": "绑定此项目",
     "unlinkProject": "解除绑定",
     "noMatchingProjects": "暂无匹配项目",
+    "updatedAt": "更新时间",
+    "neverUpdated": "暂无记录",
     "editProject": "编辑项目",
     "projectIdentityHint": "路径是项目身份，重命名不会迁移目录或历史会话。",
     "importProjectHint": "仅登记本机现有目录，保存时验证目录可达性。",

@@ -7,13 +7,18 @@ const props = withDefaults(defineProps<{
     page?: boolean
     /** 页面或弹窗标题。 */
     title: string
+    /** 页面模式顶部描述文案。 */
+    pageEyebrow?: string
     /** 页面或弹窗描述。 */
     description?: string
     /** 关闭按钮文案。 */
     closeLabel: string
-}>(), { page: false, description: undefined })
+}>(), { page: false, pageEyebrow: undefined, description: undefined })
 /** 弹窗开关。页面模式下由父组件控制渲染，不使用该状态。 */
 const open = defineModel<boolean>('open', { default: false })
+/** 管理页品牌入口使用的路由和文案。 */
+const localePath = useLocalePath()
+const { t } = useI18n()
 </script>
 
 <template>
@@ -21,16 +26,26 @@ const open = defineModel<boolean>('open', { default: false })
         v-if="props.page"
         class="flex h-full min-h-0 flex-col bg-background"
     >
-        <header class="mx-auto w-full max-w-5xl shrink-0 px-5 pb-4 pt-8 sm:px-8 sm:pt-10">
-            <h1 class="text-xl font-semibold tracking-tight">
-                {{ title }}
-            </h1>
-            <p
-                v-if="description"
-                class="mt-1 truncate text-sm text-muted-foreground"
-            >
-                {{ description }}
-            </p>
+        <header class="mx-auto w-full max-w-7xl shrink-0 px-4 pb-4 pt-6 sm:px-6 sm:pb-5 sm:pt-8 lg:px-8">
+            <div class="flex flex-wrap items-center gap-3">
+                <NuxtLink
+                    :to="localePath('/bridge')"
+                    class="inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-sm text-muted-foreground outline-none transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                    :aria-label="t('bridge.sessionsNav')"
+                >
+                    <Icon
+                        name="askx-navigation:arrow-left"
+                        class="size-4"
+                    />
+                    {{ t('bridge.sessionsNav') }}
+                </NuxtLink>
+                <span
+                    v-if="pageEyebrow"
+                    class="text-sm font-medium text-foreground"
+                >
+                    {{ pageEyebrow }}
+                </span>
+            </div>
         </header>
         <slot />
         <footer
