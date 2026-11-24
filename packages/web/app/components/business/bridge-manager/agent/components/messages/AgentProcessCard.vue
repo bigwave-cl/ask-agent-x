@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import type { BridgeConversationItem } from '@askx/module-feishu-bridge/conversation-contract'
 import ScrollArea from '@/components/ui/scroll-area/ScrollArea.vue'
+import type { MessageRenderCompletePayload } from '../../core/types'
 
 /** 标准过程项，不接触原始协议字段。 */
 const props = defineProps<{ item: BridgeConversationItem }>()
 /** 内容尺寸改变后通知列表调整阅读位置。 */
-const emit = defineEmits<{ resolve: [] }>()
+const emit = defineEmits<{ 'render-complete': [payload: MessageRenderCompletePayload] }>()
 /** 翻译入口。 */
 const { t } = useI18n()
 /** 标题按过程语义映射。 */
@@ -16,8 +17,8 @@ const statusIcon = computed(() => props.item.status === 'inProgress' ? 'askx-sta
 
 <template>
     <details
-        class="group rounded-2xl border border-border/60 bg-muted/20 text-sm"
-        @toggle="emit('resolve')"
+        class="group rounded-2xl border border-bridge-process-border bg-bridge-process-surface text-sm"
+        @toggle="emit('render-complete', { messageId: item.id })"
     >
         <summary class="flex cursor-pointer list-none items-center gap-2.5 px-3.5 py-3 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
             <Icon
@@ -87,7 +88,7 @@ v-if="item.tool?.command"
                 v-else-if="item.content"
                 :value="item.content"
                 :cache-key="item.id"
-                @resolve="emit('resolve')"
+                @resolve="emit('render-complete', { messageId: item.id })"
             />
         </div>
     </details>

@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import Button from '@/components/ui/button/Button.vue'
 import Input from '@/components/ui/input/Input.vue'
+import { useProvidedAgentCore } from '../../core/useAgentCore'
 
 /** 标题来自目录 owner，编辑只提交用户意图。 */
-const props = defineProps<{ threadId: string, title: string, groupName?: string, rename: (name: string) => Promise<boolean> }>()
+const props = defineProps<{ title: string, groupName?: string, rename: (name: string) => Promise<boolean> }>()
+/** 当前会话身份由 Core 提供。 */
+const { threadId } = useProvidedAgentCore()
 /** 内部仅保留编辑草稿与请求状态。 */
 const editing = ref(false)
 const saving = ref(false)
@@ -26,7 +29,7 @@ async function save() {
     try { if (await props.rename(name) && current === generation) editing.value = false }
     finally { if (current === generation) saving.value = false }
 }
-watch(() => props.threadId, () => { generation++; editing.value = false; saving.value = false })
+watch(threadId, () => { generation++; editing.value = false; saving.value = false })
 onBeforeUnmount(() => { generation++ })
 </script>
 

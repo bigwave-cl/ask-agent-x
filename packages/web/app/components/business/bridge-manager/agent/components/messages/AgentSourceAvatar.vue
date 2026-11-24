@@ -39,19 +39,22 @@ watch(() => [props.source?.senderId, props.source?.avatarUrl], () => { imageFail
         <TooltipTrigger as-child>
             <button
                 type="button"
-                class="inline-flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border/60 bg-muted text-xs font-medium text-muted-foreground outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-ring"
+                class="inline-flex max-w-full items-center gap-2 rounded-full text-xs font-medium outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-ring"
                 :aria-label="`${name} · ${t('bridge.conversation.source')}`"
                 @click="open = !open"
             >
-                <img
-                    v-if="avatar"
-                    :src="avatar"
-                    :alt="name"
-                    class="size-full object-cover"
-                    referrerpolicy="no-referrer"
-                    @error="imageFailed = true"
-                >
-                <span v-else>{{ initials }}</span>
+                <span class="max-w-48 truncate rounded-full bg-bridge-message-label px-2.5 py-1 text-[11px] leading-4 text-bridge-message-label-text">{{ name }}</span>
+                <span class="inline-flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-bridge-process-border bg-bridge-message-label text-bridge-message-label-text">
+                    <img
+                        v-if="avatar"
+                        :src="avatar"
+                        :alt="name"
+                        class="size-full object-cover"
+                        referrerpolicy="no-referrer"
+                        @error="imageFailed = true"
+                    >
+                    <span v-else>{{ initials }}</span>
+                </span>
             </button>
         </TooltipTrigger>
         <TooltipContent

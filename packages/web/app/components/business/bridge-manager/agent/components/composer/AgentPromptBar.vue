@@ -1,19 +1,20 @@
 <script setup lang="ts">
 import Button from '@/components/ui/button/Button.vue'
+import { useProvidedAgentCore } from '../../core/useAgentCore'
 
-/** 输入框使用 Core 草稿，避免组件内建立第二份提交状态。 */
-const draft = defineModel<string>({ required: true })
-/** 已归一化的输入资格。 */
-const props = defineProps<{ disabled: boolean, submitting: boolean, running: boolean, canStop: boolean, readOnly: boolean, connection: string, projectName?: string }>()
-/** 输入动作由会话 Core 接收。 */
-const emit = defineEmits<{ send: [], stop: [], settings: [] }>()
+/** 输入草稿与提交动作统一由 Core 持有。 */
+const { draft, submitting, running, canStop, canCompose, connection, send, interrupt } = useProvidedAgentCore()
+/** 页面只传入展示上下文。 */
+defineProps<{ /** 当前绑定为只读时显示提示。 */ readOnly: boolean, /** 当前项目展示名称。 */ projectName?: string }>()
+/** 服务设置交给外部导航。 */
+const emit = defineEmits<{ settings: [] }>()
 /** DOM 输入及输入法状态。 */
 const input = ref<HTMLTextAreaElement | null>(null)
 const composing = ref(false)
 /** 翻译入口。 */
 const { t } = useI18n()
 /** 发送资格不等同于传输连接或请求状态。 */
-const canSend = computed(() => Boolean(draft.value.trim() && !props.disabled && !props.submitting && !props.running))
+const canSend = computed(() => Boolean(draft.value.trim() && canCompose.value && !submitting.value && !running.value))
 /** 输入高度跟随内容，保留 PG 输入区的高度边界。 */
 function resize() {
     if (!input.value) return
@@ -24,7 +25,7 @@ function resize() {
 function keydown(event: KeyboardEvent) {
     if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && !composing.value) {
         event.preventDefault()
-        if (canSend.value) emit('send')
+        if (canSend.value) send()
     }
 }
 watch(draft, () => { void nextTick(resize) })
@@ -57,7 +58,7 @@ defineExpose({ focus: () => input.value?.focus() })
             </div>
             <form
                 class="rounded-2xl border border-border/70 bg-card p-2 shadow-sm transition-[border-color,box-shadow] hover:border-border focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/10"
-                @submit.prevent="canSend && emit('send')"
+                @submit.prevent="canSend && send()"
             >
                 <textarea
                     ref="input"
@@ -97,7 +98,7 @@ defineExpose({ focus: () => input.value?.focus() })
                         square
                         shape="pill"
                         :aria-label="t('bridge.conversation.stop')"
-                        @click="emit('stop')"
+                        @click="interrupt()"
                     >
                         <Icon
                             name="askx-actions:stop"

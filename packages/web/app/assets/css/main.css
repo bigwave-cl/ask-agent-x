@@ -87,6 +87,14 @@
   --ds-color-special-ice-text: #17424a;
   --ds-color-special-signal-default: #9bb8dc;
 
+  /* 桥接消息卡片采用视频参考的深紫气泡与浅色身份标签。 */
+  --ds-color-bridge-message-surface: #292541;
+  --ds-color-bridge-message-text: #f4f1ff;
+  --ds-color-bridge-message-label: #eeebfa;
+  --ds-color-bridge-message-label-text: #514977;
+  --ds-color-bridge-process-surface: #f7f6fb;
+  --ds-color-bridge-process-border: #e7e4f0;
+
   /* shadcn semantic mapping */
   --radius: 0.75rem;
   --background: var(--ds-color-bg-page);
@@ -167,6 +175,12 @@ html.dark {
   --ds-color-special-ice-shadow: #3f6f78;
   --ds-color-special-ice-text: #102f35;
   --ds-color-special-signal-default: #87a9d3;
+  --ds-color-bridge-message-surface: #302a4a;
+  --ds-color-bridge-message-text: #f4f1ff;
+  --ds-color-bridge-message-label: #373148;
+  --ds-color-bridge-message-label-text: #e4dcff;
+  --ds-color-bridge-process-surface: #1c1925;
+  --ds-color-bridge-process-border: #393247;
   --ds-color-danger-default: #f95244;
   --ds-color-danger-hover: #ff7d6d;
   --ds-color-danger-active: #f1271e;
@@ -233,6 +247,12 @@ html.dark.theme-rose {
   --color-success-soft: var(--success-soft);
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
+  --color-bridge-message-surface: var(--ds-color-bridge-message-surface);
+  --color-bridge-message-text: var(--ds-color-bridge-message-text);
+  --color-bridge-message-label: var(--ds-color-bridge-message-label);
+  --color-bridge-message-label-text: var(--ds-color-bridge-message-label-text);
+  --color-bridge-process-surface: var(--ds-color-bridge-process-surface);
+  --color-bridge-process-border: var(--ds-color-bridge-process-border);
   --color-ds-brand-default: var(--ds-color-brand-default);
   --color-ds-brand-hover: var(--ds-color-brand-hover);
   --color-ds-brand-active: var(--ds-color-brand-active);
