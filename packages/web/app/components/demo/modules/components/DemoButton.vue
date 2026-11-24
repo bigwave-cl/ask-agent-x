@@ -25,6 +25,7 @@ const variantRows: Array<{ variant: DemoButtonVariant, name: string, usage: stri
 const sizeExamples = [
     { size: 52 as const, code: '<Button :size="52">52</Button>' },
     { size: 48 as const, code: '<Button :size="48">48</Button>' },
+    { size: 42 as const, code: '<Button :size="42">42</Button>' },
     { size: 40 as const, code: '<Button :size="40">40</Button>' },
     { size: 36 as const, code: '<Button :size="36">36</Button>' },
 ]
@@ -139,7 +140,7 @@ function runLoadingDemo() {
                     <h4 class="text-base font-semibold">
                         Size、Shape 与 Square
                     </h4><p class="mt-1 text-xs leading-5 text-muted-foreground">
-                        项目规格提供 52 / 48 / 40 / 36 四档尺寸，形状和 1:1 图标按钮不再写业务 class。
+                        项目规格提供 52 / 48 / 42 / 40 / 36 五档尺寸，形状和 1:1 图标按钮不再写业务 class。
                     </p>
                 </div>
                 <article
