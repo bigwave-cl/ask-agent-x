@@ -120,17 +120,35 @@ export class BridgeGroupService {
    * @returns 激活后的关系快照。
    */
   async activateProject(chatId: string, projectPath: string, revision: number): Promise<BridgeRelations> {
+    return this.setProjectActive(chatId, projectPath, true, revision)
+  }
+
+  /**
+   * 设置指定项目的激活状态，保留关联及历史会话。
+   * @param chatId 飞书群标识。
+   * @param projectPath 目标规范项目路径。
+   * @param active 打开时互斥激活目标，关闭时仅停用目标。
+   * @param revision 客户端读取到的关系版本。
+   * @returns Core 确认提交后的关系快照。
+   */
+  async setProjectActive(chatId: string, projectPath: string, active: boolean, revision: number): Promise<BridgeRelations> {
+    /** 当前已确认的关系快照；过期请求在准备草稿前拒绝。 */
     const snapshot = await this.store.read()
+    if (snapshot.revision !== revision) throw new BridgeRelationsConflictError(snapshot)
     if (!snapshot.groups.some(group => group.chatId === chatId)) throw new Error('Unknown bridge group')
-    const projectGroups = snapshot.projectGroups
-      .filter(link => !(link.chatId === chatId && link.projectPath === projectPath))
-      .map(link => link.chatId === chatId ? { ...link, active: false } : link)
-    projectGroups.push({ chatId, projectPath, active: true })
+    if (!active && !snapshot.projectGroups.some(link => link.chatId === chatId && link.projectPath === projectPath)) throw new Error('Project is not linked to this group / 项目尚未关联此群')
+    /** 打开沿用历史兼容行为，关闭只修改准确匹配的关联。 */
+    const projectGroups = active
+      ? snapshot.projectGroups
+        .filter(link => !(link.chatId === chatId && link.projectPath === projectPath))
+        .map(link => link.chatId === chatId ? { ...link, active: false } : link)
+      : snapshot.projectGroups.map(link => link.chatId === chatId && link.projectPath === projectPath ? { ...link, active: false } : link)
+    if (active) projectGroups.push({ chatId, projectPath, active: true })
     return this.save({
       groups: snapshot.groups,
       projectGroups,
       threadGroups: snapshot.threadGroups,
-      migrationConflicts: snapshot.migrationConflicts.filter(conflict => conflict.chatId !== chatId),
+      migrationConflicts: active ? snapshot.migrationConflicts.filter(conflict => conflict.chatId !== chatId) : snapshot.migrationConflicts,
     }, revision)
   }
 

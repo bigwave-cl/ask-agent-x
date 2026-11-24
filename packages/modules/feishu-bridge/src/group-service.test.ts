@@ -127,6 +127,75 @@ describe('BridgeGroupService', () => {
     expect(await store.read()).toEqual(switched)
   })
 
+  it('关闭当前项目保留关联和会话，允许无当前项目并可重新互斥激活', async () => {
+    /** 两群共享同一项目，目标群另有历史项目。 */
+    const { service, store, input, projectPath, otherPath } = await setup()
+    /** 初始关系快照。 */
+    const initial = await service.save({ ...input, projectGroups: [...input.projectGroups, { chatId: 'oc_A', projectPath: otherPath, active: false }] }, 0)
+    /** 关闭后的服务端确认状态。 */
+    const stopped = await service.setProjectActive('oc_A', projectPath, false, initial.revision)
+    expect(stopped.projectGroups.filter(link => link.chatId === 'oc_A').every(link => !link.active)).toBe(true)
+    expect(stopped.projectGroups).toHaveLength(initial.projectGroups.length)
+    expect(stopped.projectGroups.find(link => link.chatId === 'oc_B')).toEqual(initial.projectGroups.find(link => link.chatId === 'oc_B'))
+    expect(stopped.threadGroups).toEqual(initial.threadGroups)
+    expect(await store.read()).toEqual(stopped)
+    /** 重新打开并切换到另一项目后的快照。 */
+    const restarted = await service.setProjectActive('oc_A', projectPath, true, stopped.revision)
+    const switched = await service.setProjectActive('oc_A', otherPath, true, restarted.revision)
+    expect(switched.projectGroups.filter(link => link.chatId === 'oc_A' && link.active)).toEqual([{ chatId: 'oc_A', projectPath: otherPath, active: true }])
+    /** 关闭旧项目不能影响真正当前项目。 */
+    const unchanged = await service.setProjectActive('oc_A', projectPath, false, switched.revision)
+    expect(unchanged.projectGroups).toEqual(switched.projectGroups)
+    expect(unchanged.threadGroups).toEqual(initial.threadGroups)
+  })
+
+  it('关闭未关联项目明确失败且不会创建新关联，过期版本优先拒绝', async () => {
+    /** 仅有原项目关联的隔离服务。 */
+    const { service, store, input, otherPath, request } = await setup()
+    /** 已持久化的原始快照。 */
+    const initial = await service.save(input, 0)
+    request.mockClear()
+    await expect(service.setProjectActive('oc_A', otherPath, false, initial.revision)).rejects.toThrow('not linked')
+    await expect(service.setProjectActive('missing-group', otherPath, false, 0)).rejects.toBeInstanceOf(BridgeRelationsConflictError)
+    expect(request).not.toHaveBeenCalled()
+    expect(await store.read()).toEqual(initial)
+  })
+
+  it('不可用项目可关闭且保留迁移冲突和历史会话', async () => {
+    /** 关闭状态不需要远端目录继续可用。 */
+    const { service, store, input, projectPath, otherPath, request } = await setup()
+    /** 旧数据中的待处理迁移冲突。 */
+    const initial = await store.replace({ ...input, projectGroups: [...input.projectGroups, { chatId: 'oc_A', projectPath: otherPath, active: false }], migrationConflicts: [{ chatId: 'oc_A', projectPaths: [projectPath, otherPath] }] }, 0)
+    request.mockRejectedValue(new Error('Unavailable'))
+    /** 停用只撤销目标激活状态。 */
+    const stopped = await service.setProjectActive('oc_A', projectPath, false, initial.revision)
+    expect(stopped.migrationConflicts).toEqual(initial.migrationConflicts)
+    expect(stopped.threadGroups).toEqual(initial.threadGroups)
+    expect(stopped.projectGroups).toHaveLength(initial.projectGroups.length)
+    expect(request).not.toHaveBeenCalled()
+    expect(await store.read()).toEqual(stopped)
+  })
+
+  it('开关核验期间的并发关系提交由 Core CAS 拒绝', async () => {
+    /** 模拟打开项目核验期间的其他写入。 */
+    const { service, store, input, projectPath, request } = await setup()
+    /** 起始为停用状态。 */
+    const initial = await store.replace({ ...input, projectGroups: input.projectGroups.map(link => ({ ...link, active: false })) }, 0)
+    /** 保留正常 RPC 行为，仅在项目核验时插入一次并发提交。 */
+    const original = request.getMockImplementation()!
+    let replaced = false
+    request.mockImplementation(async (method, params) => {
+      if (!replaced) {
+        replaced = true
+        await store.replace({ groups: initial.groups, projectGroups: initial.projectGroups, threadGroups: [], migrationConflicts: initial.migrationConflicts }, initial.revision)
+      }
+      return original(method, params)
+    })
+    await expect(service.setProjectActive('oc_A', projectPath, true, initial.revision)).rejects.toBeInstanceOf(BridgeRelationsConflictError)
+    expect((await store.read()).projectGroups).toEqual(initial.projectGroups)
+    expect((await store.read()).threadGroups).toEqual([])
+  })
+
   it('失效历史项目和会话不阻塞合法新增及主动移除', async () => {
     const { service, store, input, projectPath, otherPath, request } = await setup()
     const initial = await service.save(input, 0)
