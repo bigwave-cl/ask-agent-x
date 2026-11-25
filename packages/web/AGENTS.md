@@ -20,6 +20,9 @@
 ## UI 规则
 
 - `app/` 使用 Vue Composition API 和 TypeScript；通用视觉能力拆成组件，不继续扩大单文件页面。
+- 需要跨模块主动打开的设置弹层，复用 `app/utils/componentMount.ts` 动态挂载，并由 `app/composables/` 提供打开 hook；挂载入口负责应用上下文、关闭完成后的卸载、重复打开和调用作用域释放。
+- 同一模块多个页面共用的侧栏等公共组件放在 `app/components/common/`，使用 `Cs` 自动导入名称；模块 layout 负责公共布局及其共享状态 provider，页面内容通过布局插槽承载。
+- 页面负责路由声明和内容装配，显式选择对应 layout；不得重复创建 layout 已提供的状态 owner，也不得静态挂载已有动态打开入口的设置弹层。
 - 优先复用 `app/components/ui` 中的 shadcn-vue 组件；新增组件保持键盘可用、语义化标签和清晰焦点态。
 - 项目自有组件统一通过 `@nuxt/icon` 使用 `askx-*` 本地 SVG 集合；`@lucide/vue` 仅允许 shadcn 管理的 `app/components/ui/**` 使用。新增图标必须同步维护 `app/lib/iconCatalog.ts`，不得启用 Iconify 公网回退。
 - 保持当前 shadcn-vue CLI `init` 生成的 Tailwind 基础导入（`tw-animate-css` 与 `shadcn-vue/tailwind.css`）；不要把上游 variants、keyframes 和 utilities 复制进项目 CSS。
