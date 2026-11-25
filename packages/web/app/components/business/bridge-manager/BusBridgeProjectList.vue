@@ -138,7 +138,7 @@ const filteredProjects = computed(() => {
                             </th>
                             <th
                                 scope="col"
-                                :class="relationMode ? 'w-56 px-5 py-3' : 'w-20 px-5 py-3'"
+                                :class="relationMode ? 'w-36 px-5 py-3' : 'w-20 px-5 py-3'"
                             />
                         </tr>
                     </thead>
@@ -197,20 +197,37 @@ const filteredProjects = computed(() => {
                                     v-if="relationMode"
                                     class="flex justify-end items-center gap-2 whitespace-nowrap"
                                 >
-                                    <label
-                                        v-if="linkedPaths.includes(project.path)"
-                                        class="inline-flex min-h-9 items-center gap-3 text-xs font-medium"
-                                        :class="activePath === project.path ? 'text-ds-text-brand' : 'text-muted-foreground'"
-                                    >
-                                        <span>{{ t(activePath === project.path ? 'bridge.currentProject' : 'bridge.activateProject') }}</span>
-                                        <Switch
-                                            :model-value="activePath === project.path"
-                                            :disabled="pendingPaths.includes(project.path) || (project.available === false && activePath !== project.path)"
-                                            :aria-busy="pendingPaths.includes(project.path)"
-                                            :aria-label="`${t(activePath === project.path ? 'bridge.deactivateProject' : 'bridge.activateProject')} · ${project.name}`"
-                                            @update:model-value="emit('activation-change', project, $event)"
-                                        />
-                                    </label>
+                                    <Tooltip v-if="linkedPaths.includes(project.path)">
+                                        <TooltipTrigger
+                                            v-if="pendingPaths.includes(project.path) || (project.available === false && activePath !== project.path)"
+                                            as-child
+                                        >
+                                            <span
+                                                class="inline-flex min-h-9 items-center"
+                                                tabindex="0"
+                                            >
+                                                <Switch
+                                                    :model-value="activePath === project.path"
+                                                    disabled
+                                                    :aria-busy="pendingPaths.includes(project.path)"
+                                                    :aria-label="`${t(activePath === project.path ? 'bridge.deactivateProject' : 'bridge.activateProject')} · ${project.name}`"
+                                                    @update:model-value="emit('activation-change', project, $event)"
+                                                />
+                                            </span>
+                                        </TooltipTrigger>
+                                        <TooltipTrigger
+                                            v-else
+                                            as-child
+                                        >
+                                            <Switch
+                                                :model-value="activePath === project.path"
+                                                :aria-busy="pendingPaths.includes(project.path)"
+                                                :aria-label="`${t(activePath === project.path ? 'bridge.deactivateProject' : 'bridge.activateProject')} · ${project.name}`"
+                                                @update:model-value="emit('activation-change', project, $event)"
+                                            />
+                                        </TooltipTrigger>
+                                        <TooltipContent>{{ t(activePath === project.path ? 'bridge.currentProject' : 'bridge.activateProject') }}</TooltipContent>
+                                    </Tooltip>
                                     <Tooltip>
                                         <TooltipTrigger as-child>
                                             <Button

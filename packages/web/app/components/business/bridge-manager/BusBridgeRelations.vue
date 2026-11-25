@@ -5,6 +5,7 @@ import BusBridgeProjectList from './BusBridgeProjectList.vue'
 import BusBridgeProjectEditor from './BusBridgeProjectEditor.vue'
 import BusBridgeItemMenu from './BusBridgeItemMenu.vue'
 import { useBridgeServiceControl } from '@/composables/useBridgeServiceControl'
+import { useBridgeProjectDeactivationConfirm } from '@/composables/useBridgeProjectDeactivationConfirm'
 import { useConfirm } from '@/composables/useConfirm'
 import type { ConfirmController } from '@/composables/useConfirm'
 /** 项目目录摘要。 */
@@ -47,6 +48,8 @@ const { t } = useI18n()
 const toast = useToast()
 /** 服务准入检查。 */
 const { requireRunning } = useBridgeServiceControl()
+/** 关闭项目授权与取消入口。 */
+const deactivationConfirm = useBridgeProjectDeactivationConfirm()
 /** 唯一持久化关系快照。 */
 const registry = ref<Registry | null>(null)
 /** 当前群项目弹窗身份。 */
@@ -110,13 +113,14 @@ async function load(current = generation): Promise<void> {
     catch (cause) { if (valid(current)) report(cause) }
 }
 /** 将每次点击依次提交，失败后使排队旧请求失效并重新读取。 */
-function enqueue(project: Project, chatId: string, action: 'link' | 'unlink' | 'activate' | 'deactivate'): void {
+function enqueue(project: Project, chatId: string, action: 'link' | 'unlink' | 'activate' | 'deactivate', approvedRevision?: number): void {
     /** 点击时的生命周期。 */
     const current = generation
     if (pendingPaths.value.includes(project.path)) return
     pendingPaths.value.push(project.path)
     queue = queue.then(async () => {
         if (!valid(current) || !await requireRunning() || !valid(current) || !registry.value) return
+        if (action === 'deactivate' && (!groupOpen.value || groupId.value !== chatId || registry.value.revision !== approvedRevision || activePath.value !== project.path)) return
         if ((action === 'link' || action === 'activate') && projects.value.find(item => item.path === project.path)?.available === false) return
         try {
             /** 服务端确认的唯一关系快照。 */
@@ -151,6 +155,22 @@ function enqueue(project: Project, chatId: string, action: 'link' | 'unlink' | '
             await load()
         }
     }).finally(() => { if (valid(current)) pendingPaths.value = pendingPaths.value.filter(path => path !== project.path) })
+}
+/** 关闭需要确认，切换项目继续直接进入原串行入口。 */
+function activationChange(project: Project, enabled: boolean): void {
+    deactivationConfirm.cancel()
+    if (enabled) { enqueue(project, groupId.value, 'activate'); return }
+    if (!registry.value || !groupOpen.value || activePath.value !== project.path) return
+    /** 授权绑定当时的群、生命周期和服务端版本。 */
+    const chatId = groupId.value
+    /** 授权时的生命周期。 */
+    const current = generation
+    /** 授权时的关系版本。 */
+    const revision = registry.value.revision
+    deactivationConfirm.requestDeactivation(project.name, () => {
+        if (!valid(current) || !groupOpen.value || groupId.value !== chatId || registry.value?.revision !== revision || activePath.value !== project.path) return
+        enqueue(project, chatId, 'deactivate', revision)
+    })
 }
 /** 取消关联须确认，仅删除指定群关系。 */
 function toggle(project: Project): void {
@@ -187,8 +207,9 @@ function changed(): void { emit('saved'); queue = queue.then(() => load()) }
 /** 导入完成通知目录 owner。 */
 function projectSaved(path: string): void { emit('added', path); queue = queue.then(() => load()); if (props.importOnly) open.value = false }
 /** 切换入口使旧异步操作失效。 */
-function invalidate(): void { generation += 1; pendingPaths.value = []; syncing.value = false; confirmation?.destroy(); groupOpen.value = false }
+function invalidate(): void { deactivationConfirm.cancel(); generation += 1; pendingPaths.value = []; syncing.value = false; confirmation?.destroy(); groupOpen.value = false }
 watch(() => props.projects, () => { failedProjects.value = [] }, { deep: true })
+watch([groupOpen, groupId, activePath, () => registry.value?.revision], () => deactivationConfirm.cancel(), { flush: 'sync' })
 watch(groupOpen, value => { confirmation?.destroy(); if (!value) { generation += 1; pendingPaths.value = []; syncing.value = false } })
 watch(mode, () => { invalidate(); if (props.page || open.value) queue = queue.then(() => load()) })
 watch(open, value => {
@@ -256,7 +277,7 @@ onUnmounted(() => { active = false; invalidate() })
             @edit="edit"
             @changed="changed"
             @toggle="toggle"
-            @activation-change="(project, enabled) => enqueue(project, groupId, enabled ? 'activate' : 'deactivate')"
+            @activation-change="activationChange"
         />
     </BusBridgeRelationsShell>
     <BusBridgeProjectEditor

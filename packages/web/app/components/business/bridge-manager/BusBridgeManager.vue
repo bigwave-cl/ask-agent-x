@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import BusBridgeRelations from './BusBridgeRelations.vue'
 import BusBridgeItemMenu from './BusBridgeItemMenu.vue'
 import BusBridgeAgent from './agent/BusBridgeAgent.vue'
@@ -11,6 +11,7 @@ import Tooltip from '@/components/ui/tooltip/Tooltip.vue'
 import TooltipTrigger from '@/components/ui/tooltip/TooltipTrigger.vue'
 import TooltipContent from '@/components/ui/tooltip/TooltipContent.vue'
 import ScrollArea from '@/components/ui/scroll-area/ScrollArea.vue'
+import { useBridgeProjectDeactivationConfirm } from '@/composables/useBridgeProjectDeactivationConfirm'
 import { useBridgeServiceControl } from '@/composables/useBridgeServiceControl'
 import { useBridgeCatalog, type BridgeCatalogProjectView, type BridgeCatalogThreadView } from '@/composables/useBridgeCatalog'
 
@@ -18,6 +19,8 @@ import { useBridgeCatalog, type BridgeCatalogProjectView, type BridgeCatalogThre
 const { ready, requireRunning, openSettings, refreshStatus } = useBridgeServiceControl()
 /** 国际化文案。 */
 const { t } = useI18n()
+/** 关闭项目授权与取消入口。 */
+const deactivationConfirm = useBridgeProjectDeactivationConfirm()
 /** 本地化路由入口。 */
 const localePath = useLocalePath()
 /** 统一目录与身份选择 owner。 */
@@ -88,8 +91,24 @@ function projectActivationKey(chatId: string, projectPath: string): string {
     return JSON.stringify([chatId, projectPath])
 }
 
-/** 提交开关意图，界面只消费服务端确认后重新读取的目录。 */
+/** 关闭绑定当前目录版本，普通切换不需要确认。 */
 function setProjectActive(group: { chatId: string }, entry: Pick<BridgeCatalogProjectView, 'project' | 'available' | 'active'>, enabled: boolean): void {
+    deactivationConfirm.cancel()
+    if (enabled) { enqueueProjectActivation(group, entry, true); return }
+    if (!active || !entry.active || pendingProjectActivations.value.has(projectActivationKey(group.chatId, entry.project.path))) return
+    /** 授权时的目录快照版本。 */
+    const revision = catalog.value.revision
+    /** 授权时的事务生命周期。 */
+    const current = activationGeneration
+    deactivationConfirm.requestDeactivation(entry.project.name, () => {
+        if (!active || current !== activationGeneration || revision !== catalog.value.revision) return
+        enqueueProjectActivation(group, entry, false, revision)
+    })
+}
+watch(() => catalog.value.revision, () => deactivationConfirm.cancel(), { flush: 'sync' })
+
+/** 提交开关意图，界面只消费服务端确认后重新读取的目录。 */
+function enqueueProjectActivation(group: { chatId: string }, entry: Pick<BridgeCatalogProjectView, 'project' | 'available' | 'active'>, enabled: boolean, approvedRevision?: number): void {
     if (enabled && !entry.available) { toast.error(t('bridge.projectUnavailableHint')); return }
     /** 当前开关在提交队列中的身份。 */
     const key = projectActivationKey(group.chatId, entry.project.path)
@@ -103,6 +122,7 @@ function setProjectActive(group: { chatId: string }, entry: Pick<BridgeCatalogPr
             if (!await requireRunning() || !active || current !== activationGeneration) return
             await loadCatalog()
             if (!active || current !== activationGeneration) return
+            if (!enabled && catalog.value.revision !== approvedRevision) return
             await $fetch('/api/bridge/groups/activate', { method: 'POST', body: { chatId: group.chatId, projectPath: entry.project.path, active: enabled, revision: catalog.value.revision }, retry: 0 })
             if (!active || current !== activationGeneration) return
             toast.success(t(enabled ? 'bridge.projectActivated' : 'bridge.projectDeactivated'))
@@ -272,20 +292,39 @@ onUnmounted(() => { active = false; navigationGeneration++; activationGeneration
                                                 class="shrink-0 text-[10px] text-muted-foreground"
                                             >{{ t('bridge.history') }}</span>
                                         </Button>
-                                        <Tooltip>
-                                            <TooltipTrigger as-child>
-                                                <span class="inline-flex h-9 shrink-0 items-center px-1">
+                                        <span class="inline-flex h-9 shrink-0 items-center px-1">
+                                            <Tooltip>
+                                                <TooltipTrigger
+                                                    v-if="(!entry.available && !entry.active) || pendingProjectActivations.has(projectActivationKey(group.chatId, entry.project.path))"
+                                                    as-child
+                                                >
+                                                    <span
+                                                        class="inline-flex h-9 items-center"
+                                                        tabindex="0"
+                                                    >
+                                                        <Switch
+                                                            :model-value="entry.active"
+                                                            disabled
+                                                            :aria-busy="pendingProjectActivations.has(projectActivationKey(group.chatId, entry.project.path))"
+                                                            :aria-label="`${t(entry.active ? 'bridge.deactivateProject' : 'bridge.activateProject')} · ${entry.project.name}`"
+                                                            @update:model-value="setProjectActive(group, entry, $event)"
+                                                        />
+                                                    </span>
+                                                </TooltipTrigger>
+                                                <TooltipTrigger
+                                                    v-else
+                                                    as-child
+                                                >
                                                     <Switch
                                                         :model-value="entry.active"
-                                                        :disabled="(!entry.available && !entry.active) || pendingProjectActivations.has(projectActivationKey(group.chatId, entry.project.path))"
                                                         :aria-busy="pendingProjectActivations.has(projectActivationKey(group.chatId, entry.project.path))"
                                                         :aria-label="`${t(entry.active ? 'bridge.deactivateProject' : 'bridge.activateProject')} · ${entry.project.name}`"
                                                         @update:model-value="setProjectActive(group, entry, $event)"
                                                     />
-                                                </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent>{{ t(entry.active ? 'bridge.deactivateProject' : 'bridge.activateProject') }}</TooltipContent>
-                                        </Tooltip>
+                                                </TooltipTrigger>
+                                                <TooltipContent>{{ t(entry.active ? 'bridge.currentProject' : 'bridge.activateProject') }}</TooltipContent>
+                                            </Tooltip>
+                                        </span>
                                         <div class="flex size-9 shrink-0 items-center justify-center">
                                             <BusBridgeItemMenu
                                                 v-if="entry.available && entry.active"

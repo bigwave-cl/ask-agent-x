@@ -982,14 +982,17 @@
     "unlinkBeforeRemove": "此项目或会话仍关联群组，请先在群组或项目设置中解除关联，再重试。",
     "sessionsNav": "会话",
     "saveName": "保存名称",
-    "activateProject": "设为当前项目",
-    "deactivateProject": "取消激活项目",
+    "deactivateProjectTitle": "关闭当前群聊项目？",
+    "deactivateProjectHint": "关闭「{name}」后，该群组将没有群聊项目，群组会话将无法正常进行。关联和历史会话会保留，你可以随时重新开启或切换项目。",
+    "confirmDeactivateProject": "仍然关闭",
+    "activateProject": "切换为群聊项目",
+    "deactivateProject": "关闭群聊项目",
     "active": "当前",
-    "projectActivated": "已切换当前项目",
-    "projectDeactivated": "已取消项目激活",
+    "projectActivated": "已切换群聊项目",
+    "projectDeactivated": "已关闭群聊项目",
     "readOnly": "只读",
-    "readOnlyHint": "这是历史项目会话，请先将项目设为当前项目后继续发送。",
-    "bindProjectFirst": "请先为群组绑定当前项目",
+    "readOnlyHint": "这是历史项目会话，请先将项目切换为当前群聊项目后继续发送。",
+    "bindProjectFirst": "请先为群组绑定群聊项目",
     "noActiveProject": "该群组还没有绑定项目",
     "emptyGroupHint": "同步飞书群组后，可以为群组绑定项目并开始会话。",
     "conversation": {
@@ -1024,7 +1027,7 @@
     "groupsRefreshed": "飞书群列表已刷新",
     "projectLinked": "项目已绑定",
     "projectUnlinked": "已解除项目绑定",
-    "currentProject": "当前项目",
-    "currentProjectHint": "打开开关可设为当前项目，群消息将在该项目中执行。关闭后仍保留关联和历史会话。"
+    "currentProject": "当前群聊项目",
+    "currentProjectHint": "每个群组需要一个群聊项目。切换项目会自动关闭原项目；关闭当前项目后，群组会话将无法正常进行，关联和历史会话会保留。"
   }
 }

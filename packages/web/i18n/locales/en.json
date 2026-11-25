@@ -982,14 +982,17 @@
     "unlinkBeforeRemove": "This project or session is still linked to groups. Unlink it in group or project settings and try again.",
     "sessionsNav": "Sessions",
     "saveName": "Save name",
-    "activateProject": "Make current",
-    "deactivateProject": "Deactivate project",
+    "deactivateProjectTitle": "Turn off the current group chat project?",
+    "deactivateProjectHint": "Turning off “{name}” leaves this group without a group chat project, so group conversations will not work. Project links and conversation history will be kept. You can turn it back on or switch projects at any time.",
+    "confirmDeactivateProject": "Turn off anyway",
+    "activateProject": "Use for group chat",
+    "deactivateProject": "Turn off group chat project",
     "active": "Current",
-    "projectActivated": "Current project updated",
-    "projectDeactivated": "Project deactivated",
+    "projectActivated": "Group chat project switched",
+    "projectDeactivated": "Group chat project turned off",
     "readOnly": "Read-only",
-    "readOnlyHint": "This is a historical project session. Make the project current before sending.",
-    "bindProjectFirst": "Bind a current project to this group first",
+    "readOnlyHint": "This is a historical project session. Use this project for group chat before sending.",
+    "bindProjectFirst": "Link a group chat project to this group first",
     "noActiveProject": "This group has no bound project",
     "emptyGroupHint": "Sync Feishu groups, then bind a project to start a session.",
     "conversation": {
@@ -1024,7 +1027,7 @@
     "groupsRefreshed": "Feishu group list refreshed",
     "projectLinked": "Project linked",
     "projectUnlinked": "Project unlinked",
-    "currentProject": "Current project",
-    "currentProjectHint": "Turn on a switch to make that project current for group messages. Turning it off keeps its links and conversation history."
+    "currentProject": "Current group chat project",
+    "currentProjectHint": "Each group needs a group chat project. Switching projects automatically turns off the previous one. Turning off the current project prevents group conversations from working, but keeps project links and conversation history."
   }
 }
