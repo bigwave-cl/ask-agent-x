@@ -45,7 +45,7 @@ export interface BridgeServiceControl {
 }
 
 /** 同一页面中的组件共享一个服务状态 owner。 */
-const bridgeServiceControlKey: InjectionKey<BridgeServiceControl> = Symbol('bridge-service-control')
+export const bridgeServiceControlKey: InjectionKey<BridgeServiceControl> = Symbol('bridge-service-control')
 
 /**
  * 创建状态 owner；注入读取能力以便验证竞态而不启动真实服务。
@@ -171,7 +171,7 @@ export function createBridgeSettingsPresenter(mount: (afterClose: () => void) =>
 }
 
 /** 创建动态面板与唯一服务 owner，不在这里启动轮询。 */
-function createSettingsControl(): BridgeServiceControl {
+export function createSettingsControl(): BridgeServiceControl {
     /** 捕获应用上下文，异步准入完成后仍可挂载。 */
     const nuxtApp = useNuxtApp()
     /** 每个控制器仅拥有一个动态实例。 */

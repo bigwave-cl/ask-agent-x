@@ -4,6 +4,7 @@ import BusBridgeRelationsShell from './BusBridgeRelationsShell.vue'
 import BusBridgeProjectList from './BusBridgeProjectList.vue'
 import BusBridgeProjectEditor from './BusBridgeProjectEditor.vue'
 import BusBridgeItemMenu from './BusBridgeItemMenu.vue'
+import { useBridgeProjectSettings, type BridgeProjectSettingsTarget } from '@/composables/useBridgeProjectSettings'
 import { useBridgeServiceControl } from '@/composables/useBridgeServiceControl'
 import { useBridgeProjectDeactivationConfirm } from '@/composables/useBridgeProjectDeactivationConfirm'
 import { useConfirm } from '@/composables/useConfirm'
@@ -34,14 +35,25 @@ interface Registry {
     /** 待处理迁移冲突。 */
     migrationConflicts?: { chatId: string, projectPaths: string[] }[]
 }
-/** 兼容管理页与独立导入入口。 */
-const props = withDefaults(defineProps<{ page?: boolean, projectPath?: string, /** 上层目录 owner 提供的只读项目集合。 */ projects: readonly Project[], threads: Record<string, { id: string, title?: string }[]>, showModeTabs?: boolean, importOnly?: boolean }>(), { page: false, projectPath: '', showModeTabs: false, importOnly: false })
+/** 页面消费上层目录，动态目标独立读取必要数据。 */
+const props = withDefaults(defineProps<{
+    /** 内嵌关系管理页面。 */
+    page?: boolean
+    /** 动态打开的群、项目或导入目标。 */
+    target?: BridgeProjectSettingsTarget
+    /** 已发出的请求成功后通知原调用方，不依赖弹窗仍挂载。 */
+    committed?: () => void | Promise<void>
+    /** 页面目录 owner 提供的只读项目集合。 */
+    projects?: readonly Project[]
+    /** 是否展示管理分类。 */
+    showModeTabs?: boolean
+}>(), { page: false, target: undefined, projects: () => [], showModeTabs: false })
 /** 外层入口开关。 */
 const open = defineModel<boolean>('open', { default: false })
 /** 页级管理分类。 */
 const mode = defineModel<'projects' | 'groups'>('mode', { default: 'projects' })
 /** 通知父级刷新目录。 */
-const emit = defineEmits<{ added: [path: string], saved: [] }>()
+const emit = defineEmits<{ saved: [], afterClose: [] }>()
 /** 翻译入口。 */
 const { t } = useI18n()
 /** 统一操作反馈。 */
@@ -50,6 +62,10 @@ const toast = useToast()
 const { requireRunning } = useBridgeServiceControl()
 /** 关闭项目授权与取消入口。 */
 const deactivationConfirm = useBridgeProjectDeactivationConfirm()
+/** 管理页打开设置时统一交给动态挂载入口。 */
+const { openProjectSettings } = useBridgeProjectSettings()
+/** 动态目标读取的项目全集。 */
+const targetProjects = ref<Project[]>([])
 /** 唯一持久化关系快照。 */
 const registry = ref<Registry | null>(null)
 /** 当前群项目弹窗身份。 */
@@ -79,7 +95,7 @@ function valid(current: number): boolean { return active && current === generati
 /** 可见项目包含目录中已失效的历史关联。 */
 const projects = computed<Project[]>(() => {
     /** 合并目录可用性与本轮校验结果。 */
-    const result = props.projects.map(item => ({ ...item, available: item.available !== false && !failedProjects.value.includes(item.path) }))
+    const result = (props.page ? props.projects : targetProjects.value).map(item => ({ ...item, available: item.available !== false && !failedProjects.value.includes(item.path) }))
     for (const item of registry.value?.projectGroups || []) {
         if (!result.some(project => project.path === item.projectPath)) result.push({ path: item.projectPath, name: item.projectPath.split('/').pop() || item.projectPath, available: false, updatedAt: null })
     }
@@ -107,8 +123,14 @@ function report(cause: unknown): void {
 async function load(current = generation): Promise<void> {
     try {
         /** 服务端确认的唯一关系快照。 */
-        const result = await $fetch<Registry>('/api/bridge/groups')
-        if (valid(current)) registry.value = result
+        const [result, projectResult] = await Promise.all([
+            $fetch<Registry>('/api/bridge/groups'),
+            props.page ? Promise.resolve(null) : $fetch<{ projects: Project[] }>('/api/bridge/projects'),
+        ])
+        if (valid(current)) {
+            registry.value = result
+            if (projectResult) targetProjects.value = projectResult.projects
+        }
     }
     catch (cause) { if (valid(current)) report(cause) }
 }
@@ -123,6 +145,8 @@ function enqueue(project: Project, chatId: string, action: 'link' | 'unlink' | '
         if (action === 'deactivate' && (!groupOpen.value || groupId.value !== chatId || registry.value.revision !== approvedRevision || activePath.value !== project.path)) return
         if ((action === 'link' || action === 'activate') && projects.value.find(item => item.path === project.path)?.available === false) return
         try {
+            /** 已发送事务绑定原调用方，关窗或切换目标不能吞掉提交通知。 */
+            const committed = props.committed
             /** 服务端确认的唯一关系快照。 */
             let result: Registry
             if (action === 'activate' || action === 'deactivate') {
@@ -141,6 +165,7 @@ function enqueue(project: Project, chatId: string, action: 'link' | 'unlink' | '
                 }
                 result = await $fetch<Registry>('/api/bridge/groups', { method: 'PUT', body: draft })
             }
+            void committed?.()
             if (!valid(current)) return
             registry.value = result
             toast.success(t(action === 'activate' ? 'bridge.projectActivated' : action === 'deactivate' ? 'bridge.projectDeactivated' : action === 'link' ? 'bridge.projectLinked' : 'bridge.projectUnlinked'))
@@ -198,32 +223,68 @@ function sync(): void {
         catch (cause) { if (valid(current)) report(cause) }
     }).finally(() => { if (valid(current)) syncing.value = false })
 }
-/** 打开群项目列表。 */
-function settings(chatId: string): void { groupId.value = chatId; groupOpen.value = true; queue = queue.then(() => load()) }
-/** 导入或编辑项目。 */
-function edit(project?: Project): void { editingProject.value = project; editorOpen.value = true }
-/** 项目变化后交由父级刷新目录，同时重新读取关系。 */
+/** 管理页群设置统一动态打开，保存后校准关系与目录。 */
+function settings(chatId: string): void { openProjectSettings({ kind: 'group', chatId, onSaved: changed }) }
+/** 页面编辑走动态入口，群绑定内部保留局部导入或编辑子表单。 */
+function edit(project?: Project): void {
+    if (props.page) {
+        openProjectSettings(project ? { kind: 'project', projectPath: project.path, onSaved: changed } : { kind: 'import', onSaved: changed })
+        return
+    }
+    editingProject.value = project
+    editorOpen.value = true
+}
+/** 成功写入后通知上层目录 owner，同时串行重读关系。 */
 function changed(): void { emit('saved'); queue = queue.then(() => load()) }
-/** 导入完成通知目录 owner。 */
-function projectSaved(path: string): void { emit('added', path); queue = queue.then(() => load()); if (props.importOnly) open.value = false }
+/** 为编辑请求捕获原调用方，并只校准仍有效的群弹窗。 */
+function editorCommitted(): () => void {
+    /** 当前目标的调用方通知。 */
+    const committed = props.committed
+    /** 子表单打开时的群生命周期。 */
+    const current = generation
+    return () => {
+        void committed?.()
+        if (valid(current) && props.target?.kind === 'group') queue = queue.then(() => load())
+    }
+}
+/** 动态目标准备只读数据，提交前仍走既有服务准入和队列。 */
+async function initialize(): Promise<void> {
+    if (props.page) { await load(); return }
+    /** 本次目标打开生命周期。 */
+    const current = generation
+    if (!open.value || !props.target) return
+    if (props.target.kind === 'import') { edit(); return }
+    if (props.target.kind === 'group') { groupId.value = props.target.chatId; groupOpen.value = true }
+    await load(current)
+    if (!valid(current) || !props.target || props.target.kind !== 'project') return
+    /** 只从本次加载的项目全集解析编辑目标。 */
+    const project = targetProjects.value.find(project => props.target?.kind === 'project' && project.path === props.target.projectPath)
+    if (project) edit(project)
+    else { toast.error(t('bridge.loadError')); open.value = false; emit('afterClose') }
+}
 /** 切换入口使旧异步操作失效。 */
 function invalidate(): void { deactivationConfirm.cancel(); generation += 1; pendingPaths.value = []; syncing.value = false; confirmation?.destroy(); groupOpen.value = false }
 watch(() => props.projects, () => { failedProjects.value = [] }, { deep: true })
 watch([groupOpen, groupId, activePath, () => registry.value?.revision], () => deactivationConfirm.cancel(), { flush: 'sync' })
-watch(groupOpen, value => { confirmation?.destroy(); if (!value) { generation += 1; pendingPaths.value = []; syncing.value = false } })
-watch(mode, () => { invalidate(); if (props.page || open.value) queue = queue.then(() => load()) })
-watch(open, value => {
-    invalidate(); if (value) { if (props.importOnly) edit(); else queue = queue.then(() => load()) }
-    else editorOpen.value = false
+watch(groupOpen, value => {
+    confirmation?.destroy()
+    if (!value) { generation += 1; pendingPaths.value = []; syncing.value = false }
+    if (!props.page && props.target?.kind === 'group') open.value = value
 })
-watch(editorOpen, value => { if (!value && props.importOnly) open.value = false })
-onMounted(() => { if (props.page || open.value) { if (props.importOnly) edit(); else queue = queue.then(() => load()) } })
+watch(mode, () => { invalidate(); if (props.page) queue = queue.then(() => load()) })
+watch(open, value => {
+    invalidate()
+    if (value) queue = queue.then(() => initialize())
+    else editorOpen.value = false
+}, { flush: 'sync' })
+watch(editorOpen, value => { if (!props.page && props.target?.kind !== 'group') open.value = value })
+onMounted(() => { if (props.page || open.value) queue = queue.then(() => initialize()) })
 onUnmounted(() => { active = false; invalidate() })
 </script>
 
 <template>
     <BusBridgeRelationsShell
-        v-if="!importOnly"
+        v-if="page"
         v-model:open="open"
         :page="page"
         :title="t('common.bridgeNav')"
@@ -259,10 +320,12 @@ onUnmounted(() => { active = false; invalidate() })
         </BusBridgeRelationsContent>
     </BusBridgeRelationsShell>
     <BusBridgeRelationsShell
+        v-if="!page && target?.kind === 'group'"
         v-model:open="groupOpen"
         :title="t('bridge.projectSettings')"
         :description="registry?.groups.find(item => item.chatId === groupId)?.name"
         :close-label="t('common.close')"
+        @after-close="emit('afterClose')"
     >
         <p class="mb-4 shrink-0 text-xs leading-5 text-muted-foreground">
             {{ t('bridge.currentProjectHint') }}
@@ -281,8 +344,10 @@ onUnmounted(() => { active = false; invalidate() })
         />
     </BusBridgeRelationsShell>
     <BusBridgeProjectEditor
+        v-if="!page"
         v-model:open="editorOpen"
         :project="editingProject"
-        @saved="projectSaved"
+        :committed="editorCommitted()"
+        @after-close="target?.kind !== 'group' && emit('afterClose')"
     />
 </template>

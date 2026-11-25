@@ -14,6 +14,8 @@ const props = withDefaults(defineProps<{
     /** 关闭按钮文案。 */
     closeLabel: string
 }>(), { page: false, pageEyebrow: undefined, description: undefined })
+/** 弹窗退场完成后交由动态宿主释放。 */
+const emit = defineEmits<{ afterClose: [] }>()
 /** 弹窗开关。页面模式下由父组件控制渲染，不使用该状态。 */
 const open = defineModel<boolean>('open', { default: false })
 /** 管理页品牌入口使用的路由和文案。 */
@@ -67,6 +69,7 @@ const { t } = useI18n()
         body-class="min-h-0 flex flex-1 flex-col px-5 pb-5 pt-2 sm:px-6"
         footer-class="shrink-0 border-t p-4"
         :close-label="closeLabel"
+        @after-close="emit('afterClose')"
     >
         <div
             v-if="description"

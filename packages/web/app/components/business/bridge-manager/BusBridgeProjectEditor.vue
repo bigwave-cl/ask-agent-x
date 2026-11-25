@@ -7,11 +7,13 @@ import { useBridgeServiceControl } from '@/composables/useBridgeServiceControl'
 const props = defineProps<{
     /** 缺省时登记新项目。 */
     project?: { /** 项目目录身份。 */ path: string, /** 显示名称。 */ name: string }
+    /** 已发出的保存请求成功后通知原调用方，不依赖关闭后的emit。 */
+    committed?: () => void | Promise<void>
 }>()
 /** 弹层由调用方控制。 */
 const open = defineModel<boolean>('open', { default: false })
 /** 保存后通知调用方刷新目录。 */
-const emit = defineEmits<{ saved: [path: string] }>()
+const emit = defineEmits<{ saved: [path: string], afterClose: [] }>()
 /** 翻译入口。 */
 const { t } = useI18n()
 /** 路径输入框与标签的唯一关联标识。 */
@@ -72,8 +74,11 @@ async function save(): Promise<void> {
     busy.value = true
     try {
         if (!await requireRunning() || !active || current !== generation) return
+        /** 发出请求前捕获通知，关闭后仍由调用方作用域决定是否刷新。 */
+        const committed = props.committed
         if (props.project) await $fetch('/api/bridge/catalog-action', { method: 'POST', body: { action: 'rename-project', projectPath: props.project.path, name, confirmation: true } })
         else await $fetch('/api/bridge/projects', { method: 'POST', body: { path, ...(name ? { name } : {}) } })
+        void committed?.()
         if (!active || current !== generation) return
         toast.success(t('bridge.projectSaved'))
         emit('saved', path)
@@ -109,6 +114,7 @@ onUnmounted(() => { active = false; generation += 1 })
         :dialog="{ content: { class: 'sm:max-w-lg' } }"
         body-class="p-5"
         footer-class="border-t p-4"
+        @after-close="emit('afterClose')"
     >
         <form
             class="space-y-4"
