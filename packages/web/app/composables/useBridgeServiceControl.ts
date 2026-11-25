@@ -132,24 +132,33 @@ export function createBridgeServiceControl(
 }
 
 /** 动态面板会话：关闭异步释放，重开与失效不会销毁新实例。 */
-export function createBridgeSettingsPresenter(mount: (close: () => void) => { unmount: () => void } | undefined) {
+export function createBridgeSettingsPresenter(mount: (afterClose: () => void) => { unmount: () => void } | undefined) {
     /** 当前挂载实例。 */
     let instance: { unmount: () => void } | undefined
     /** 会话有效标记。 */
     let active = true
-    /** 单次打开期间复用实例。 */
+    /** 每次重新打开或销毁都会取消已排队的关闭清理。 */
+    let generation = 0
+    /** 包含退场动画期间在内，重复打开始终复用同一实例。 */
     function open(): void {
-        if (!active || instance) return
+        if (!active) return
+        generation += 1
+        if (instance) return
         /** 本次实例用于隔离旧关闭回调。 */
         const current = mount(() => {
-            if (instance !== current) return
-            instance = undefined
-            void nextTick(() => current?.unmount())
+            if (!active || instance !== current) return
+            /** 关闭完成所在的打开周期。 */
+            const closingGeneration = generation
+            void nextTick(() => {
+                if (!active || generation !== closingGeneration || instance !== current) return
+                instance = undefined
+                current?.unmount()
+            })
         })
         instance = current
     }
-    /** 释放当前调用范围的全部挂载资源。 */
-    function dispose(): void { active = false; instance?.unmount(); instance = undefined }
+    /** 布局或调用范围失效时立即释放实例，无需等待退场动画。 */
+    function dispose(): void { active = false; generation += 1; instance?.unmount(); instance = undefined }
     return { open, dispose }
 }
 
@@ -158,7 +167,7 @@ function createSettingsControl(): BridgeServiceControl {
     /** 捕获应用上下文，异步准入完成后仍可挂载。 */
     const nuxtApp = useNuxtApp()
     /** 每个控制器仅拥有一个动态实例。 */
-    const presenter = createBridgeSettingsPresenter(close => {
+    const presenter = createBridgeSettingsPresenter(afterClose => {
         /** 动态宿主继承应用上下文并显式提供现有服务 owner。 */
         const SettingsHost = defineComponent({
             name: 'BridgeSettingsHost',
@@ -168,9 +177,9 @@ function createSettingsControl(): BridgeServiceControl {
                 const Settings = defineAsyncComponent(() => import('../components/business/bridge-manager/BusBridgeSettings.vue'))
                 return () => h(Settings, {
                     open: control.settingsOpen.value,
+                    onAfterClose: () => { if (!control.settingsOpen.value) afterClose() },
                     'onUpdate:open': (value: boolean) => {
                         control.settingsOpen.value = value
-                        if (!value) close()
                     },
                 })
             },

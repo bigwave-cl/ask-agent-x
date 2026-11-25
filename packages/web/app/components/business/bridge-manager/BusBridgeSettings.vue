@@ -37,6 +37,8 @@ interface Config {
 }
 /** 面板开关。 */
 const open = defineModel<boolean>('open', { default: false })
+/** 退场动画完成后通知动态宿主释放实例。 */
+const emit = defineEmits<{ afterClose: [] }>()
 /** 翻译入口。 */
 const { t } = useI18n()
 const toast = useToast()
@@ -198,6 +200,7 @@ onUnmounted(() => { generation += 1; logsGeneration += 1; confirmation?.destroy(
         body-class="min-h-0 flex flex-1 flex-col overflow-hidden px-6 pb-6 pt-0"
         footer-class="shrink-0 border-t bg-card p-4"
         :close-label="t('common.close')"
+        @after-close="!open && emit('afterClose')"
     >
         <ScrollArea
             class="min-h-0 flex-1"
