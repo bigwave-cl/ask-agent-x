@@ -4,8 +4,8 @@ import type { BridgeSessionCatalog, BridgeSessionCatalogGroup, BridgeSessionCata
 import type { BridgeProject } from '@askx/module-feishu-bridge/project-service'
 import type { BridgeThreadSummary } from '@askx/module-feishu-bridge/thread-service'
 
-/** 目录展示仅依赖会话身份和标题，兼容尚未读取完整摘要的新会话。 */
-export type BridgeCatalogThreadView = Pick<BridgeThreadSummary, 'id' | 'title'>
+/** 目录展示使用轻量摘要，兼容尚未读取更新时间的新会话。 */
+export type BridgeCatalogThreadView = Pick<BridgeThreadSummary, 'id' | 'title'> & Partial<Pick<BridgeThreadSummary, 'updatedAt'>>
 /** 项目视图沿用服务端关系字段，会话允许使用轻量展示摘要。 */
 export interface BridgeCatalogProjectView extends Pick<BridgeSessionCatalogProject, 'project' | 'active' | 'available'> {
     /** 当前及刚创建的会话展示列表。 */
@@ -56,6 +56,18 @@ export function useBridgeCatalog() {
     const selectedProject = computed(() => selectedProjectEntry.value?.project ?? null)
     /** 当前会话摘要。 */
     const selectedThread = computed(() => selectedProjectEntry.value?.sessions.find(thread => thread.id === selectedThreadId.value) ?? null)
+    /** 侧栏仅按各项目首条会话更新时间排序，保留原始目录与身份选择顺序。 */
+    const sidebarGroups = computed(() => catalog.value.groups.map(group => ({
+        ...group,
+        projects: group.projects.map((entry, index) => {
+            /** 首条会话的有效时间；无有效时间的项目统一放在末尾。 */
+            const timestamp = Date.parse(entry.sessions[0]?.updatedAt ?? '')
+            return { entry, index, timestamp: Number.isFinite(timestamp) ? timestamp : Number.NEGATIVE_INFINITY }
+        }).sort((left, right) => {
+            if (left.timestamp === right.timestamp) return left.index - right.index
+            return left.timestamp > right.timestamp ? -1 : 1
+        }).map(item => item.entry),
+    })))
     /** 项目面板使用的 Codex 项目全集，补入历史关系中的失效项目。 */
     const projectOptions = computed(() => {
         /** 按项目路径合并当前目录与历史项目的展示索引。 */
@@ -166,13 +178,13 @@ export function useBridgeCatalog() {
     }
     /** 新建会话先加入本地目录，下一次目录读取会校准同一记录。 */
     function acceptThread(thread: BridgeCatalogThreadView): void {
-        if (selectedProjectEntry.value && !selectedProjectEntry.value.sessions.some(item => item.id === thread.id)) selectedProjectEntry.value.sessions.unshift(thread)
+        if (selectedProjectEntry.value && !selectedProjectEntry.value.sessions.some(item => item.id === thread.id)) selectedProjectEntry.value.sessions.unshift({ ...thread, updatedAt: thread.updatedAt ?? new Date().toISOString() })
         selectedThreadId.value = thread.id
     }
     onMounted(() => { active = true; void loadCatalog() })
     onUnmounted(() => { active = false; generation++; catalogDirty = false; catalogLoading.value = false })
     return {
-        catalog: readonly(catalog), catalogLoading: readonly(catalogLoading), projectOptions: readonly(projectOptions),
+        catalog: readonly(catalog), sidebarGroups: readonly(sidebarGroups), catalogLoading: readonly(catalogLoading), projectOptions: readonly(projectOptions),
         selectedChatId: readonly(selectedChatId), selectedProjectPath: readonly(selectedProjectPath), selectedThreadId: readonly(selectedThreadId),
         selectedGroup: readonly(selectedGroup), selectedProjectEntry: readonly(selectedProjectEntry), selectedProject: readonly(selectedProject), selectedThread: readonly(selectedThread),
         loadCatalog, selectGroup, selectProject, selectThread, selectNewThread, archiveThread, updateThreadTitle, acceptThread,

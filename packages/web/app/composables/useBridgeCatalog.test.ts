@@ -24,9 +24,57 @@ beforeEach(() => {
     vi.stubGlobal('useToast', () => ({ dismiss: vi.fn(), error: vi.fn() }))
     vi.stubGlobal('$fetch', vi.fn(async (url: string) => url.endsWith('/catalog') ? catalog() : { projects: [project('/active'), project('/other')] }))
 })
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe('useBridgeCatalog', () => {
+    it('侧栏按每项目首条会话排序，无效时间置末且同时间稳定，保留原目录和选择', async () => {
+        /** 包含首条时间与后续会话时间不一致的目录。 */
+        const result = catalog()
+        /** 完整会话摘要模板。 */
+        const summary = result.groups[0]!.projects[0]!.sessions[0]!
+        result.groups[0]!.projects = [
+            { project: project('/active'), active: true, available: true, sessions: [{ ...summary, updatedAt: '2026-01-01T00:00:00Z' }, { ...summary, id: 'later', updatedAt: '2026-12-01T00:00:00Z' }] },
+            { project: project('/empty'), active: false, available: true, sessions: [] },
+            { project: project('/recent'), active: false, available: true, sessions: [{ ...summary, updatedAt: '2026-02-01T00:00:00Z' }] },
+            { project: project('/tie'), active: false, available: true, sessions: [{ ...summary, updatedAt: '2026-02-01T00:00:00Z' }] },
+            { project: project('/invalid'), active: false, available: true, sessions: [{ ...summary, updatedAt: 'invalid' }] },
+            { project: project('/null'), active: false, available: true, sessions: [{ ...summary, updatedAt: null }] },
+            { project: project('/missing'), active: false, available: true, sessions: [{ ...summary }] },
+        ]
+        Reflect.deleteProperty(result.groups[0]!.projects[6]!.sessions[0]!, 'updatedAt')
+        /** 原始目录快照。 */
+        const snapshot = structuredClone(result)
+        vi.stubGlobal('$fetch', vi.fn(async (url: string) => url.endsWith('/catalog') ? result : { projects: [] }))
+        /** 当前页面目录。 */
+        const owner = useBridgeCatalog()
+        hooks.mounted[0]!()
+        await owner.loadCatalog()
+        owner.selectThread('group', '/active', 'thread')
+        expect(owner.sidebarGroups.value[0]!.projects.map(entry => entry.project.path)).toEqual(['/recent', '/tie', '/active', '/empty', '/invalid', '/null', '/missing'])
+        expect(result).toEqual(snapshot)
+        expect(owner.catalog.value.groups[0]!.projects.map(entry => entry.project.path)).toEqual(snapshot.groups[0]!.projects.map(entry => entry.project.path))
+        expect(owner.selectedProject.value?.path).toBe('/active')
+        expect(owner.selectedThreadId.value).toBe('thread')
+        expect(isReadonly(owner.sidebarGroups)).toBe(true)
+        expect(isReadonly(owner.sidebarGroups.value[0]!.projects)).toBe(true)
+
+        vi.useFakeTimers()
+        vi.setSystemTime(new Date('2026-11-25T00:00:00Z'))
+        owner.acceptThread({ id: 'new', title: '新会话' })
+        expect(owner.selectedThread.value?.updatedAt).toBe('2026-11-25T00:00:00.000Z')
+        expect(owner.sidebarGroups.value[0]!.projects[0]!.project.path).toBe('/active')
+        /** 显式传入非法时间的摘要保持在有效时间项目之后。 */
+        owner.selectProject('/empty')
+        owner.acceptThread({ id: 'missing', title: '缺失时间', updatedAt: 'invalid' })
+        expect(owner.sidebarGroups.value[0]!.projects.map(entry => entry.project.path)).toEqual(['/active', '/recent', '/tie', '/empty', '/invalid', '/null', '/missing'])
+        /** 服务端刷新替换本地摘要，按最新首条会话重新排序。 */
+        const refreshed = structuredClone(snapshot)
+        refreshed.groups[0]!.projects[2]!.sessions[0]!.updatedAt = '2027-01-01T00:00:00Z'
+        vi.stubGlobal('$fetch', vi.fn(async (url: string) => url.endsWith('/catalog') ? refreshed : { projects: [] }))
+        await owner.loadCatalog()
+        expect(owner.sidebarGroups.value[0]!.projects[0]!.project.path).toBe('/recent')
+    })
+
     it('统一合并当前项目与不可用历史项目，并保留会话选择和名称更新', async () => {
         /** 当前页面目录。 */
         const owner = useBridgeCatalog()
