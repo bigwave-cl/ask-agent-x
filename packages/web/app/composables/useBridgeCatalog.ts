@@ -1,59 +1,25 @@
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, readonly, ref } from 'vue'
 
-/** 桥接会话摘要。 */
-export interface BridgeThread {
-    /** 会话编号。 */
-    id: string
-    /** 当前会话标题。 */
-    title?: string
-    /** 最近更新时间。 */
-    updatedAt?: string | null
-    /** 创建时间。 */
-    createdAt?: string | null
+import type { BridgeSessionCatalog, BridgeSessionCatalogGroup, BridgeSessionCatalogProject } from '@askx/module-feishu-bridge/session-catalog'
+import type { BridgeProject } from '@askx/module-feishu-bridge/project-service'
+import type { BridgeThreadSummary } from '@askx/module-feishu-bridge/thread-service'
+
+/** 目录展示仅依赖会话身份和标题，兼容尚未读取完整摘要的新会话。 */
+export type BridgeCatalogThreadView = Pick<BridgeThreadSummary, 'id' | 'title'>
+/** 项目视图沿用服务端关系字段，会话允许使用轻量展示摘要。 */
+export interface BridgeCatalogProjectView extends Pick<BridgeSessionCatalogProject, 'project' | 'active' | 'available'> {
+    /** 当前及刚创建的会话展示列表。 */
+    sessions: BridgeCatalogThreadView[]
 }
-/** Codex 项目。 */
-export interface BridgeProject {
-    /** 项目标识。 */
-    projectId: string
-    /** 项目名称。 */
-    name: string
-    /** 项目路径。 */
-    path: string
-    /** 当前分支。 */
-    branch?: string | null
-    /** Codex 项目资料最近更新时间。 */
-    updatedAt?: string | null
-    /** 管理列表中的项目可用性，由服务端目录提供。 */
-    available?: boolean
+/** 群视图沿用服务端身份字段，并包含页面会话视图。 */
+export interface BridgeCatalogGroupView extends Pick<BridgeSessionCatalogGroup, 'chatId' | 'name' | 'activeProject'> {
+    /** 当前及历史项目展示列表。 */
+    projects: BridgeCatalogProjectView[]
 }
-/** 群组下的项目及会话目录。 */
-export interface BridgeCatalogProject {
-    /** 项目详情。 */
-    project: BridgeProject
-    /** 是否是当前可写项目。 */
-    active: boolean
-    /** 项目是否在当前 Codex Home 中有效。 */
+/** 项目管理展示额外标记当前目录可用性。 */
+type BridgeProjectOption = BridgeProject & {
+    /** 项目在当前目录中的可用性。 */
     available: boolean
-    /** 该群组下的历史会话。 */
-    sessions: BridgeThread[]
-}
-/** 群组目录项。 */
-export interface BridgeCatalogGroup {
-    /** 群标识。 */
-    chatId: string
-    /** 群名称。 */
-    name: string
-    /** 当前项目。 */
-    activeProject: BridgeProject | null
-    /** 当前和历史项目。 */
-    projects: BridgeCatalogProject[]
-}
-/** 会话目录响应。 */
-export interface BridgeCatalog {
-    /** 关系版本。 */
-    revision: number
-    /** 群组列表。 */
-    groups: BridgeCatalogGroup[]
 }
 
 /** 页面级桥接目录 owner，统一读取、身份选择和历史项目合并。 */
@@ -62,8 +28,8 @@ export function useBridgeCatalog() {
     const { t } = useI18n()
     /** 目录错误反馈。 */
     const toast = useToast()
-    /** 服务端确认的目录。 */
-    const catalog = ref<BridgeCatalog>({ revision: 0, groups: [] })
+    /** 服务端目录及即时新建会话的页面展示状态。 */
+    const catalog = ref<{ revision: BridgeSessionCatalog['revision'], groups: BridgeCatalogGroupView[] }>({ revision: 0, groups: [] })
     /** 当前可用的 Codex 项目。 */
     const registeredProjects = ref<BridgeProject[]>([])
     /** 当前群身份。 */
@@ -92,7 +58,8 @@ export function useBridgeCatalog() {
     const selectedThread = computed(() => selectedProjectEntry.value?.sessions.find(thread => thread.id === selectedThreadId.value) ?? null)
     /** 项目面板使用的 Codex 项目全集，补入历史关系中的失效项目。 */
     const projectOptions = computed(() => {
-        const projects = new Map<string, BridgeProject>()
+        /** 按项目路径合并当前目录与历史项目的展示索引。 */
+        const projects = new Map<string, BridgeProjectOption>()
         for (const project of registeredProjects.value) projects.set(project.path, { ...project, available: true })
         for (const group of catalog.value.groups) {
             for (const entry of group.projects) if (!projects.has(entry.project.path)) projects.set(entry.project.path, { ...entry.project, available: entry.available })
@@ -128,7 +95,7 @@ export function useBridgeCatalog() {
                 try {
                 /** 同一目录读取窗口内的群目录与项目全集。 */
                     const [result, projectResult] = await Promise.all([
-                        $fetch<BridgeCatalog>('/api/bridge/catalog', { timeout: 15000, retry: 0 }),
+                        $fetch<BridgeSessionCatalog>('/api/bridge/catalog', { timeout: 15000, retry: 0 }),
                         $fetch<{ projects: BridgeProject[] }>('/api/bridge/projects', { timeout: 15000, retry: 0 }),
                     ])
                     if (active && current === generation) {
@@ -158,16 +125,32 @@ export function useBridgeCatalog() {
         selectedProjectPath.value = catalog.value.groups.find(group => group.chatId === chatId)?.activeProject?.path || ''
         selectedThreadId.value = ''
     }
-    /** 根据目录记录切换项目。 */
-    function selectProject(entry: BridgeCatalogProject): void {
-        selectedProjectPath.value = entry.project.path
+    /** 根据项目路径身份切换项目。 */
+    function selectProject(projectPath: string): void {
+        selectedProjectPath.value = projectPath
         selectedThreadId.value = ''
     }
-    /** 提交已经过业务准入检查的会话选择。 */
-    function selectThread(group: BridgeCatalogGroup, entry: BridgeCatalogProject, thread: BridgeThread): void {
-        selectedChatId.value = group.chatId
-        selectedProjectPath.value = entry.project.path
-        selectedThreadId.value = thread.id
+    /**
+     * 从最新目录解析身份后提交选择，拒绝已删除或失效的项目与会话。
+     * @returns 是否在最新目录中找到可查看的会话并提交选择。
+     */
+    function selectThread(chatId: string, projectPath: string, threadId: string): boolean {
+        /** 最新目录中的目标项目。 */
+        const entry = catalog.value.groups.find(group => group.chatId === chatId)?.projects.find(item => item.project.path === projectPath)
+        if (!entry?.available || !entry.sessions.some(thread => thread.id === threadId)) return false
+        selectedChatId.value = chatId
+        selectedProjectPath.value = projectPath
+        selectedThreadId.value = threadId
+        return true
+    }
+    /**
+     * 已确认归档后仅清理对应会话选择。
+     * @returns 是否因归档目标为当前会话而清理了选择。
+     */
+    function archiveThread(threadId: string): boolean {
+        if (selectedThreadId.value !== threadId) return false
+        selectedThreadId.value = ''
+        return true
     }
     /** 回到当前群可写项目的新会话上下文。 */
     function selectNewThread(): void {
@@ -182,11 +165,16 @@ export function useBridgeCatalog() {
         }
     }
     /** 新建会话先加入本地目录，下一次目录读取会校准同一记录。 */
-    function acceptThread(thread: { id: string, title: string }): void {
+    function acceptThread(thread: BridgeCatalogThreadView): void {
         if (selectedProjectEntry.value && !selectedProjectEntry.value.sessions.some(item => item.id === thread.id)) selectedProjectEntry.value.sessions.unshift(thread)
         selectedThreadId.value = thread.id
     }
     onMounted(() => { active = true; void loadCatalog() })
     onUnmounted(() => { active = false; generation++; catalogDirty = false; catalogLoading.value = false })
-    return { catalog, catalogLoading, projectOptions, selectedChatId, selectedProjectPath, selectedThreadId, selectedGroup, selectedProjectEntry, selectedProject, selectedThread, loadCatalog, selectGroup, selectProject, selectThread, selectNewThread, updateThreadTitle, acceptThread }
+    return {
+        catalog: readonly(catalog), catalogLoading: readonly(catalogLoading), projectOptions: readonly(projectOptions),
+        selectedChatId: readonly(selectedChatId), selectedProjectPath: readonly(selectedProjectPath), selectedThreadId: readonly(selectedThreadId),
+        selectedGroup: readonly(selectedGroup), selectedProjectEntry: readonly(selectedProjectEntry), selectedProject: readonly(selectedProject), selectedThread: readonly(selectedThread),
+        loadCatalog, selectGroup, selectProject, selectThread, selectNewThread, archiveThread, updateThreadTitle, acceptThread,
+    }
 }

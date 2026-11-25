@@ -34,7 +34,7 @@ interface Registry {
     migrationConflicts?: { chatId: string, projectPaths: string[] }[]
 }
 /** 兼容管理页与独立导入入口。 */
-const props = withDefaults(defineProps<{ page?: boolean, projectPath?: string, projects: Project[], threads: Record<string, { id: string, title?: string }[]>, showModeTabs?: boolean, importOnly?: boolean }>(), { page: false, projectPath: '', showModeTabs: false, importOnly: false })
+const props = withDefaults(defineProps<{ page?: boolean, projectPath?: string, /** 上层目录 owner 提供的只读项目集合。 */ projects: readonly Project[], threads: Record<string, { id: string, title?: string }[]>, showModeTabs?: boolean, importOnly?: boolean }>(), { page: false, projectPath: '', showModeTabs: false, importOnly: false })
 /** 外层入口开关。 */
 const open = defineModel<boolean>('open', { default: false })
 /** 页级管理分类。 */

@@ -12,7 +12,7 @@ import TooltipTrigger from '@/components/ui/tooltip/TooltipTrigger.vue'
 import TooltipContent from '@/components/ui/tooltip/TooltipContent.vue'
 import ScrollArea from '@/components/ui/scroll-area/ScrollArea.vue'
 import { useBridgeServiceControl } from '@/composables/useBridgeServiceControl'
-import { useBridgeCatalog, type BridgeCatalogGroup, type BridgeCatalogProject, type BridgeThread } from '@/composables/useBridgeCatalog'
+import { useBridgeCatalog, type BridgeCatalogProjectView, type BridgeCatalogThreadView } from '@/composables/useBridgeCatalog'
 
 /** 服务状态与准入控制。 */
 const { ready, requireRunning, openSettings, refreshStatus } = useBridgeServiceControl()
@@ -21,7 +21,7 @@ const { t } = useI18n()
 /** 本地化路由入口。 */
 const localePath = useLocalePath()
 /** 统一目录与身份选择 owner。 */
-const { catalog, projectOptions, selectedChatId, selectedProjectPath, selectedThreadId, selectedGroup, selectedProjectEntry, selectedProject, selectedThread, loadCatalog, selectGroup: selectCatalogGroup, selectProject: selectCatalogProject, selectThread: selectCatalogThread, selectNewThread, updateThreadTitle, acceptThread: acceptCatalogThread } = useBridgeCatalog()
+const { catalog, projectOptions, selectedChatId, selectedProjectPath, selectedThreadId, selectedGroup, selectedProjectEntry, selectedProject, selectedThread, loadCatalog, selectGroup: selectCatalogGroup, selectProject: selectCatalogProject, selectThread: selectCatalogThread, selectNewThread, archiveThread, updateThreadTitle, acceptThread: acceptCatalogThread } = useBridgeCatalog()
 /** 操作反馈。 */
 const toast = useToast()
 /** 新会话输入态。 */
@@ -56,19 +56,19 @@ function selectGroup(chatId: string): void {
 }
 
 /** 选择项目；历史项目可查看，但不会打开可写输入。 */
-function selectProject(entry: BridgeCatalogProject): void {
+function selectProject(entry: Pick<BridgeCatalogProjectView, 'project' | 'available' | 'active'>): void {
     navigationGeneration++
-    selectCatalogProject(entry)
+    selectCatalogProject(entry.project.path)
     composingNewSession.value = false
 }
 
 /** 选择会话；历史项目保持只读。 */
-async function selectThread(group: BridgeCatalogGroup, entry: BridgeCatalogProject, thread: BridgeThread): Promise<void> {
+async function selectThread(group: { chatId: string }, entry: Pick<BridgeCatalogProjectView, 'project' | 'available' | 'active'>, thread: BridgeCatalogThreadView): Promise<void> {
     /** 当前会话选择意图。 */
     const current = ++navigationGeneration
     if (!entry.available) { toast.error(t('bridge.projectUnavailableHint')); return }
     if (!await requireRunning() || !active || current !== navigationGeneration) return
-    selectCatalogThread(group, entry, thread)
+    if (!selectCatalogThread(group.chatId, entry.project.path, thread.id)) return
     composingNewSession.value = false
 }
 
@@ -89,7 +89,7 @@ function projectActivationKey(chatId: string, projectPath: string): string {
 }
 
 /** 提交开关意图，界面只消费服务端确认后重新读取的目录。 */
-function setProjectActive(group: BridgeCatalogGroup, entry: BridgeCatalogProject, enabled: boolean): void {
+function setProjectActive(group: { chatId: string }, entry: Pick<BridgeCatalogProjectView, 'project' | 'available' | 'active'>, enabled: boolean): void {
     if (enabled && !entry.available) { toast.error(t('bridge.projectUnavailableHint')); return }
     /** 当前开关在提交队列中的身份。 */
     const key = projectActivationKey(group.chatId, entry.project.path)
@@ -127,9 +127,8 @@ function setProjectActive(group: BridgeCatalogGroup, entry: BridgeCatalogProject
 /** 项目/会话菜单操作完成后刷新唯一目录。 */
 function catalogChanged(change: BridgeCatalogChange): void {
     if (change.action === 'rename-thread' && change.name !== undefined) updateThreadTitle(change.id, change.name)
-    if (selectedThreadId.value === change.id && change.action === 'archive-thread') {
+    if (change.action === 'archive-thread' && archiveThread(change.id)) {
         navigationGeneration++
-        selectedThreadId.value = ''
         composingNewSession.value = false
     }
     void loadCatalog()
