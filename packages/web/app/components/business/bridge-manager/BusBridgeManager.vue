@@ -201,13 +201,16 @@ onUnmounted(() => { active = false; navigationGeneration++ })
                                             :default-open="entry.project.path === group.projects[0]?.project.path"
                                             :unmount-on-hide="false"
                                         >
-                                            <div class="flex items-center gap-1">
+                                            <div
+                                                class="flex items-center gap-1 rounded-lg transition-colors hover:bg-muted"
+                                                :class="entry.project.path === selectedProjectPath && group.chatId === selectedChatId ? 'bg-muted' : ''"
+                                            >
                                                 <CollapsibleTrigger as-child>
                                                     <Button
                                                         variant="ghost"
                                                         :size="36"
-                                                        class="min-w-0 flex-1 justify-start gap-2 px-2"
-                                                        :class="entry.project.path === selectedProjectPath && group.chatId === selectedChatId ? 'bg-muted text-primary' : ''"
+                                                        class="min-w-0 flex-1 justify-start gap-2 px-2 hover:bg-transparent active:bg-transparent"
+                                                        :class="entry.project.path === selectedProjectPath && group.chatId === selectedChatId ? 'text-primary' : ''"
                                                         :aria-label="t(projectExpanded ? 'bridge.collapseItem' : 'bridge.expandItem', { name: entry.project.name })"
                                                     >
                                                         <Icon
@@ -254,13 +257,14 @@ onUnmounted(() => { active = false; navigationGeneration++ })
                                                         <div
                                                             v-for="thread in visibleThreads"
                                                             :key="thread.id"
-                                                            class="flex items-center gap-1"
+                                                            class="flex items-center gap-1 rounded-lg transition-colors hover:bg-muted"
+                                                            :class="thread.id === selectedThreadId ? 'bg-primary/10' : ''"
                                                         >
                                                             <Button
                                                                 variant="ghost"
                                                                 :size="36"
-                                                                class="min-w-0 flex-1 justify-start px-2 text-left"
-                                                                :class="thread.id === selectedThreadId ? 'bg-primary/10 text-primary' : ''"
+                                                                class="min-w-0 flex-1 justify-start px-2 text-left hover:bg-transparent active:bg-transparent"
+                                                                :class="thread.id === selectedThreadId ? 'text-primary' : ''"
                                                                 @click="selectThread(group, entry, thread)"
                                                             >
                                                                 <Icon
