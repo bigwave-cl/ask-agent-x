@@ -1,5 +1,6 @@
 {
   "common": {
+    "showMore": "展开显示",
     "home": "AskAgent X 首页",
     "productTagline": "本地扩展工作台",
     "localOnly": "仅限本地",

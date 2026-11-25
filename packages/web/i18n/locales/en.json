@@ -1,5 +1,6 @@
 {
   "common": {
+    "showMore": "Show more",
     "home": "AskAgent X home",
     "productTagline": "Local extension workspace",
     "localOnly": "Local only",
