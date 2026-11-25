@@ -2,7 +2,7 @@
 import type { TabsListProps } from 'reka-ui'
 import type { AskxTabsListProps } from './tabsTypes'
 import { reactiveOmit } from '@vueuse/core'
-import { TabsList } from 'reka-ui'
+import { TabsIndicator, TabsList } from 'reka-ui'
 import { cn } from '@/lib/utils'
 import {
     tabsDefaultScrollable,
@@ -10,7 +10,7 @@ import {
     tabsDefaultSize,
     tabsDefaultVariant,
 } from './tabsTypes'
-import { tabsListVariants } from './tabsVariants'
+import { tabsIndicatorVariants, tabsListVariants } from './tabsVariants'
 
 /** TabsList 属性。 */
 const props = withDefaults(defineProps<AskxTabsListProps>(), {
@@ -34,6 +34,13 @@ const delegatedProps = reactiveOmit(props, 'class', 'variant', 'size', 'shape', 
         v-bind="delegatedProps"
         :class="cn(tabsListVariants({ variant, shape, scrollable }), props.class)"
     >
+        <!-- asChild 保持官方单根 slot 语义，由调用方负责其内部组合。 -->
+        <TabsIndicator
+            v-if="variant !== 'tag' && !asChild"
+            data-slot="tabs-indicator"
+            aria-hidden="true"
+            :class="tabsIndicatorVariants({ variant })"
+        />
         <slot />
     </TabsList>
 </template>

@@ -42,13 +42,48 @@ const customValue = ref('create')
 /** 横向滚动示例的当前值。 */
 const scrollableValue = ref('recommended')
 
+/** 滑动下划线示例的当前标签。 */
+const slidingValue = ref('overview')
+
+/** Segment 滑动背景示例按圆角分别保存的当前标签。 */
+const segmentSlidingValues = reactive<Record<TabsShape, string>>({
+    regular: 'overview',
+    pill: 'overview',
+})
+
 /** 基础用法代码。 */
 const basicCode = `<Tabs default-value="overview">
-  <TabsList variant="segment" :size="40" shape="pill">
+  <TabsList variant="segment" size="40" shape="pill">
     <TabsTrigger value="overview">概览</TabsTrigger>
     <TabsTrigger value="assets">资源</TabsTrigger>
   </TabsList>
   <TabsContent value="overview">概览内容</TabsContent>
+</Tabs>`
+
+/** 滑动下划线示例代码。 */
+const slidingCode = `<Tabs default-value="overview">
+  <TabsList variant="line" scrollable aria-label="资源分类">
+    <TabsTrigger value="overview">概览</TabsTrigger>
+    <TabsTrigger value="resources">详细资源列表</TabsTrigger>
+    <TabsTrigger value="activity">最近访问记录</TabsTrigger>
+    <TabsTrigger value="disabled" disabled>暂不可用</TabsTrigger>
+  </TabsList>
+  <TabsContent value="overview">浏览资源概览。</TabsContent>
+  <TabsContent value="resources">查看完整资源列表。</TabsContent>
+  <TabsContent value="activity">查看最近访问记录。</TabsContent>
+</Tabs>`
+
+/** Segment 滑动背景示例代码。 */
+const segmentSlidingCode = `<Tabs default-value="overview">
+  <TabsList variant="segment" shape="pill" scrollable aria-label="资源视图">
+    <TabsTrigger value="overview">概览</TabsTrigger>
+    <TabsTrigger value="resources">全部资源列表</TabsTrigger>
+    <TabsTrigger value="activity">最近活动记录</TabsTrigger>
+    <TabsTrigger value="disabled" disabled>暂不可用</TabsTrigger>
+  </TabsList>
+  <TabsContent value="overview">浏览资源概览。</TabsContent>
+  <TabsContent value="resources">查看全部资源。</TabsContent>
+  <TabsContent value="activity">查看最近活动。</TabsContent>
 </Tabs>`
 
 /** 横向滚动标签数据。 */
@@ -106,7 +141,7 @@ const scrollableItems = [
                     <h4 class="text-base font-semibold">
                         Variant Gallery
                     </h4><p class="mt-1 text-xs leading-5 text-muted-foreground">
-                        默认使用 Line；三种形态共享 Reka 的方向键、Home、End、禁用态和焦点管理。
+                        默认使用 Line；三种形态共享 Reka 的方向键、Home、End、禁用态和焦点管理。TabsList 统一组合 Reka TabsIndicator，项目仅定制视觉样式。
                     </p>
                 </div>
                 <article class="grid gap-3 rounded-2xl border bg-background p-3 sm:p-5">
@@ -146,6 +181,158 @@ const scrollableItems = [
                             </TabsList>
                         </Tabs>
                         <span class="font-mono text-[10px] text-muted-foreground">{{ variantValues[variant] }}</span>
+                    </div>
+                </article>
+            </section>
+
+            <section
+                class="grid gap-2"
+                data-demo-subsection="tabs-sliding-indicator"
+            >
+                <div class="flex flex-wrap items-start justify-between gap-3 px-1">
+                    <div>
+                        <h4 class="text-base font-semibold">
+                            滑动下划线
+                        </h4>
+                        <p class="mt-1 text-xs leading-5 text-muted-foreground">
+                            点击标签或使用方向键切换，选中指示条会跟随不同宽度的标签移动；禁用项不可选中。
+                        </p>
+                    </div>
+                    <DemoCopyButton
+                        :text="slidingCode"
+                        label="复制滑动下划线用法"
+                        copied-label="已复制"
+                        variant="outlined"
+                    />
+                </div>
+                <article class="grid gap-4 rounded-2xl border bg-background p-4 sm:p-5">
+                    <Tabs
+                        v-model="slidingValue"
+                        class="min-w-0 rounded-xl border bg-card p-4 sm:p-5"
+                    >
+                        <TabsList
+                            variant="line"
+                            scrollable
+                            aria-label="资源分类"
+                        >
+                            <TabsTrigger value="overview">
+                                概览
+                            </TabsTrigger>
+                            <TabsTrigger value="resources">
+                                详细资源列表
+                            </TabsTrigger>
+                            <TabsTrigger value="activity">
+                                最近访问记录
+                            </TabsTrigger>
+                            <TabsTrigger
+                                value="disabled"
+                                disabled
+                            >
+                                暂不可用
+                            </TabsTrigger>
+                        </TabsList>
+                        <TabsContent
+                            value="overview"
+                            class="mt-4 rounded-xl bg-muted/45 p-5"
+                        >
+                            浏览资源概览。
+                        </TabsContent>
+                        <TabsContent
+                            value="resources"
+                            class="mt-4 rounded-xl bg-muted/45 p-5"
+                        >
+                            查看完整资源列表。
+                        </TabsContent>
+                        <TabsContent
+                            value="activity"
+                            class="mt-4 rounded-xl bg-muted/45 p-5"
+                        >
+                            查看最近访问记录。
+                        </TabsContent>
+                    </Tabs>
+                    <p class="px-1 font-mono text-[10px] text-muted-foreground">
+                        当前选中：{{ slidingValue }}
+                    </p>
+                </article>
+            </section>
+
+            <section
+                class="grid gap-2"
+                data-demo-subsection="tabs-sliding-segment"
+            >
+                <div class="flex flex-wrap items-start justify-between gap-3 px-1">
+                    <div>
+                        <h4 class="text-base font-semibold">
+                            Segment 滑动背景
+                        </h4>
+                        <p class="mt-1 text-xs leading-5 text-muted-foreground">
+                            切换标签时，选中背景会跟随标签移动；对比 regular 与 pill 圆角，两组状态互不影响。
+                        </p>
+                    </div>
+                    <DemoCopyButton
+                        :text="segmentSlidingCode"
+                        label="复制 Segment 用法"
+                        copied-label="已复制"
+                        variant="outlined"
+                    />
+                </div>
+                <article class="grid gap-4 rounded-2xl border bg-background p-4 sm:p-5">
+                    <div class="grid gap-4 lg:grid-cols-2">
+                        <div
+                            v-for="shape in shapes"
+                            :key="shape"
+                            class="grid min-w-0 gap-3 rounded-xl border bg-card p-4"
+                        >
+                            <div class="flex items-center justify-between gap-3">
+                                <strong class="text-sm">{{ shape }}</strong>
+                                <span class="font-mono text-[10px] text-muted-foreground">{{ segmentSlidingValues[shape] }}</span>
+                            </div>
+                            <Tabs
+                                v-model="segmentSlidingValues[shape]"
+                                class="min-w-0"
+                            >
+                                <TabsList
+                                    variant="segment"
+                                    :shape="shape"
+                                    scrollable
+                                    aria-label="资源视图"
+                                >
+                                    <TabsTrigger value="overview">
+                                        概览
+                                    </TabsTrigger>
+                                    <TabsTrigger value="resources">
+                                        全部资源列表
+                                    </TabsTrigger>
+                                    <TabsTrigger value="activity">
+                                        最近活动记录
+                                    </TabsTrigger>
+                                    <TabsTrigger
+                                        value="disabled"
+                                        disabled
+                                    >
+                                        暂不可用
+                                    </TabsTrigger>
+                                </TabsList>
+                                <TabsContent
+                                    value="overview"
+                                    class="mt-4 rounded-xl bg-muted/45 p-5"
+                                >
+                                    浏览资源概览。
+                                </TabsContent>
+                                <TabsContent
+                                    value="resources"
+                                    class="mt-4 rounded-xl bg-muted/45 p-5"
+                                >
+                                    查看全部资源。
+                                </TabsContent>
+                                <TabsContent
+                                    value="activity"
+                                    class="mt-4 rounded-xl bg-muted/45 p-5"
+                                >
+                                    查看最近活动。
+                                </TabsContent>
+                            </Tabs>
+                        </div>
                     </div>
                 </article>
             </section>
