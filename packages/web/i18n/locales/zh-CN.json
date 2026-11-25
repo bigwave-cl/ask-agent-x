@@ -799,6 +799,7 @@
     "collapseItem": "收起{name}",
     "searchProjects": "搜索项目或路径",
     "importProject": "导入项目",
+    "linkProjects": "绑定项目",
     "linkProject": "绑定此项目",
     "unlinkProject": "解除绑定",
     "noMatchingProjects": "暂无匹配项目",

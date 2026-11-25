@@ -7,7 +7,9 @@ const route = useRoute()
 const localePath = useLocalePath()
 /** 管理页与会话页的公共导航选中状态。 */
 const management = computed(() => route.path === localePath('/bridge/management') || route.path.endsWith('/bridge/management'))
-provideBridgeServiceControl()
+/** 布局内的服务与项目设置共用同一上下文。 */
+const control = provideBridgeServiceControl()
+provideBridgeProjectSettings(control)
 </script>
 
 <template>

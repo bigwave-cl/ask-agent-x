@@ -24,8 +24,6 @@ const managementMode = computed<'groups' | 'projects'>({
             page
             :show-mode-tabs="true"
             :projects="projectOptions"
-            :threads="{}"
-            @added="loadCatalog"
             @saved="loadCatalog"
         />
     </div>

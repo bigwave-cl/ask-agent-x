@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { CollapsibleRoot, CollapsibleTrigger, CollapsibleContent } from 'reka-ui'
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
-import BusBridgeRelations from './BusBridgeRelations.vue'
 import BusBridgeItemMenu from './BusBridgeItemMenu.vue'
 import BusBridgeAgent from './agent/BusBridgeAgent.vue'
 import { provideAgentCore, useAgentCore } from './agent/core/useAgentCore'
@@ -11,6 +10,7 @@ import Tooltip from '@/components/ui/tooltip/Tooltip.vue'
 import TooltipTrigger from '@/components/ui/tooltip/TooltipTrigger.vue'
 import TooltipContent from '@/components/ui/tooltip/TooltipContent.vue'
 import ScrollArea from '@/components/ui/scroll-area/ScrollArea.vue'
+import { useBridgeProjectSettings } from '@/composables/useBridgeProjectSettings'
 import { useBridgeServiceControl } from '@/composables/useBridgeServiceControl'
 import { useBridgeCatalog, type BridgeCatalogProjectView, type BridgeCatalogThreadView } from '@/composables/useBridgeCatalog'
 
@@ -18,18 +18,16 @@ import { useBridgeCatalog, type BridgeCatalogProjectView, type BridgeCatalogThre
 const { statusIndicator, requireRunning, openSettings } = useBridgeServiceControl()
 /** 国际化文案。 */
 const { t } = useI18n()
-/** 本地化路由入口。 */
-const localePath = useLocalePath()
+/** 群项目设置统一动态入口。 */
+const { openProjectSettings } = useBridgeProjectSettings()
 /** 统一目录与身份选择 owner。 */
-const { sidebarGroups, projectOptions, selectedChatId, selectedProjectPath, selectedThreadId, selectedGroup, selectedProjectEntry, selectedProject, selectedThread, loadCatalog, selectThread: selectCatalogThread, selectNewThread, archiveThread, updateThreadTitle, acceptThread: acceptCatalogThread } = useBridgeCatalog()
+const { sidebarGroups, selectedChatId, selectedProjectPath, selectedThreadId, selectedGroup, selectedProjectEntry, selectedProject, selectedThread, loadCatalog, selectThread: selectCatalogThread, selectNewThread, archiveThread, updateThreadTitle, acceptThread: acceptCatalogThread } = useBridgeCatalog()
 /** 操作反馈。 */
 const toast = useToast()
 /** 新会话输入态。 */
 const composingNewSession = ref(false)
 /** 右侧聊天外壳的焦点入口。 */
 const conversationPanel = ref<{ focus: () => void } | null>(null)
-/** 项目导入弹窗开关。 */
-const projectPanel = ref(false)
 /** 会话页面生命周期。 */
 let active = false
 /** 导航选择意图序号，使较早的准入等待失效。 */
@@ -70,12 +68,6 @@ function catalogChanged(change: BridgeCatalogChange): void {
         composingNewSession.value = false
     }
     void loadCatalog()
-}
-
-/** 已有项目进入管理列表，新增项目打开独立导入弹窗。 */
-function openProjectPanel(path = ''): void {
-    if (path) void navigateTo({ path: localePath('/bridge/management'), query: { tab: 'projects' } })
-    else projectPanel.value = true
 }
 
 /** Core 所需的稳定导航上下文。 */
@@ -240,7 +232,7 @@ onUnmounted(() => { active = false; navigationGeneration++ })
                                                     :mutations-disabled="!entry.available"
                                                     :item-id="entry.project.path"
                                                     :label="entry.project.name"
-                                                    @settings="openProjectPanel(entry.project.path)"
+                                                    @settings="openProjectSettings({ kind: 'group', chatId: group.chatId, onSaved: loadCatalog })"
                                                     @changed="catalogChanged"
                                                 />
                                             </div>
@@ -286,12 +278,19 @@ onUnmounted(() => { active = false; navigationGeneration++ })
                                             </CollapsibleContent>
                                         </CollapsibleRoot>
                                     </CsProgressiveList>
-                                    <p
+                                    <div
                                         v-if="!group.projects.length"
                                         class="px-2 py-2 text-xs text-muted-foreground"
                                     >
-                                        {{ t('bridge.noActiveProject') }}
-                                    </p>
+                                        <Button
+                                            variant="ghost"
+                                            size="xs"
+                                            class="block font-normal"
+                                            @click="openProjectSettings({ kind: 'group', chatId: group.chatId, onSaved: loadCatalog })"
+                                        >
+                                            {{ t('bridge.linkProjects') }}
+                                        </Button>
+                                    </div>
                                 </div>
                             </CollapsibleContent>
                         </CollapsibleRoot>
@@ -324,13 +323,5 @@ onUnmounted(() => { active = false; navigationGeneration++ })
                 @settings="openSettings"
             />
         </section>
-        <BusBridgeRelations
-            v-model:open="projectPanel"
-            import-only
-            :projects="projectOptions"
-            :threads="{}"
-            @added="async () => { await loadCatalog(); projectPanel = false }"
-            @saved="async () => { await loadCatalog(); projectPanel = false }"
-        />
     </div>
 </template>

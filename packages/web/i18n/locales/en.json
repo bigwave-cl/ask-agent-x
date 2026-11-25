@@ -799,6 +799,7 @@
     "collapseItem": "Collapse {name}",
     "searchProjects": "Search projects or paths",
     "importProject": "Import project",
+    "linkProjects": "Link projects",
     "linkProject": "Link this project",
     "unlinkProject": "Unlink project",
     "noMatchingProjects": "No matching projects",
