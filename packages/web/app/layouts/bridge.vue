@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import Sidebar from '@/components/common/bridge-layout/Sidebar.vue'
 import TooltipProvider from '@/components/ui/tooltip/TooltipProvider.vue'
 
 /** Bridge 子页面当前路由。 */
@@ -14,7 +13,7 @@ provideBridgeServiceControl()
 <template>
     <TooltipProvider :delay-duration="150">
         <div class="grid h-svh min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background text-foreground lg:grid-cols-[4rem_minmax(0,1fr)] lg:grid-rows-1">
-            <Sidebar :management="management" />
+            <CsBridgeLayoutSidebar :management="management" />
             <main class="h-full min-h-0 min-w-0">
                 <slot />
             </main>
