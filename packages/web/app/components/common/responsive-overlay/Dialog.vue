@@ -1,9 +1,7 @@
 <script setup lang="ts">
-import {
-    Dialog,
-    DialogContent,
-    DialogTrigger,
-} from '@/components/ui/dialog'
+import Dialog from '@/components/ui/dialog/Dialog.vue'
+import DialogContent from '@/components/ui/dialog/DialogContent.vue'
+import DialogTrigger from '@/components/ui/dialog/DialogTrigger.vue'
 import { getDialogOptions, responsiveOverlayShellDefaults } from './overlayOptions'
 import ResponsiveOverlayShell from './Shell.vue'
 import type { ResponsiveOverlayDialogProps, ResponsiveOverlaySlotProps } from './types'
@@ -18,7 +16,10 @@ const props = withDefaults(defineProps<ResponsiveOverlayDialogProps>(), {
 })
 const open = defineModel<boolean>('open', { default: false })
 
+/** 弹层显示状态及退出完成事件。 */
 const emit = defineEmits<{
+    /** 内容退出完成或关闭态展示被拆除后，通知调用方释放资源。 */
+    afterClose: []
     close: []
     hide: []
     show: []
@@ -42,6 +43,14 @@ const slotProps = computed<ResponsiveOverlaySlotProps>(() => ({
     open: open.value,
     topLeft: () => emit('top-left'),
 }))
+
+/** 内容退出完成或关闭态展示被拆除时通知调用方；打开态响应式切换不触发。 */
+function afterLeave(): void {
+    if (!open.value) emit('afterClose')
+}
+
+// 响应式展示分支在退出动画期间被拆除时，也必须完成关闭资源释放。
+onBeforeUnmount(afterLeave)
 
 function updateOpen(value: boolean) {
     open.value = value
@@ -92,6 +101,7 @@ defineExpose({ close: closeOverlay, open: openOverlay, toggle: toggleOverlay })
         <DialogContent
             v-bind="dialogOptions.content"
             :show-close-button="false"
+            @after-leave="afterLeave"
             @escape-key-down="preventDismiss"
             @interact-outside="preventDismiss"
         >

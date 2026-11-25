@@ -19,7 +19,10 @@ const props = withDefaults(defineProps<ResponsiveOverlayWrapperProps>(), {
 })
 const open = defineModel<boolean>('open', { default: false })
 
+/** 透传弹层状态与真实退出完成事件。 */
 const emit = defineEmits<{
+    /** 内容退出动画完成，允许调用方释放动态挂载资源。 */
+    afterClose: []
     close: []
     hide: []
     show: []
@@ -97,6 +100,7 @@ defineExpose({ close: closeOverlay, open: openOverlay, presentation, toggle: tog
         @show="emit('show')"
         @hide="emit('hide')"
         @close="emit('close')"
+        @after-close="emit('afterClose')"
         @top-left="emit('top-left')"
     >
         <template #trigger="props">

@@ -1,9 +1,7 @@
 <script setup lang="ts">
-import {
-    Drawer,
-    DrawerContent,
-    DrawerTrigger,
-} from '@/components/ui/drawer'
+import Drawer from '@/components/ui/drawer/Drawer.vue'
+import DrawerContent from '@/components/ui/drawer/DrawerContent.vue'
+import DrawerTrigger from '@/components/ui/drawer/DrawerTrigger.vue'
 import { getDrawerOptions, responsiveOverlayShellDefaults } from './overlayOptions'
 import ResponsiveOverlayShell from './Shell.vue'
 import type { ResponsiveOverlayDrawerProps, ResponsiveOverlaySlotProps } from './types'
@@ -18,7 +16,10 @@ const props = withDefaults(defineProps<ResponsiveOverlayDrawerProps>(), {
 })
 const open = defineModel<boolean>('open', { default: false })
 
+/** 弹层显示状态及退出完成事件。 */
 const emit = defineEmits<{
+    /** 内容退出完成或关闭态展示被拆除后，通知调用方释放资源。 */
+    afterClose: []
     close: []
     hide: []
     show: []
@@ -42,6 +43,14 @@ const slotProps = computed<ResponsiveOverlaySlotProps>(() => ({
     open: open.value,
     topLeft: () => emit('top-left'),
 }))
+
+/** 内容退出完成或关闭态展示被拆除时通知调用方；打开态响应式切换不触发。 */
+function afterLeave(): void {
+    if (!open.value) emit('afterClose')
+}
+
+// 响应式展示分支在退出动画期间被拆除时，也必须完成关闭资源释放。
+onBeforeUnmount(afterLeave)
 
 function updateOpen(value: boolean) {
     open.value = value
@@ -86,7 +95,10 @@ defineExpose({ close: closeOverlay, open: openOverlay, toggle: toggleOverlay })
                 v-bind="slotProps"
             />
         </DrawerTrigger>
-        <DrawerContent v-bind="drawerOptions.content">
+        <DrawerContent
+            v-bind="drawerOptions.content"
+            @after-leave="afterLeave"
+        >
             <ResponsiveOverlayShell
                 mode="drawer"
                 :is-mobile="isMobile"
