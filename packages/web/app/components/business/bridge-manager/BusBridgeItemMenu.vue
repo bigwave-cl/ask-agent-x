@@ -169,6 +169,7 @@ onUnmounted(() => { active = false; generation += 1; confirmation?.destroy() })
                         variant="ghost"
                         :size="36"
                         square
+                        class="hover:bg-transparent hover:text-primary active:bg-transparent active:text-primary"
                         :aria-label="`${t('bridge.itemMenu')} · ${label}`"
                         :disabled="disabled"
                     ><Icon name="askx-actions:more" /></Button></template>
