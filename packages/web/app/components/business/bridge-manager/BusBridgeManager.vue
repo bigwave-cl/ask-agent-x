@@ -21,7 +21,7 @@ const { t } = useI18n()
 /** 本地化路由入口。 */
 const localePath = useLocalePath()
 /** 统一目录与身份选择 owner。 */
-const { sidebarGroups, projectOptions, selectedChatId, selectedProjectPath, selectedThreadId, selectedGroup, selectedProjectEntry, selectedProject, selectedThread, loadCatalog, selectGroup: selectCatalogGroup, selectProject: selectCatalogProject, selectThread: selectCatalogThread, selectNewThread, archiveThread, updateThreadTitle, acceptThread: acceptCatalogThread } = useBridgeCatalog()
+const { sidebarGroups, projectOptions, selectedChatId, selectedProjectPath, selectedThreadId, selectedGroup, selectedProjectEntry, selectedProject, selectedThread, loadCatalog, selectThread: selectCatalogThread, selectNewThread, archiveThread, updateThreadTitle, acceptThread: acceptCatalogThread } = useBridgeCatalog()
 /** 操作反馈。 */
 const toast = useToast()
 /** 新会话输入态。 */
@@ -40,22 +40,6 @@ const readOnly = computed(() => Boolean(selectedProjectEntry.value && (!selected
 const canCompose = computed(() => Boolean(selectedProjectEntry.value?.active && selectedProjectEntry.value.available))
 /** 服务状态的可访问说明。 */
 const statusLabel = computed(() => t(statusIndicator.value.labelKey))
-
-/** 切换群组，只改变导航上下文，不自动打开历史会话。 */
-function selectGroup(chatId: string): void {
-    if (chatId === selectedChatId.value) return
-    navigationGeneration++
-    selectCatalogGroup(chatId)
-    composingNewSession.value = false
-}
-
-/** 选择项目；历史项目可查看，但不会打开可写输入。 */
-function selectProject(entry: Pick<BridgeCatalogProjectView, 'project' | 'available' | 'active'>): void {
-    if (entry.project.path === selectedProjectPath.value) return
-    navigationGeneration++
-    selectCatalogProject(entry.project.path)
-    composingNewSession.value = false
-}
 
 /** 选择会话；历史项目保持只读。 */
 async function selectThread(group: { chatId: string }, entry: Pick<BridgeCatalogProjectView, 'project' | 'available' | 'active'>, thread: BridgeCatalogThreadView): Promise<void> {
@@ -191,7 +175,6 @@ onUnmounted(() => { active = false; navigationGeneration++ })
                                         class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm font-semibold transition-colors hover:bg-muted"
                                         :class="group.chatId === selectedChatId ? 'text-primary' : ''"
                                         :aria-label="t(groupExpanded ? 'bridge.collapseItem' : 'bridge.expandItem', { name: group.name })"
-                                        @click="selectGroup(group.chatId)"
                                     >
                                         <Icon
                                             name="askx-objects:users"
@@ -226,7 +209,6 @@ onUnmounted(() => { active = false; navigationGeneration++ })
                                                         class="min-w-0 flex-1 justify-start gap-2 px-2"
                                                         :class="entry.project.path === selectedProjectPath && group.chatId === selectedChatId ? 'bg-muted text-primary' : ''"
                                                         :aria-label="t(projectExpanded ? 'bridge.collapseItem' : 'bridge.expandItem', { name: entry.project.name })"
-                                                        @click="selectGroup(group.chatId); selectProject(entry)"
                                                     >
                                                         <Icon
                                                             name="askx-objects:folder"
