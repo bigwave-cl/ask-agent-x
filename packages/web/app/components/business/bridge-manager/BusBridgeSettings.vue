@@ -5,6 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import Tabs from '@/components/ui/tabs/Tabs.vue'
 import TabsList from '@/components/ui/tabs/TabsList.vue'
 import TabsTrigger from '@/components/ui/tabs/TabsTrigger.vue'
+import type { ConfirmController } from '@/composables/useConfirm'
 import { useConfirm } from '@/composables/useConfirm'
 import { useBridgeServiceControl } from '@/composables/useBridgeServiceControl'
 /** 飞书可编辑配置，不包含凭据引用。 */
@@ -42,7 +43,7 @@ const toast = useToast()
 /** 服务端配置草稿。 */
 const config = ref<Config | null>(null)
 /** 当前设置区。 */
-const { status, statusIcon, refreshStatus } = useBridgeServiceControl()
+const { status, statusIcon, refreshStatus, settingsTab } = useBridgeServiceControl()
 const logs = ref<string[]>([])
 let logsGeneration = 0
 const serviceLastError = computed(() => status.value?.lastError)
@@ -50,7 +51,10 @@ const serverStatusRunning = computed(() => status.value?.runtimeStatus === 'runn
 const serverStatusIcon = computed(() => statusIcon.value === 'askx-status:loading' ? statusIcon.value : serverStatusRunning.value ? 'askx-status:check' : 'askx-status:prohibited')
 const serverStatusLabel = computed(() => serverStatusRunning.value ? t('bridge.statusRunning') : t('bridge.statusNotRunning'))
 /** 设置分区枚举。 */
-const tab = ref<'server' | 'config' | 'feishu'>('server')
+const tab = computed<'server' | 'config' | 'feishu'>({
+    get: () => settingsTab.value === 'service' ? 'server' : settingsTab.value,
+    set: value => { settingsTab.value = value === 'server' ? 'service' : value },
+})
 /** 密钥仅暂存内存。 */
 const secret = ref('')
 /** 检测到的应用。 */
@@ -86,7 +90,7 @@ async function action(name: string): Promise<void> {
     const current = generation
     try {
         await $fetch('/api/bridge/action', { method: 'POST', body: { action: name, revision: config.value.revision, confirmation: true } })
-        if (current === generation) { await refreshStatus(true); toast.success(t('bridge.actionApplied')) }
+        if (current === generation) { await refreshStatus(true); if (current === generation) toast.success(t('bridge.actionApplied')) }
     }
     catch { if (current === generation) toast.error(t('bridge.loadError')) }
     finally { if (current === generation) busy.value = false }
@@ -115,10 +119,13 @@ async function test(): Promise<void> {
     catch { if (current === generation) toast.error(t('bridge.loadError')) }
     finally { if (current === generation) busy.value = false }
 }
+/** 当前保存确认框，随设置面板释放。 */
+let confirmation: ConfirmController | undefined
 /** 保存当前区配置，冲突时重新读取版本。 */
 function save(): void {
     if (!config.value || busy.value) return
-    useConfirm({
+    confirmation?.destroy()
+    confirmation = useConfirm({
         title: t('bridge.saveRestartTitle'),
         desc: t('bridge.saveRestartConfirm'),
         cancelText: t('common.cancel'),
@@ -159,7 +166,7 @@ async function saveConfirmed(done: () => void): Promise<void> {
         if (result.applicationError) toast.error(t('bridge.savedApplyFailed'))
         else toast.success(t('bridge.saved'))
         await refreshStatus(true)
-        if (!result.applicationError) done()
+        if (current === generation && !result.applicationError) done()
     }
     catch (error) {
         if (current !== generation) return
@@ -171,11 +178,12 @@ async function saveConfirmed(done: () => void): Promise<void> {
 }
 watch(open, value => {
     secret.value = ''; busy.value = false; accounts.value = []; logs.value = []
+    generation += 1; logsGeneration += 1; confirmation?.destroy(); confirmation = undefined
     if (value) { void load(); void loadLogs() }
-    else { generation += 1; config.value = null }
-})
+    else config.value = null
+}, { immediate: true })
 watch(tab, value => { if (value === 'server' && open.value) void loadLogs() })
-onUnmounted(() => { generation += 1; secret.value = '' })
+onUnmounted(() => { generation += 1; logsGeneration += 1; confirmation?.destroy(); confirmation = undefined; secret.value = '' })
 </script>
 
 <template>
