@@ -3,7 +3,7 @@ import type { ButtonVariants } from '@/components/ui/button'
 import type { Component, VNode } from 'vue'
 import { defineComponent, isVNode } from 'vue'
 import AlertDialog from '@/components/ui/alert-dialog/AlertDialog.vue'
-import AlertDialogAction from '@/components/ui/alert-dialog/AlertDialogAction.vue'
+import Button from '@/components/ui/button/Button.vue'
 import AlertDialogCancel from '@/components/ui/alert-dialog/AlertDialogCancel.vue'
 import AlertDialogContent from '@/components/ui/alert-dialog/AlertDialogContent.vue'
 import AlertDialogDescription from '@/components/ui/alert-dialog/AlertDialogDescription.vue'
@@ -181,15 +181,16 @@ defineExpose({ init, close })
                 >
                     {{ options.cancelText || t('common.cancel') }}
                 </AlertDialogCancel>
-                <AlertDialogAction
+                <Button
+                    type="button"
                     :disabled="loading || options.okDisabled"
                     :size="40"
-                    :variant="buttonVariant(options.okVariant)"
+                    :variant="options.okVariant || 'primary'"
                     :class="['text-sm', options.actionLayout === 'equal' ? 'min-w-0 w-full flex-1' : 'w-auto flex-none']"
                     @click="handleOk"
                 >
                     {{ options.okText || t('common.confirm') }}
-                </AlertDialogAction>
+                </Button>
             </AlertDialogFooter>
         </AlertDialogContent>
     </AlertDialog>
