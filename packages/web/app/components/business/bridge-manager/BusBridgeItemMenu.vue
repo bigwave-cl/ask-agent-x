@@ -22,7 +22,9 @@ const props = withDefaults(defineProps<{
     hideSettings?: boolean
     /** 当前目录不可操作时禁用菜单。 */
     disabled?: boolean
-}>(), { projectPath: '', hideSettings: false, disabled: false })
+    /** 仅禁用写操作，保留项目设置入口。 */
+    mutationsDisabled?: boolean
+}>(), { projectPath: '', hideSettings: false, disabled: false, mutationsDisabled: false })
 /** 成功操作的最小变更通知。 */
 export interface BridgeCatalogChange {
     /** 成功的操作。 */
@@ -75,7 +77,8 @@ async function settings(): Promise<void> {
 }
 /** 打开命名表单，保留已输入的草稿。 */
 async function rename(): Promise<void> {
-    if (!await allow()) { menuOpen.value = false; return }
+    if (props.mutationsDisabled) return
+    if (!await allow() || props.mutationsDisabled) { menuOpen.value = false; return }
     if (!renameDraft.value) renameDraft.value = props.label
     menuOpen.value = false
     renameOpen.value = true
@@ -96,8 +99,8 @@ function errorText(cause: unknown): string {
 }
 /** 已确认的目录操作；发送前再次核验实时服务状态。 */
 async function apply(action: BridgeCatalogChange['action'], name?: string): Promise<boolean> {
-    if (busy.value) return false
-    if (!await allow()) { menuOpen.value = false; renameOpen.value = false; return false }
+    if (busy.value || props.mutationsDisabled) return false
+    if (!await allow() || props.mutationsDisabled) { menuOpen.value = false; renameOpen.value = false; return false }
     if (busy.value) return false
     if (name !== undefined && (!name || name.length > 256)) { toast.error(t('bridge.nameRequired')); return false }
     busy.value = true
@@ -127,7 +130,8 @@ async function saveName(): Promise<void> {
 }
 /** 使用 Demo 的统一确认入口，解释保留磁盘与历史的语义。 */
 async function remove(): Promise<void> {
-    if (!await allow()) { menuOpen.value = false; return }
+    if (props.mutationsDisabled) return
+    if (!await allow() || props.mutationsDisabled) { menuOpen.value = false; return }
     menuOpen.value = false
     const current = generation
     confirmation = useConfirm({
@@ -181,12 +185,14 @@ onUnmounted(() => { active = false; generation += 1; confirmation?.destroy() })
                             variant="ghost"
                             :size="36"
                             class="justify-start"
+                            :disabled="mutationsDisabled"
                             @click="rename"
                         ><Icon name="askx-actions:edit" />{{ t('bridge.rename') }}</Button>
                         <Button
                             variant="ghost"
                             :size="36"
                             class="justify-start text-destructive"
+                            :disabled="mutationsDisabled"
                             @click="remove"
                         ><Icon name="askx-actions:delete" />{{ t(kind === 'project' ? 'bridge.removeProject' : 'bridge.archiveThread') }}</Button>
                     </div>
@@ -224,7 +230,7 @@ onUnmounted(() => { active = false; generation += 1; confirmation?.destroy() })
                 {{ t('common.cancel') }}
             </Button><Button
                 :size="36"
-                :disabled="busy"
+                :disabled="busy || mutationsDisabled"
                 @click="saveName"
             >
                 {{ t('bridge.saveName') }}
