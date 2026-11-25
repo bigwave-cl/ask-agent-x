@@ -792,6 +792,8 @@
     "transactional": "事务保护"
   },
   "bridge": {
+    "expandItem": "展开{name}",
+    "collapseItem": "收起{name}",
     "searchProjects": "搜索项目或路径",
     "importProject": "导入项目",
     "linkProject": "绑定此项目",

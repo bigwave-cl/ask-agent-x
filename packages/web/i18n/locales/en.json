@@ -792,6 +792,8 @@
     "transactional": "Transaction protected"
   },
   "bridge": {
+    "expandItem": "Expand {name}",
+    "collapseItem": "Collapse {name}",
     "searchProjects": "Search projects or paths",
     "importProject": "Import project",
     "linkProject": "Link this project",
