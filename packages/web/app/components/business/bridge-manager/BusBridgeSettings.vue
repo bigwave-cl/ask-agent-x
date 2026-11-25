@@ -45,13 +45,12 @@ const toast = useToast()
 /** 服务端配置草稿。 */
 const config = ref<Config | null>(null)
 /** 当前设置区。 */
-const { status, statusIcon, refreshStatus, settingsTab } = useBridgeServiceControl()
+const { status, statusIndicator, refreshStatus, settingsTab } = useBridgeServiceControl()
 const logs = ref<string[]>([])
 let logsGeneration = 0
 const serviceLastError = computed(() => status.value?.lastError)
-const serverStatusRunning = computed(() => status.value?.runtimeStatus === 'running' && status.value.healthy)
-const serverStatusIcon = computed(() => statusIcon.value === 'askx-status:loading' ? statusIcon.value : serverStatusRunning.value ? 'askx-status:check' : 'askx-status:prohibited')
-const serverStatusLabel = computed(() => serverStatusRunning.value ? t('bridge.statusRunning') : t('bridge.statusNotRunning'))
+/** 使用共享状态 owner 提供的准确运行状态文案。 */
+const serverStatusLabel = computed(() => t(statusIndicator.value.labelKey))
 /** 设置分区枚举。 */
 const tab = computed<'server' | 'config' | 'feishu'>({
     get: () => settingsTab.value === 'service' ? 'server' : settingsTab.value,
@@ -235,10 +234,14 @@ onUnmounted(() => { generation += 1; logsGeneration += 1; confirmation?.destroy(
                 >
                     <section class="space-y-4">
                         <div class="flex justify-between text-sm">
-                            <strong>{{ t('bridge.serviceControl') }}</strong><span class="inline-flex items-center gap-2 text-muted-foreground"><Icon
-                                :name="serverStatusIcon"
-                                class="size-4"
-                                :class="serverStatusIcon === 'askx-status:loading' ? 'animate-spin' : ''"
+                            <strong>{{ t('bridge.serviceControl') }}</strong><span
+                                class="inline-flex items-center gap-2 text-muted-foreground"
+                                role="status"
+                                :aria-label="serverStatusLabel"
+                            ><span
+                                class="size-2 shrink-0 rounded-full"
+                                :class="statusIndicator.colorClass"
+                                aria-hidden="true"
                             />{{ serverStatusLabel }}</span>
                         </div>
                         <div class="flex flex-wrap gap-2">

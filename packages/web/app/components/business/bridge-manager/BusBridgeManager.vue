@@ -16,7 +16,7 @@ import { useBridgeServiceControl } from '@/composables/useBridgeServiceControl'
 import { useBridgeCatalog, type BridgeCatalogProjectView, type BridgeCatalogThreadView } from '@/composables/useBridgeCatalog'
 
 /** 服务状态与准入控制。 */
-const { ready, requireRunning, openSettings, refreshStatus } = useBridgeServiceControl()
+const { statusIndicator, requireRunning, openSettings, refreshStatus } = useBridgeServiceControl()
 /** 国际化文案。 */
 const { t } = useI18n()
 /** 关闭项目授权与取消入口。 */
@@ -49,7 +49,7 @@ const readOnly = computed(() => Boolean(selectedProjectEntry.value && (!selected
 /** 当前项目仍有效时才开放发送。 */
 const canCompose = computed(() => Boolean(selectedProjectEntry.value?.active && selectedProjectEntry.value.available))
 /** 服务状态的可访问说明。 */
-const statusLabel = computed(() => t(ready.value ? 'bridge.runtime.running' : 'bridge.runtime.stopped'))
+const statusLabel = computed(() => t(statusIndicator.value.labelKey))
 
 /** 切换群组，只改变导航上下文，不自动打开历史会话。 */
 function selectGroup(chatId: string): void {
@@ -215,13 +215,14 @@ onUnmounted(() => { active = false; navigationGeneration++; activationGeneration
                     <Tooltip>
                         <TooltipTrigger as-child>
                             <span
-                                class="ml-auto inline-flex size-7 shrink-0 items-center justify-center rounded-full"
-                                :class="ready ? 'text-success' : 'text-muted-foreground'"
+                                class="inline-flex size-7 shrink-0 items-center justify-center rounded-full"
+                                tabindex="0"
                                 role="status"
                                 :aria-label="statusLabel"
-                            ><Icon
-                                :name="ready ? 'askx-status:check' : 'askx-status:prohibited'"
-                                class="size-4"
+                            ><span
+                                class="size-2 shrink-0 rounded-full"
+                                :class="statusIndicator.colorClass"
+                                aria-hidden="true"
                             /></span>
                         </TooltipTrigger>
                         <TooltipContent>{{ statusLabel }}</TooltipContent>
@@ -230,6 +231,7 @@ onUnmounted(() => { active = false; navigationGeneration++; activationGeneration
                         :size="36"
                         square
                         shape="pill"
+                        class="ml-auto"
                         :aria-label="t('bridge.newSession')"
                         @click="createThread"
                     >

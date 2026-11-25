@@ -23,8 +23,13 @@ export interface BridgeServiceControl {
     status: Readonly<Ref<BridgeServiceSnapshot | null>>
     /** 服务健康、运行且处于工作时间时允许桥接操作。 */
     ready: ComputedRef<boolean>
-    /** 服务状态的统一语义图标。 */
-    statusIcon: ComputedRef<string>
+    /** 服务状态圆点颜色与本地化文案键。 */
+    statusIndicator: ComputedRef<{
+        /** 圆点的语义背景色类名。 */
+        colorClass: string
+        /** 当前状态的国际化文案键。 */
+        labelKey: string
+    }>
     /** 设置面板开关。 */
     settingsOpen: Ref<boolean>
     /** 当前设置页；受阻操作始终打开服务控制。 */
@@ -67,13 +72,16 @@ export function createBridgeServiceControl(
     let flight: Promise<BridgeServiceSnapshot | null> | null = null
     /** 业务可操作条件不依赖内部 loading。 */
     const ready = computed(() => status.value?.runtimeStatus === 'running' && status.value.healthy && status.value.insideWindow)
-    /** 状态图标与配置面板、侧栏保持一致。 */
-    const statusIcon = computed(() => {
-        if (ready.value) return 'askx-status:check'
-        if (status.value?.runtimeStatus === 'failed') return 'askx-status:error'
-        if (status.value?.runtimeStatus === 'scheduled_off') return 'askx-status:prohibited'
-        if (['starting', 'stopping', 'updating'].includes(status.value?.runtimeStatus || '')) return 'askx-status:loading'
-        return 'askx-status:info'
+    /** 状态圆点颜色与准确运行状态文案。 */
+    const statusIndicator = computed(() => {
+        /** 服务端最近确认的实际运行状态。 */
+        const runtime = status.value?.runtimeStatus
+        /** 保留全部运行状态的准确文案。 */
+        const labelKey = runtime ? `bridge.runtime.${runtime}` : 'bridge.runtime.unknown'
+        if (runtime === 'failed') return { colorClass: 'bg-destructive', labelKey }
+        if (runtime === 'starting' || runtime === 'stopping' || runtime === 'updating' || (runtime === 'running' && !ready.value)) return { colorClass: 'bg-warning', labelKey }
+        if (ready.value) return { colorClass: 'bg-success', labelKey }
+        return { colorClass: 'bg-muted-foreground', labelKey }
     })
 
     /** 服务状态唯一提交入口；失效响应不能覆盖后发请求或离开的页面。 */
@@ -128,7 +136,7 @@ export function createBridgeServiceControl(
         flight = null
     }
 
-    return { status: readonly(status), ready, statusIcon, settingsOpen, settingsTab, refreshStatus, requireRunning, openSettings, dispose }
+    return { status: readonly(status), ready, statusIndicator, settingsOpen, settingsTab, refreshStatus, requireRunning, openSettings, dispose }
 }
 
 /** 动态面板会话：关闭异步释放，重开与失效不会销毁新实例。 */
