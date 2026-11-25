@@ -14,6 +14,8 @@ const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ saved: [path: string] }>()
 /** 翻译入口。 */
 const { t } = useI18n()
+/** 路径输入框与标签的唯一关联标识。 */
+const pathInputId = useId()
 /** 失败与成功反馈。 */
 const toast = useToast()
 /** 共享的服务准入入口。 */
@@ -112,29 +114,39 @@ onUnmounted(() => { active = false; generation += 1 })
             class="space-y-4"
             @submit.prevent="save"
         >
-            <label class="block space-y-2 text-sm">
-                <span>{{ t('bridge.projectPath') }}</span>
-                <Input
-                    v-model="pathDraft"
-                    :readonly="!!project"
-                    :disabled="busy || selecting"
-                    :placeholder="t('bridge.absolutePathPlaceholder')"
-                />
-            </label>
-            <p class="text-xs leading-5 text-muted-foreground">
-                {{ t(project ? 'bridge.projectIdentityHint' : 'bridge.importProjectHint') }}
-            </p>
-            <Button
-                v-if="!project"
-                variant="outlined"
-                :size="36"
-                :disabled="busy || selecting"
-                @click="chooseFolder"
-            >
-                <Icon name="askx-objects:folder" />{{ t('bridge.chooseProjectFolder') }}
-            </Button>
+            <div class="space-y-2 text-sm">
+                <label
+                    :for="pathInputId"
+                    class="block"
+                >{{ t('bridge.projectPath') }}</label>
+                <div class="flex items-center gap-3">
+                    <Input
+                        :id="pathInputId"
+                        v-model="pathDraft"
+                        class="h-10 min-w-0 flex-1"
+                        :readonly="!!project"
+                        :disabled="busy || selecting"
+                        :placeholder="t('bridge.absolutePathPlaceholder')"
+                    />
+                    <Button
+                        v-if="!project"
+                        type="button"
+                        variant="outlined"
+                        :size="40"
+                        class="shrink-0"
+                        :disabled="busy || selecting"
+                        @click="chooseFolder"
+                    >
+                        <Icon name="askx-objects:folder" />{{ t('bridge.chooseProjectFolder') }}
+                    </Button>
+                </div>
+                <p class="text-xs leading-5 text-muted-foreground">
+                    {{ t(project ? 'bridge.projectIdentityHint' : 'bridge.importProjectHint') }}
+                </p>
+            </div>
             <label class="block space-y-2 text-sm"><span>{{ t(project ? 'bridge.displayName' : 'bridge.optionalName') }}</span><Input
                 v-model="nameDraft"
+                class="h-10"
                 :disabled="busy"
                 :maxlength="256"
             /></label>
