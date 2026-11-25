@@ -47,26 +47,26 @@ const sharedHealth = computed(() => {
                 size="40"
                 shape="regular"
                 scrollable
-                class="gap-1.5 bg-transparent p-0"
+                class="gap-1.5 bg-transparent p-0 [&_[data-slot=tabs-indicator]]:border [&_[data-slot=tabs-indicator]]:border-ds-fill-brand-transparent-20 [&_[data-slot=tabs-indicator]]:bg-ds-fill-brand-transparent-10 [&_[data-slot=tabs-indicator]]:shadow-none"
                 :aria-label="t('skills.resourceTabs')"
             >
                 <TabsTrigger
                     value="shared"
-                    class="px-4 data-active:!border-ds-fill-brand-transparent-20 data-active:!bg-ds-fill-brand-transparent-10 data-active:!text-ds-text-brand data-active:!shadow-none sm:px-5"
+                    class="px-4 data-active:!text-ds-text-brand sm:px-5"
                 >
                     <Icon name="askx-objects:skills" />{{ t('skills.sharedSkillsTab') }}
                     <span class="rounded-full bg-ds-fill-bw-transparent-5 px-1.5 py-0.5 font-mono text-[10px] leading-none text-ds-text-helper">{{ sharedSkills.length }}</span>
                 </TabsTrigger>
                 <TabsTrigger
                     value="local"
-                    class="px-4 data-active:!border-ds-fill-brand-transparent-20 data-active:!bg-ds-fill-brand-transparent-10 data-active:!text-ds-text-brand data-active:!shadow-none sm:px-5"
+                    class="px-4 data-active:!text-ds-text-brand sm:px-5"
                 >
                     <Icon name="askx-objects:file" />{{ t('skills.localSkillsTab') }}
                     <span class="rounded-full bg-ds-fill-bw-transparent-5 px-1.5 py-0.5 font-mono text-[10px] leading-none text-ds-text-helper">{{ localSkills.length }}</span>
                 </TabsTrigger>
                 <TabsTrigger
                     value="stats"
-                    class="px-4 data-active:!border-ds-fill-brand-transparent-20 data-active:!bg-ds-fill-brand-transparent-10 data-active:!text-ds-text-brand data-active:!shadow-none sm:px-5"
+                    class="px-4 data-active:!text-ds-text-brand sm:px-5"
                 >
                     <Icon name="askx-objects:layers" />{{ t('skills.statsTab') }}
                 </TabsTrigger>
