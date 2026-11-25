@@ -793,6 +793,8 @@
     "transactional": "Transaction protected"
   },
   "bridge": {
+    "showMoreProjects": "Show more projects in {name}",
+    "showMoreThreads": "Show more conversations in {name}",
     "expandItem": "Expand {name}",
     "collapseItem": "Collapse {name}",
     "searchProjects": "Search projects or paths",

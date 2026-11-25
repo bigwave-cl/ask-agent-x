@@ -793,6 +793,8 @@
     "transactional": "事务保护"
   },
   "bridge": {
+    "showMoreProjects": "展开显示{name}的更多项目",
+    "showMoreThreads": "展开显示{name}的更多会话",
     "expandItem": "展开{name}",
     "collapseItem": "收起{name}",
     "searchProjects": "搜索项目或路径",

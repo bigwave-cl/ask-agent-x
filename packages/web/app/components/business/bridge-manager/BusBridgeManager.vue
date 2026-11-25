@@ -202,86 +202,104 @@ onUnmounted(() => { active = false; navigationGeneration++ })
                                 </CollapsibleTrigger>
                             </div>
                             <CollapsibleContent class="overflow-hidden data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up motion-reduce:animate-none">
-                                <div class="ml-3 space-y-2 border-l pt-2 pl-3">
-                                    <CollapsibleRoot
-                                        v-for="entry in group.projects"
-                                        :key="entry.project.path"
-                                        v-slot="{ open: projectExpanded }"
-                                        default-open
-                                        :unmount-on-hide="false"
+                                <div class="ml-3 border-l pt-2 pl-3">
+                                    <CsProgressiveList
+                                        v-slot="{ items: visibleProjects }"
+                                        :items="group.projects"
+                                        :expanded="groupExpanded"
+                                        :label="t('bridge.showMoreProjects', { name: group.name })"
+                                        chunk-class="space-y-2"
+                                        batch-class="pt-2"
                                     >
-                                        <div class="flex items-center gap-1">
-                                            <CollapsibleTrigger as-child>
-                                                <Button
-                                                    variant="ghost"
-                                                    :size="36"
-                                                    class="min-w-0 flex-1 justify-start gap-2 px-2"
-                                                    :class="entry.project.path === selectedProjectPath && group.chatId === selectedChatId ? 'bg-muted text-primary' : ''"
-                                                    :aria-label="t(projectExpanded ? 'bridge.collapseItem' : 'bridge.expandItem', { name: entry.project.name })"
-                                                    @click="selectGroup(group.chatId); selectProject(entry)"
-                                                >
-                                                    <Icon
-                                                        name="askx-objects:folder"
-                                                        class="size-4 shrink-0"
-                                                    />
-                                                    <span class="truncate text-xs">{{ entry.project.name }}</span>
-                                                    <span
-                                                        v-if="!entry.available"
-                                                        class="inline-flex shrink-0 items-center gap-1 text-[10px] text-destructive"
-                                                        :title="t('bridge.projectUnavailableHint')"
-                                                    >
-                                                        <Icon
-                                                            name="askx-status:error"
-                                                            class="size-3"
-                                                        />{{ t('bridge.projectUnavailable') }}
-                                                    </span>
-                                                    <span
-                                                        v-else-if="!entry.active"
-                                                        class="shrink-0 text-[10px] text-muted-foreground"
-                                                    >{{ t('bridge.history') }}</span>
-                                                </Button>
-                                            </CollapsibleTrigger>
-
-                                            <BusBridgeItemMenu
-                                                kind="project"
-                                                :mutations-disabled="!entry.available"
-                                                :item-id="entry.project.path"
-                                                :label="entry.project.name"
-                                                @settings="openProjectPanel(entry.project.path)"
-                                                @changed="catalogChanged"
-                                            />
-                                        </div>
-                                        <CollapsibleContent class="overflow-hidden data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up motion-reduce:animate-none">
-                                            <div class="ml-2 space-y-0.5 border-l border-border/70 pt-1 pl-2">
-                                                <div
-                                                    v-for="thread in entry.sessions"
-                                                    :key="thread.id"
-                                                    class="flex items-center gap-1"
-                                                >
+                                        <CollapsibleRoot
+                                            v-for="entry in visibleProjects"
+                                            :key="entry.project.path"
+                                            v-slot="{ open: projectExpanded }"
+                                            :default-open="entry.project.path === group.projects[0]?.project.path"
+                                            :unmount-on-hide="false"
+                                        >
+                                            <div class="flex items-center gap-1">
+                                                <CollapsibleTrigger as-child>
                                                     <Button
                                                         variant="ghost"
                                                         :size="36"
-                                                        class="min-w-0 flex-1 justify-start px-2 text-left"
-                                                        :class="thread.id === selectedThreadId ? 'bg-primary/10 text-primary' : ''"
-                                                        @click="selectThread(group, entry, thread)"
+                                                        class="min-w-0 flex-1 justify-start gap-2 px-2"
+                                                        :class="entry.project.path === selectedProjectPath && group.chatId === selectedChatId ? 'bg-muted text-primary' : ''"
+                                                        :aria-label="t(projectExpanded ? 'bridge.collapseItem' : 'bridge.expandItem', { name: entry.project.name })"
+                                                        @click="selectGroup(group.chatId); selectProject(entry)"
                                                     >
                                                         <Icon
-                                                            name="askx-objects:chat"
-                                                            class="size-3.5 shrink-0"
-                                                        /><span class="truncate text-xs">{{ thread.title || thread.id }}</span>
+                                                            name="askx-objects:folder"
+                                                            class="size-4 shrink-0"
+                                                        />
+                                                        <span class="truncate text-xs">{{ entry.project.name }}</span>
+                                                        <span
+                                                            v-if="!entry.available"
+                                                            class="inline-flex shrink-0 items-center gap-1 text-[10px] text-destructive"
+                                                            :title="t('bridge.projectUnavailableHint')"
+                                                        >
+                                                            <Icon
+                                                                name="askx-status:error"
+                                                                class="size-3"
+                                                            />{{ t('bridge.projectUnavailable') }}
+                                                        </span>
+                                                        <span
+                                                            v-else-if="!entry.active"
+                                                            class="shrink-0 text-[10px] text-muted-foreground"
+                                                        >{{ t('bridge.history') }}</span>
                                                     </Button>
-                                                    <BusBridgeItemMenu
-                                                        kind="thread"
-                                                        :disabled="!entry.available"
-                                                        :item-id="thread.id"
-                                                        :project-path="entry.project.path"
-                                                        :label="thread.title || thread.id"
-                                                        @changed="catalogChanged"
-                                                    />
-                                                </div>
+                                                </CollapsibleTrigger>
+
+                                                <BusBridgeItemMenu
+                                                    kind="project"
+                                                    :mutations-disabled="!entry.available"
+                                                    :item-id="entry.project.path"
+                                                    :label="entry.project.name"
+                                                    @settings="openProjectPanel(entry.project.path)"
+                                                    @changed="catalogChanged"
+                                                />
                                             </div>
-                                        </CollapsibleContent>
-                                    </CollapsibleRoot>
+                                            <CollapsibleContent class="overflow-hidden data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up motion-reduce:animate-none">
+                                                <div class="ml-2 border-l border-border/70 pt-1 pl-2">
+                                                    <CsProgressiveList
+                                                        v-slot="{ items: visibleThreads }"
+                                                        :items="entry.sessions"
+                                                        :expanded="projectExpanded"
+                                                        :label="t('bridge.showMoreThreads', { name: entry.project.name })"
+                                                        chunk-class="space-y-0.5"
+                                                        batch-class="pt-0.5"
+                                                    >
+                                                        <div
+                                                            v-for="thread in visibleThreads"
+                                                            :key="thread.id"
+                                                            class="flex items-center gap-1"
+                                                        >
+                                                            <Button
+                                                                variant="ghost"
+                                                                :size="36"
+                                                                class="min-w-0 flex-1 justify-start px-2 text-left"
+                                                                :class="thread.id === selectedThreadId ? 'bg-primary/10 text-primary' : ''"
+                                                                @click="selectThread(group, entry, thread)"
+                                                            >
+                                                                <Icon
+                                                                    name="askx-objects:chat"
+                                                                    class="size-3.5 shrink-0"
+                                                                /><span class="truncate text-xs">{{ thread.title || thread.id }}</span>
+                                                            </Button>
+                                                            <BusBridgeItemMenu
+                                                                kind="thread"
+                                                                :disabled="!entry.available"
+                                                                :item-id="thread.id"
+                                                                :project-path="entry.project.path"
+                                                                :label="thread.title || thread.id"
+                                                                @changed="catalogChanged"
+                                                            />
+                                                        </div>
+                                                    </CsProgressiveList>
+                                                </div>
+                                            </CollapsibleContent>
+                                        </CollapsibleRoot>
+                                    </CsProgressiveList>
                                     <p
                                         v-if="!group.projects.length"
                                         class="px-2 py-2 text-xs text-muted-foreground"
