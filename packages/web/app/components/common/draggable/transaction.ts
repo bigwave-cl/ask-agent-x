@@ -37,7 +37,7 @@ export type DragEvent = Sortable.SortableEvent & {
 /** 当前页的组件注册表，只按实际容器查找，不扫描无关列表。 */
 const lists = new Map<HTMLElement, SortableList>()
 /** 浏览器原生拖动同时只有一个事务。 */
-let active: { source: SortableList, snapshots: Map<SortableList, ListSnapshot>, temporary: Set<HTMLElement> } | undefined
+let active: { source: SortableList, snapshots: Map<SortableList, ListSnapshot>, temporary: Set<HTMLElement>, order?: HTMLElement[] } | undefined
 
 /** 注册组件边界。 */
 export function registerList(list: SortableList): void {
@@ -64,6 +64,11 @@ export function visitList(element: HTMLElement): void {
     if (active && list && !active.snapshots.has(list)) active.snapshots.set(list, list.capture())
 }
 
+/** 插入线模式只准备源列表顺序，不在拖动过程中移动 DOM。 */
+export function setInsertionOrder(list: SortableList, order: HTMLElement[]): void {
+    if (active?.source === list && active.snapshots.size === 1) active.order = order
+}
+
 /** 统一恢复两侧节点，再让 Vue 消费新的数据顺序。 */
 function restore(snapshots: Map<SortableList, ListSnapshot>, temporary: Iterable<HTMLElement>): void {
     /** 真实节点集合用于区分官方 ghost 和 clone。 */
@@ -85,7 +90,7 @@ function restore(snapshots: Map<SortableList, ListSnapshot>, temporary: Iterable
 }
 
 /** 计算所有参与方的最终数据；任何一侧过期时一起撤销。 */
-function complete(source: SortableList, snapshots: Map<SortableList, ListSnapshot>, temporary: Iterable<HTMLElement>, event?: DragEvent): void {
+function complete(source: SortableList, snapshots: Map<SortableList, ListSnapshot>, temporary: Iterable<HTMLElement>, event?: DragEvent, order?: HTMLElement[]): void {
     /** 原始 DOM 节点是跨列表和 Swap 的唯一身份映射。 */
     const items = new Map([...snapshots.values()].flatMap(snapshot => snapshot.elements.map((element, index) => [element, snapshot.items[index]] as const)))
     /** 所有提交在还原 DOM 之前准备完毕。 */
@@ -100,7 +105,7 @@ function complete(source: SortableList, snapshots: Map<SortableList, ListSnapsho
     if (event && event.to !== event.from && ![...snapshots.keys()].some(list => list.element === event.to)) valid = false
     for (const [list, snapshot] of snapshots) {
         /** 忽略临时克隆，只读取各列表中的真实节点。 */
-        const next = cloning && list === source ? [...snapshot.items] : Array.from(list.element.children).filter(element => items.has(element as HTMLElement)).map(element => items.get(element as HTMLElement))
+        const next = cloning && list === source ? [...snapshot.items] : (list === source && order ? order : Array.from(list.element.children)).filter(element => items.has(element as HTMLElement)).map(element => items.get(element as HTMLElement))
         valid = valid && snapshot.items.length === snapshot.elements.length && list.valid(snapshot) && list.accepts(next)
         updates.set(list, next)
     }
@@ -119,7 +124,7 @@ export function finishDrag(event: DragEvent): void {
     const transaction = active
     if (!transaction) return
     active = undefined
-    complete(transaction.source, transaction.snapshots, transaction.temporary, event)
+    complete(transaction.source, transaction.snapshots, transaction.temporary, event, transaction.order)
 }
 
 /** 等官方回调及 store.set 全部结束，再恢复 Vue DOM 并提交模型。 */

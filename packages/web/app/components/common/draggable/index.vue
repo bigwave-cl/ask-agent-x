@@ -3,8 +3,10 @@ import type Sortable from 'sortablejs'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { usePreferredReducedMotion } from '@vueuse/core'
 import { getSortable } from '@/utils/getSortable'
-import { beginDrag, cancelDrag, finishInitialOrder, registerList, scheduleFinish, trackTemporary, unregisterList, visitList } from './transaction'
+import { beginDrag, cancelDrag, finishInitialOrder, registerList, scheduleFinish, setInsertionOrder, trackTemporary, unregisterList, visitList } from './transaction'
 import type { DragEvent, SortableList } from './transaction'
+import { useInsertionIndicator } from './useInsertionIndicator'
+import { useDragReleaseGuard } from './useDragReleaseGuard'
 
 /** 原生配置完整透传，简写仅覆盖调用方显式提供的值。 */
 const props = withDefaults(defineProps<{
@@ -24,11 +26,18 @@ const props = withDefaults(defineProps<{
     animation?: number
     /** 显式提供时覆盖 options.swap。 */
     swap?: boolean
+    /** 纵向单列表使用插入线与紧凑预览，放手后才改变顺序。 */
+    insertionIndicator?: boolean
 }>(), { disabled: undefined, swap: undefined })
 /** 每个变更列表仅有一次数据提交。 */
 const emit = defineEmits<{ 'update:modelValue': [items: T[]] }>()
 /** 每个项目的视觉内容由调用方提供。 */
-defineSlots<{ default: (props: { item: T, index: number }) => unknown }>()
+defineSlots<{
+    /** 常规项目内容。 */
+    default: (props: { item: T, index: number }) => unknown
+    /** 插入线模式的紧凑浮动内容，由调用方提供图标与名称。 */
+    preview?: (props: { item: T }) => unknown
+}>()
 /** 官方实例只管理这一层直属项目。 */
 const container = ref<HTMLElement>()
 /** 系统动画偏好具有最终优先级。 */
@@ -59,7 +68,12 @@ const options = computed<Sortable.Options>(() => ({
     ...(props.swap !== undefined ? { swap: props.swap } : {}),
     ...(!validKeys.value ? { disabled: true } : {}),
     ...(reducedMotion.value === 'reduce' ? { animation: 0 } : {}),
+    ...(props.insertionIndicator ? { forceFallback: true, fallbackOnBody: true, fallbackClass: 'cs-draggable-insertion-fallback', ghostClass: 'cs-draggable-insertion-origin', swap: false, multiDrag: false, animation: 0, group: { name: '', pull: false, put: false } } : {}),
 }))
+/** 插入反馈不拥有最终数据，准备结果仍交给共享事务校验。 */
+const indicator = useInsertionIndicator(() => container.value, () => props.modelValue, () => !!props.insertionIndicator && options.value.sort !== false, () => typeof props.options?.onMove === 'function', event => releaseGuard.matches(event), projectMove)
+/** 浮动预览和插入线随手势统一清理。 */
+const { preview, line } = indicator
 /** 当前官方实例。 */
 let instance: Sortable | undefined
 /** 浏览器构造器用于清理回退手势的临时节点。 */
@@ -72,6 +86,38 @@ let generation = 0
 let mounted = false
 /** 上次应用的非回调选项快照，用于避免内联对象引起无意义重建。 */
 let applied: Record<string, unknown> | undefined
+/** 从按下开始覆盖官方 delay 窗口，异常释放统一走实例销毁与恢复。 */
+const releaseGuard = useDragReleaseGuard(() => !!instance && !!Constructor?.dragged && (Constructor.active === instance || Constructor.dragged.parentNode === container.value), () => void restart())
+
+/** 插入线模式的输入入口，默认原生模式不增加释放拦截。 */
+function armReleaseGuard(event: Event): void {
+    if (!props.insertionIndicator || !instance) return
+    /** 官方运行时提供、当前上游类型尚未声明的输入监听开关。 */
+    const pointerInput = (instance.options as Sortable.Options & { /** 是否由官方监听 PointerEvent。 */ supportPointer?: boolean }).supportPointer
+    // 与官方实际监听的输入族一致，避免 supportPointer=false 时被更早的 pointerdown 错误布防。
+    if ((event.type === 'pointerdown') === !!pointerInput) releaseGuard.arm(event)
+}
+
+/** 横向投影没有官方 dragover，仍按相同参数和 this 执行调用方的 onMove 策略。 */
+function projectMove(related: HTMLElement, after: boolean, originalEvent: Event): unknown {
+    /** 当前单列表及仍有效的官方拖动节点。 */
+    const element = container.value
+    /** 官方在 unchoose/end 结束前仍保留 dragged，失效时不允许提交。 */
+    const dragged = Constructor?.dragged
+    if (!instance || !element || !dragged) return false
+    /** 与官方 MoveEvent 同构，目标始终是原列表。 */
+    const event = Object.assign(new Event('move', { bubbles: true, cancelable: true }), {
+        to: element,
+        from: element,
+        dragged,
+        draggedRect: dragged.getBoundingClientRect(),
+        related,
+        relatedRect: related.getBoundingClientRect(),
+        willInsertAfter: after,
+    }) as Sortable.MoveEvent
+    element.dispatchEvent(event)
+    return props.options?.onMove?.call(instance, event, originalEvent)
+}
 
 /** 只复制普通配置对象，保留原生 DOM、函数和其他对象的身份。 */
 function copy(value: unknown): unknown {
@@ -98,14 +144,26 @@ function configuration(): Record<string, unknown> {
 
 /** 销毁手势后清理官方在无事件 destroy 路径遗留的回退节点。 */
 function dispose(): void {
+    indicator.clear()
+    releaseGuard.clear()
     /** 官方 destroy 会先执行插件 drop，事务 owner 随后统一恢复原节点。 */
     const previous = instance
     /** 无事件 drop 不会清除回退 ghost 和 clone。 */
-    const temporary = [Constructor?.ghost, Constructor?.clone]
+    const owns = !!previous && (Constructor?.active ? Constructor.active === previous : Constructor?.dragged?.parentNode === previous.el)
+    /** 官方无事件 drop 会遗留原行样式，必须保存正在拖动的确切节点。 */
+    const dragged = owns ? Constructor?.dragged : undefined
+    /** 只清理当前实例手势的临时节点。 */
+    const temporary = owns ? [Constructor?.ghost, Constructor?.clone] : []
     instance = undefined
     previous?.destroy()
     for (const element of temporary) {
         element?.remove()
+    }
+    if (dragged && previous) {
+        for (const name of [previous.options.ghostClass, previous.options.chosenClass, previous.options.dragClass]) {
+            for (const token of name?.split(/\s+/).filter(Boolean) ?? []) dragged.classList.remove(token)
+        }
+        dragged.style.willChange = ''
     }
 }
 
@@ -138,15 +196,29 @@ function nativeOptions(): Sortable.Options {
             /** 官方事件参数保持原样。 */
             const event = args[0] as DragEvent
             if ((name === 'onChoose' || name === 'onStart') && list) beginDrag(list)
+            if (props.insertionIndicator && name === 'onChoose') indicator.choose(event)
+            if (props.insertionIndicator && name === 'onStart') indicator.start()
             trackTemporary([event.clone, ...(event.clones ?? []), Constructor?.ghost])
             try {
                 /** onMove 的 false、-1、1 必须原样返回给官方。 */
                 const returned = callback?.apply(this, args)
+                if (name === 'onMove' && props.insertionIndicator) {
+                    indicator.approve(event as unknown as Sortable.MoveEvent, returned, args[1] as Event | undefined)
+                    return false
+                }
                 if (name === 'onMove' && returned !== false) visitList(event.to)
                 return returned
             }
             finally {
-                if (name === 'onUnchoose' || name === 'onEnd') scheduleFinish(event)
+                if (name === 'onUnchoose' || name === 'onEnd') {
+                    if (props.insertionIndicator && list) {
+                        /** 即使原生 onMove 返回 false，仍按可见插入线准备提交。 */
+                        const order = indicator.finish(event.originalEvent)
+                        if (order) setInsertionOrder(list, order)
+                    }
+                    releaseGuard.clear()
+                    scheduleFinish(event)
+                }
             }
         }
     }
@@ -194,6 +266,7 @@ onMounted(() => {
         restart: () => void restart(),
     }
     registerList(list)
+    for (const type of ['pointerdown', 'mousedown', 'touchstart']) container.value!.addEventListener(type, armReleaseGuard, true)
     document.addEventListener('keydown', cancel)
     void initialize(++generation)
 })
@@ -201,6 +274,7 @@ onBeforeUnmount(() => {
     mounted = false
     ++generation
     document.removeEventListener('keydown', cancel)
+    for (const type of ['pointerdown', 'mousedown', 'touchstart']) container.value?.removeEventListener(type, armReleaseGuard, true)
     if (list) unregisterList(list)
     dispose()
 })
@@ -219,12 +293,87 @@ onBeforeUnmount(() => {
                 :index="index"
             />
         </div>
+        <Teleport
+            v-if="preview"
+            to="body"
+        >
+            <div
+                class="cs-draggable-preview"
+                :style="{ left: `${preview.left}px`, top: `${preview.top}px` }"
+                aria-hidden="true"
+            >
+                <slot
+                    name="preview"
+                    :item="preview.item"
+                >
+                    <slot
+                        :item="preview.item"
+                        :index="preview.index"
+                    />
+                </slot>
+            </div>
+            <div
+                v-if="line"
+                class="cs-draggable-insertion-line"
+                :style="{ left: `${line.left}px`, top: `${line.top}px`, width: `${line.width}px` }"
+                aria-hidden="true"
+            />
+        </Teleport>
     </div>
 </template>
 
 <style scoped>
 .cs-draggable-ghost {
     opacity: 0.35;
+}
+
+.cs-draggable-insertion-origin {
+    opacity: 0.35;
+}
+
+:global(.cs-draggable-insertion-fallback) {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+.cs-draggable-preview {
+    position: fixed;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 248px;
+    max-height: 44px;
+    padding: 8px 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--popover);
+    color: var(--popover-foreground);
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--foreground) 12%, transparent);
+    pointer-events: none;
+}
+
+.cs-draggable-insertion-line {
+    position: fixed;
+    z-index: 9999;
+    height: 2px;
+    background: var(--ds-color-drag-indicator);
+    transform: translateY(-1px);
+    pointer-events: none;
+}
+
+.cs-draggable-insertion-line::before {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 8px;
+    height: 8px;
+    border: 2px solid var(--ds-color-drag-indicator);
+    border-radius: 50%;
+    background: var(--background);
+    content: '';
+    transform: translate(-50%, -50%);
 }
 
 .cs-draggable-swap {
