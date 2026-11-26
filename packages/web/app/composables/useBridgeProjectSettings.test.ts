@@ -147,6 +147,29 @@ describe('项目设置动态入口', () => {
         expect(state.mounted[0]!.unmount).toHaveBeenCalledOnce()
         entry.scope.stop()
     })
+    it('句柄只控制本次打开，手动关闭、切目标与scope释放后失效', () => {
+        /** 当前调用范围与入口。 */
+        const entry = caller()
+        /** 首次打开的句柄。 */
+        const first = entry.openProjectSettings({ kind: 'group', chatId: 'first' })
+        expect(first.isOpen()).toBe(true)
+        /** 新目标取代旧句柄。 */
+        const second = entry.openProjectSettings({ kind: 'group', chatId: 'second' })
+        first.close()
+        expect(first.isOpen()).toBe(false)
+        expect(second.isOpen()).toBe(true)
+        second.close()
+        expect(second.isOpen()).toBe(false)
+        /** 手动关闭同样使句柄失效。 */
+        const third = entry.openProjectSettings({ kind: 'import' })
+        events()['onUpdate:open'](false)
+        expect(third.isOpen()).toBe(false)
+        /** scope释放撤销当前句柄。 */
+        const last = entry.openProjectSettings({ kind: 'import' })
+        entry.scope.stop()
+        expect(last.isOpen()).toBe(false)
+        last.close()
+    })
     it('挂载失败可以重试，销毁调用范围后不能再打开', () => {
         /** 当前入口。 */
         const entry = caller()

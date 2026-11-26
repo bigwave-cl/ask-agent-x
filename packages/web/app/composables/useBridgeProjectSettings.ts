@@ -13,6 +13,13 @@ export type BridgeProjectSettingsOptions = BridgeProjectSettingsTarget & {
     /** 真实写入成功后刷新调用方；调用范围释放后不再执行。 */
     onSaved?: () => void | Promise<void>
 }
+/** 当前打开会话的受控句柄。 */
+export interface BridgeProjectSettingsHandle {
+    /** 仅关闭仍属于本次打开的弹窗。 */
+    close: () => void
+    /** 目标、调用范围与弹窗是否仍有效。 */
+    isOpen: () => boolean
+}
 /** 动态设置会话的调用范围与目标。 */
 interface SettingsSession {
     /** 调用方作用域身份。 */
@@ -25,7 +32,7 @@ interface SettingsSession {
 /** 共享挂载控制器，布局与外部调用采用同一生命周期实现。 */
 interface ProjectSettingsPresenter {
     /** 打开或复用指定目标。 */
-    open: (options: BridgeProjectSettingsOptions, caller: symbol) => void
+    open: (options: BridgeProjectSettingsOptions, caller: symbol) => BridgeProjectSettingsHandle
     /** 释放当前调用方拥有的弹窗。 */
     release: (caller: symbol) => void
     /** 释放布局拥有的挂载资源。 */
@@ -81,12 +88,18 @@ function createProjectSettingsPresenter(control?: BridgeServiceControl): Project
     /** 布局或调用范围的资源控制契约。 */
     const controller: ProjectSettingsPresenter = {
         open(options, caller) {
-            if (!active || import.meta.server) return
+            if (!active || import.meta.server) return { close: () => {}, isOpen: () => false }
             /** 业务身份只来自明确目标，不扫描目录。 */
             const key = JSON.stringify(options.kind === 'group' ? ['group', options.chatId] : options.kind === 'project' ? ['project', options.projectPath] : ['import'])
-            session.value = { options, caller, key }
+            /** 每次打开独立的句柄身份。 */
+            const current = { options, caller, key }
+            session.value = current
             open.value = true
             presenter.open()
+            return {
+                isOpen: () => active && session.value === current && open.value,
+                close: () => { if (active && session.value === current) open.value = false },
+            }
         },
         release(caller) {
             if (session.value?.caller !== caller) return
@@ -120,9 +133,11 @@ export function useBridgeProjectSettings() {
     let active = true
     onScopeDispose(() => { active = false; if (shared) presenter.release(caller); else presenter.dispose() })
     /** 打开群绑定、目录编辑或导入，并保护调用方保存回调。 */
-    function openProjectSettings(options: BridgeProjectSettingsOptions): void {
-        if (!active) return
-        presenter.open({ ...options, onSaved: () => { if (active) return options.onSaved?.() } }, caller)
+    function openProjectSettings(options: BridgeProjectSettingsOptions): BridgeProjectSettingsHandle {
+        if (!active) return { close: () => {}, isOpen: () => false }
+        /** 对外句柄同时受本调用范围约束。 */
+        const handle = presenter.open({ ...options, onSaved: () => { if (active) return options.onSaved?.() } }, caller)
+        return { isOpen: () => active && handle.isOpen(), close: () => { if (active) handle.close() } }
     }
     return { openProjectSettings }
 }
