@@ -94,12 +94,12 @@ export function useDragReleaseGuard(ownsGesture: () => boolean, abort: () => voi
         })
     }
 
-    /** 在 root 的 capture 阶段布防，覆盖官方 choose 之前的 delay 计时窗口。 */
-    function arm(event: Event): void {
-        if (gesture) return
+    /** 在 root 的 capture 阶段布防；返回是否新建手势，避免其他输入覆盖按下快照。 */
+    function arm(event: Event): boolean {
+        if (gesture) return false
         /** 当前主输入。 */
         const pointer = event as PointerEvent
-        if (event.type !== 'touchstart' && (pointer.button !== 0 || pointer.isPrimary === false)) return
+        if (event.type !== 'touchstart' && (pointer.button !== 0 || pointer.isPrimary === false)) return false
         /** 触控选择发起手势的那一根手指。 */
         const touch = (event as TouchEvent).changedTouches?.[0]
         gesture = event.type === 'pointerdown' ? { kind: 'pointer', id: pointer.pointerId, ending: false, since: event.timeStamp } : event.type === 'touchstart' ? { kind: 'touch', id: touch?.identifier, ending: false, since: event.timeStamp } : { kind: 'mouse', ending: false, since: event.timeStamp }
@@ -110,6 +110,7 @@ export function useDragReleaseGuard(ownsGesture: () => boolean, abort: () => voi
         window.addEventListener('blur', interrupt)
         window.addEventListener('pagehide', interrupt)
         defer(current, () => { if (!ownsGesture()) clear() })
+        return true
     }
 
     return { arm, clear, matches }

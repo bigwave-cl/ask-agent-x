@@ -160,6 +160,14 @@ describe('插入线手势异常释放保护', () => {
         expect(harness.abort).not.toHaveBeenCalled()
     })
 
+    it('同一手势只接受首次按下，兼容按下不能覆盖抓取点快照', () => {
+        /** 当前手势 owner。 */
+        const harness = createHarness()
+        expect(harness.guard.arm(input('touchstart', 1, { changedTouches: [{ identifier: 11 }] }))).toBe(true)
+        expect(harness.guard.arm(input('mousedown'))).toBe(false)
+        expect(harness.guard.arm(input('touchstart', 1, { changedTouches: [{ identifier: 22 }] }))).toBe(false)
+    })
+
     it('触点取消中止，但 pointerType=touch 的 buttons=0 不误判鼠标丢失释放', async () => {
         /** 当前手势 owner。 */
         const harness = createHarness()

@@ -67,9 +67,9 @@ function createHarness(hasMoveCallback = false, projectedMove?: (related: HTMLEl
         scroll: () => { offset -= 24; document.dispatchEvent(new Event('scroll')) },
         replace: () => { items = [{ id: 'replacement' }]; cancelDrag(list) },
         cancel: () => cancelDrag(list),
-        start: (from: number) => {
+        start: (from: number, originalEvent = pointer(110 + from * 48, 'pointerdown')) => {
             beginDrag(list)
-            indicator.choose({ item: elements[from]!, originalEvent: pointer(110 + from * 48, 'pointerdown') } as Parameters<typeof indicator.choose>[0])
+            indicator.choose({ item: elements[from]!, originalEvent } as Parameters<typeof indicator.choose>[0])
             indicator.start()
         },
         finish: async (y: number, type = 'pointerup', x = 50) => {
@@ -89,6 +89,51 @@ afterEach(() => {
 })
 
 describe('插入线单列表事务', () => {
+    it.each(['icon', 'text'])('从 handle 内的 %s 按下时记录实际 handle 抓取比例，首帧与边缘不偏移', async targetType => {
+        /** 当前测试的实际控制器和共享事务。 */
+        const harness = createHarness()
+        /** 按下时的 handle 尺寸，后续布局变化不应重新计算比例。 */
+        let rectangle = { left: 40, top: 105, width: 200, height: 20 }
+        /** 实际 Sortable handle，而非整行 item。 */
+        const handle = { getBoundingClientRect: () => rectangle }
+        /** 图标或文字的父元素向上匹配实际 handle。 */
+        const icon = { closest: (selector: string) => selector === '.handle' ? handle : harness.elements[0] }
+        Object.assign(harness.elements[0]!, { contains: (element: unknown) => element === handle })
+        /** 按下位置对应 handle 的四分之一处。 */
+        const down = pointer(110, 'pointerdown', 90)
+        Object.defineProperty(down, 'target', { value: targetType === 'text' ? { parentElement: icon } : icon })
+        harness.indicator.grab(down, '.handle')
+        rectangle = { left: 0, top: 0, width: 1000, height: 200 }
+        harness.start(0, down)
+        expect(harness.indicator.preview.value).toMatchObject({ left: 90, top: 110, anchorX: 0.25, anchorY: 0.25 })
+        harness.document.dispatchEvent(pointer(200, 'pointermove', 750))
+        expect(harness.indicator.preview.value).toMatchObject({ left: 750, top: 200, anchorX: 0.25, anchorY: 0.25 })
+        harness.document.dispatchEvent(pointer(1, 'pointermove', 999))
+        expect(harness.indicator.preview.value).toMatchObject({ left: 999, top: 1, anchorX: 0.25, anchorY: 0.25 })
+        await harness.finish(1, 'pointerup', 999)
+        expect(harness.update).not.toHaveBeenCalled()
+    })
+
+    it('没有 handle 时使用 item 比例，预览尺寸变化不需要重新捕获位置', () => {
+        /** 当前测试的实际控制器和共享事务。 */
+        const harness = createHarness()
+        harness.start(0, pointer(130, 'pointerdown', 95))
+        expect(harness.indicator.preview.value).toMatchObject({ left: 95, top: 130, anchorX: 0.25, anchorY: 0.75 })
+        // 组件使用 translate(-25%, -75%)，百分比自动基于预览自身尺寸，避免首帧测量跳动。
+        harness.document.dispatchEvent(pointer(200, 'pointermove', 750))
+        expect(harness.indicator.preview.value).toMatchObject({ left: 750, top: 200, anchorX: 0.25, anchorY: 0.75 })
+    })
+
+    it('缺少 originalEvent 时安全回退到中心，首次移动后显示预览', () => {
+        /** 当前测试的实际控制器和共享事务。 */
+        const harness = createHarness()
+        harness.indicator.choose({ item: harness.elements[0] } as Parameters<typeof harness.indicator.choose>[0])
+        harness.indicator.start()
+        expect(harness.indicator.preview.value).toBeUndefined()
+        harness.document.dispatchEvent(pointer(110))
+        expect(harness.indicator.preview.value).toMatchObject({ left: 50, top: 110, anchorX: 0.5, anchorY: 0.5 })
+    })
+
     it.each([
         [0, 270, ['b', 'c', 'd', 'a'], 284],
         [3, 110, ['d', 'a', 'b', 'c'], 100],

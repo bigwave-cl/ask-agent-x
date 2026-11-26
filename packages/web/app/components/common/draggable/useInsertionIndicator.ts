@@ -9,14 +9,24 @@ interface Point {
     y: number
 }
 
+/** 按下点在 handle 或 item 内的归一化位置。 */
+interface GrabAnchor {
+    /** 横向比例，范围为零到一。 */
+    x: number
+    /** 纵向比例，范围为零到一。 */
+    y: number
+}
+
 /** 插入线模式只负责反馈和候选节点顺序，提交仍交给共享事务。 */
 export function useInsertionIndicator<T>(root: () => HTMLElement | undefined, items: () => readonly T[], enabled: () => boolean, hasMoveCallback: () => boolean, acceptsInput: (event: Event) => boolean = () => true, projectedMove?: (related: HTMLElement, after: boolean, event: Event) => unknown) {
     /** 浮动预览的当前内容和视口位置。 */
-    const preview = shallowRef<{ item: T, index: number, left: number, top: number }>()
+    const preview = shallowRef<{ item: T, index: number, left: number, top: number, anchorX: number, anchorY: number }>()
     /** 插入线的视口位置和宽度。 */
     const line = shallowRef<{ left: number, top: number, width: number }>()
     /** 当前手势的原始项目节点，拖动过程中不移动这些节点。 */
-    let drag: { elements: HTMLElement[], item: T, from: number, point?: Point, started: boolean, boundary?: number, touchId?: number, event?: Event } | undefined
+    let drag: { elements: HTMLElement[], item: T, from: number, point?: Point, started: boolean, boundary?: number, touchId?: number, event?: Event, anchor: GrabAnchor } | undefined
+    /** 按下时立即捕获实际 handle 的比例，避免 delay 期间布局变化影响抓取点。 */
+    let pendingGrab: { event: Event, anchor: GrabAnchor } | undefined
     /** 用户原生 onMove 对各目标的判断，不能因拦截原生换位而绕过。 */
     const verdicts = new Map<HTMLElement, boolean | -1 | 1 | undefined>()
 
@@ -29,13 +39,40 @@ export function useInsertionIndicator<T>(root: () => HTMLElement | undefined, it
         return point && Number.isFinite(point.clientX) && Number.isFinite(point.clientY) ? { x: point.clientX, y: point.clientY } : undefined
     }
 
+    /** 嵌套图标或文字按下时向上找到实际 handle；未配置 handle 时使用 item。 */
+    function anchorFrom(event?: Event, item?: HTMLElement, handle?: string): GrabAnchor {
+        /** SVG 元素支持 closest，文字节点则从 parentElement 开始。 */
+        const target = event?.target as (Element & { parentElement: Element | null }) | null | undefined
+        /** 不依赖全局 Element，以兼容测试与跨文档节点。 */
+        const source = typeof target?.closest === 'function' ? target : target?.parentElement
+        /** 组件直属 item 是无 handle 时的抓取参考。 */
+        const row = item ?? source?.closest('.cs-draggable-item') as HTMLElement | undefined
+        /** 只允许使用该 item 内的 handle。 */
+        const candidate = handle ? source?.closest(handle) : row
+        /** 按下瞬间的参考矩形。 */
+        const rectangle = (candidate && (candidate === row || row?.contains(candidate)) ? candidate : row)?.getBoundingClientRect()
+        /** 多指时仍只读取此次按下的触点。 */
+        const touchId = (event as TouchEvent | undefined)?.changedTouches?.[0]?.identifier
+        /** 捕获阶段的原始指针，不使用拖动后的当前位置。 */
+        const point = pointFrom(event, touchId)
+        return {
+            x: point && rectangle?.width ? Math.max(0, Math.min(1, (point.x - rectangle.left) / rectangle.width)) : 0.5,
+            y: point && rectangle?.height ? Math.max(0, Math.min(1, (point.y - rectangle.top) / rectangle.height)) : 0.5,
+        }
+    }
+
+    /** 复用已有按下捕获入口，无需增加任何事件监听。 */
+    function grab(event: Event, handle?: string): void {
+        pendingGrab = { event, anchor: anchorFrom(event, undefined, handle) }
+    }
+
     /** 滚动、尺寸或指针位置变化时，从当前真实几何重新计算插入位置。 */
     function update(): void {
         line.value = undefined
         if (!drag?.started || !drag.point) return
-        /** 浮动预览与鼠标保持间隔，不参与命中判断。 */
+        /** CSS 按预览自身尺寸应用相同比例，首帧与视口边缘均保持实际抓取点。 */
         const point = drag.point
-        preview.value = { item: drag.item, index: drag.from, left: Math.max(8, Math.min(point.x + 14, window.innerWidth - 260)), top: Math.max(8, Math.min(point.y + 14, window.innerHeight - 56)) }
+        preview.value = { item: drag.item, index: drag.from, left: point.x, top: point.y, anchorX: drag.anchor.x, anchorY: drag.anchor.y }
         /** 窗口内的横向位置都投影到原列表，纵向仍受列表和滚动裁剪约束。 */
         const element = root()
         if (!element || point.x < 0 || point.x >= window.innerWidth || point.y < 0 || point.y >= window.innerHeight) { drag.boundary = undefined; return }
@@ -95,6 +132,7 @@ export function useInsertionIndicator<T>(root: () => HTMLElement | undefined, it
     /** 同一入口清除指针监听、浮层和候选位置。 */
     function clear(): void {
         drag = undefined
+        pendingGrab = undefined
         preview.value = undefined
         line.value = undefined
         verdicts.clear()
@@ -107,6 +145,8 @@ export function useInsertionIndicator<T>(root: () => HTMLElement | undefined, it
 
     /** choose 发生在官方创建 ghost 前，此时保存真实行及原始索引。 */
     function choose(event: Sortable.SortableEvent & { originalEvent?: Event }): void {
+        /** clear 会释放上一次手势，因此先保留本次按下的抓取比例。 */
+        const anchor = pendingGrab && pendingGrab.event === event.originalEvent ? pendingGrab.anchor : anchorFrom(event.originalEvent, event.item)
         clear()
         /** 单列表插入模式的当前容器。 */
         const element = root()
@@ -118,7 +158,7 @@ export function useInsertionIndicator<T>(root: () => HTMLElement | undefined, it
         if (from < 0 || elements.length !== items().length) return
         /** 多指场景中只跟随此次按下的手指，不依赖 touches 数组位置。 */
         const touchId = (event.originalEvent as TouchEvent | undefined)?.changedTouches?.[0]?.identifier
-        drag = { elements, item: items()[from]!, from, point: pointFrom(event.originalEvent, touchId), started: false, touchId, event: event.originalEvent }
+        drag = { elements, item: items()[from]!, from, point: pointFrom(event.originalEvent, touchId), started: false, touchId, event: event.originalEvent, anchor }
         document.addEventListener('pointermove', move, { capture: true, passive: true })
         document.addEventListener('mousemove', move, { capture: true, passive: true })
         document.addEventListener('touchmove', move, { capture: true, passive: true })
@@ -162,5 +202,5 @@ export function useInsertionIndicator<T>(root: () => HTMLElement | undefined, it
         finally { clear() }
     }
 
-    return { preview, line, choose, start, approve, finish, clear }
+    return { preview, line, grab, choose, start, approve, finish, clear }
 }

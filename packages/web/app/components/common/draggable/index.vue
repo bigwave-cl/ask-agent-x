@@ -95,7 +95,9 @@ function armReleaseGuard(event: Event): void {
     /** 官方运行时提供、当前上游类型尚未声明的输入监听开关。 */
     const pointerInput = (instance.options as Sortable.Options & { /** 是否由官方监听 PointerEvent。 */ supportPointer?: boolean }).supportPointer
     // 与官方实际监听的输入族一致，避免 supportPointer=false 时被更早的 pointerdown 错误布防。
-    if ((event.type === 'pointerdown') === !!pointerInput) releaseGuard.arm(event)
+    if ((event.type === 'pointerdown') === !!pointerInput) {
+        if (releaseGuard.arm(event)) indicator.grab(event, instance.options.handle)
+    }
 }
 
 /** 横向投影没有官方 dragover，仍按相同参数和 this 执行调用方的 onMove 策略。 */
@@ -299,7 +301,7 @@ onBeforeUnmount(() => {
         >
             <div
                 class="cs-draggable-preview"
-                :style="{ left: `${preview.left}px`, top: `${preview.top}px` }"
+                :style="{ left: `${preview.left}px`, top: `${preview.top}px`, transform: `translate(${-preview.anchorX * 100}%, ${-preview.anchorY * 100}%)` }"
                 aria-hidden="true"
             >
                 <slot
