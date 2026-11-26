@@ -31,6 +31,7 @@ const { orderedGroups, isGroupOpen, setGroupOpen } = useBridgeSidebarGroupPrefer
 let suppressGroupClick = false
 /** 仅群标题可发起排序，触屏保留短按展开与纵向滚动。 */
 const groupDragOptions: Sortable.Options = {
+    fallbackTolerance: 2,
     delay: 180,
     delayOnTouchOnly: true,
     touchStartThreshold: 4,
