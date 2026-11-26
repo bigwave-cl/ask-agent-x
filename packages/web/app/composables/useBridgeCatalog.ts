@@ -16,6 +16,9 @@ export interface BridgeCatalogGroupView extends Pick<BridgeSessionCatalogGroup, 
     /** 当前及历史项目展示列表。 */
     projects: BridgeCatalogProjectView[]
 }
+/** 新会话群选项直接使用服务端标准激活项目。 */
+export type BridgeNewSessionGroupOption = Pick<BridgeSessionCatalogGroup, 'chatId' | 'name' | 'activeProject'>
+
 /** 项目管理展示额外标记当前目录可用性。 */
 type BridgeProjectOption = BridgeProject & {
     /** 项目在当前目录中的可用性。 */
@@ -32,12 +35,16 @@ export function useBridgeCatalog() {
     const catalog = ref<{ revision: BridgeSessionCatalog['revision'], groups: BridgeCatalogGroupView[] }>({ revision: 0, groups: [] })
     /** 当前可用的 Codex 项目。 */
     const registeredProjects = ref<BridgeProject[]>([])
+    /** 群、项目与会话身份统一原子提交，模式决定刷新校准策略。 */
+    const selection = ref({ chatId: '', projectPath: '', threadId: '', mode: 'new-draft' as 'new-draft' | 'existing-browse' })
     /** 当前群身份。 */
-    const selectedChatId = ref('')
+    const selectedChatId = computed(() => selection.value.chatId)
     /** 当前项目身份。 */
-    const selectedProjectPath = ref('')
+    const selectedProjectPath = computed(() => selection.value.projectPath)
     /** 当前会话身份。 */
-    const selectedThreadId = ref('')
+    const selectedThreadId = computed(() => selection.value.threadId)
+    /** 新会话选项包括尚未绑定项目的群。 */
+    const newSessionGroups = computed<BridgeNewSessionGroupOption[]>(() => catalog.value.groups.map(({ chatId, name, activeProject }) => ({ chatId, name, activeProject })))
     /** 目录读取状态。 */
     const catalogLoading = ref(false)
     /** 当前页面是否有效。 */
@@ -78,19 +85,25 @@ export function useBridgeCatalog() {
         }
         return [...projects.values()]
     })
-    /** 保留当前选择，避免目录轮询导致页面跳转。 */
+    /** 仅接受服务端激活项目与可用关系一致的项目身份。 */
+    function resolveActiveProject(group: BridgeCatalogGroupView): BridgeProject | null {
+        return group.projects.find(entry => entry.active && entry.available && entry.project.path === group.activeProject?.path && entry.project.projectId === group.activeProject.projectId)?.project ?? null
+    }
+    /** 草稿跟随激活项目，历史浏览保留原项目并校验会话存续。 */
     function reconcileSelection(): void {
-        const group = catalog.value.groups.find(item => item.chatId === selectedChatId.value) ?? catalog.value.groups[0]
+        /** 当前选择对应的最新群记录。 */
+        const group = catalog.value.groups.find(item => item.chatId === selectedChatId.value)
         if (!group) {
-            selectedChatId.value = ''
-            selectedProjectPath.value = ''
-            selectedThreadId.value = ''
+            selection.value = { chatId: '', projectPath: '', threadId: '', mode: 'new-draft' }
             return
         }
-        selectedChatId.value = group.chatId
-        const project = group.projects.find(item => item.project.path === selectedProjectPath.value) ?? group.projects.find(item => item.active) ?? group.projects[0]
-        selectedProjectPath.value = project?.project.path ?? ''
-        if (!project?.sessions.some(thread => thread.id === selectedThreadId.value)) selectedThreadId.value = ''
+        if (selection.value.mode === 'new-draft') {
+            selection.value = { chatId: group.chatId, projectPath: resolveActiveProject(group)?.path ?? '', threadId: '', mode: 'new-draft' }
+            return
+        }
+        /** 历史项目只按已选路径恢复，不回退到群激活项目。 */
+        const entry = group.projects.find(item => item.project.path === selectedProjectPath.value)
+        selection.value = { ...selection.value, projectPath: entry?.project.path ?? '', threadId: entry?.sessions.some(thread => thread.id === selectedThreadId.value) ? selectedThreadId.value : '' }
     }
 
     /** 读取群组目录；调用方等待期间到达的刷新也一并完成。 */
@@ -133,14 +146,11 @@ export function useBridgeCatalog() {
 
     /** 根据群身份切换目录上下文。 */
     function selectGroup(chatId: string): void {
-        selectedChatId.value = chatId
-        selectedProjectPath.value = catalog.value.groups.find(group => group.chatId === chatId)?.activeProject?.path || ''
-        selectedThreadId.value = ''
+        if (!selectNewThread(chatId)) selection.value = { chatId, projectPath: '', threadId: '', mode: 'new-draft' }
     }
-    /** 根据项目路径身份切换项目。 */
+    /** 根据项目路径身份切换项目，兼容历史项目浏览。 */
     function selectProject(projectPath: string): void {
-        selectedProjectPath.value = projectPath
-        selectedThreadId.value = ''
+        selection.value = { ...selection.value, projectPath, threadId: '', mode: 'existing-browse' }
     }
     /**
      * 从最新目录解析身份后提交选择，拒绝已删除或失效的项目与会话。
@@ -150,9 +160,7 @@ export function useBridgeCatalog() {
         /** 最新目录中的目标项目。 */
         const entry = catalog.value.groups.find(group => group.chatId === chatId)?.projects.find(item => item.project.path === projectPath)
         if (!entry?.available || !entry.sessions.some(thread => thread.id === threadId)) return false
-        selectedChatId.value = chatId
-        selectedProjectPath.value = projectPath
-        selectedThreadId.value = threadId
+        selection.value = { chatId, projectPath, threadId, mode: 'existing-browse' }
         return true
     }
     /**
@@ -161,13 +169,25 @@ export function useBridgeCatalog() {
      */
     function archiveThread(threadId: string): boolean {
         if (selectedThreadId.value !== threadId) return false
-        selectedThreadId.value = ''
+        selection.value = { ...selection.value, threadId: '' }
         return true
     }
-    /** 回到当前群可写项目的新会话上下文。 */
-    function selectNewThread(): void {
-        selectedProjectPath.value = selectedGroup.value?.activeProject?.path || ''
-        selectedThreadId.value = ''
+    /**
+     * 提交空草稿，或从最新目录选择指定群的有效激活项目。
+     * @returns 指定群可新建或成功清空选择时返回 true；无效身份不改变选择。
+     */
+    function selectNewThread(chatId?: string): boolean {
+        if (chatId === undefined) {
+            selection.value = { chatId: '', projectPath: '', threadId: '', mode: 'new-draft' }
+            return true
+        }
+        /** 最新目录中指定群的有效激活项目。 */
+        const group = catalog.value.groups.find(item => item.chatId === chatId)
+        /** 新会话可写的项目关系。 */
+        const project = group ? resolveActiveProject(group) : null
+        if (!project) return false
+        selection.value = { chatId, projectPath: project.path, threadId: '', mode: 'new-draft' }
+        return true
     }
     /** 标题最终只提交到当前目录 owner，所有入口共享同一份显示值。 */
     function updateThreadTitle(threadId: string, title: string): void {
@@ -179,12 +199,12 @@ export function useBridgeCatalog() {
     /** 新建会话先加入本地目录，下一次目录读取会校准同一记录。 */
     function acceptThread(thread: BridgeCatalogThreadView): void {
         if (selectedProjectEntry.value && !selectedProjectEntry.value.sessions.some(item => item.id === thread.id)) selectedProjectEntry.value.sessions.unshift({ ...thread, updatedAt: thread.updatedAt ?? new Date().toISOString() })
-        selectedThreadId.value = thread.id
+        selection.value = { ...selection.value, threadId: thread.id, mode: 'existing-browse' }
     }
     onMounted(() => { active = true; void loadCatalog() })
     onUnmounted(() => { active = false; generation++; catalogDirty = false; catalogLoading.value = false })
     return {
-        catalog: readonly(catalog), sidebarGroups: readonly(sidebarGroups), catalogLoading: readonly(catalogLoading), projectOptions: readonly(projectOptions),
+        catalog: readonly(catalog), newSessionGroups: readonly(newSessionGroups), sidebarGroups: readonly(sidebarGroups), catalogLoading: readonly(catalogLoading), projectOptions: readonly(projectOptions),
         selectedChatId: readonly(selectedChatId), selectedProjectPath: readonly(selectedProjectPath), selectedThreadId: readonly(selectedThreadId),
         selectedGroup: readonly(selectedGroup), selectedProjectEntry: readonly(selectedProjectEntry), selectedProject: readonly(selectedProject), selectedThread: readonly(selectedThread),
         loadCatalog, selectGroup, selectProject, selectThread, selectNewThread, archiveThread, updateThreadTitle, acceptThread,

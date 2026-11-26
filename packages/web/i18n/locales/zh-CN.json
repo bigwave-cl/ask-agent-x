@@ -793,6 +793,7 @@
     "transactional": "事务保护"
   },
   "bridge": {
+    "chooseGroupProject": "选择群聊项目",
     "showMoreProjects": "展开显示{name}的更多项目",
     "showMoreThreads": "展开显示{name}的更多会话",
     "expandItem": "展开{name}",

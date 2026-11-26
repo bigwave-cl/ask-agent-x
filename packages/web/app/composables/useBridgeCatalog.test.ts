@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { isReadonly } from 'vue'
+import { isReadonly, watch } from 'vue'
 import type { BridgeSessionCatalog } from '@askx/module-feishu-bridge/session-catalog'
 import type { BridgeProject } from '@askx/module-feishu-bridge/project-service'
 import { useBridgeCatalog } from './useBridgeCatalog'
@@ -92,7 +92,7 @@ describe('useBridgeCatalog', () => {
         expect(owner.selectedThread.value?.title).toBe('新名称')
         owner.selectProject('/history')
         expect(owner.selectedProjectEntry.value?.available).toBe(false)
-        owner.selectNewThread()
+        owner.selectNewThread('group')
         owner.acceptThread({ id: 'new', title: '新会话' })
         expect(owner.selectedProject.value?.path).toBe('/active')
         expect(owner.selectedThread.value?.id).toBe('new')
@@ -136,6 +136,94 @@ describe('useBridgeCatalog', () => {
         await owner.loadCatalog()
         expect(owner.selectThread('group', '/active', 'thread')).toBe(false)
         expect(owner.selectedThreadId.value).toBe('')
+    })
+
+    it('空草稿跨加载保持空选择，选项包含未绑定群', async () => {
+        /** 服务端包含未绑定群。 */
+        const result = catalog()
+        result.groups.push({ chatId: 'unbound', name: '未绑定', activeProject: null, projects: [] })
+        vi.stubGlobal('$fetch', vi.fn(async (url: string) => url.endsWith('/catalog') ? result : { projects: [] }))
+        /** 当前目录 owner。 */
+        const owner = useBridgeCatalog()
+        hooks.mounted[0]!()
+        await owner.loadCatalog()
+        expect(owner.selectedChatId.value).toBe('')
+        expect(owner.newSessionGroups.value.map(group => [group.chatId, group.activeProject?.path ?? null])).toEqual([['group', '/active'], ['unbound', null]])
+        expect(isReadonly(owner.newSessionGroups)).toBe(true)
+        expect(owner.selectNewThread('group')).toBe(true)
+        expect(owner.selectedProjectPath.value).toBe('/active')
+        expect(owner.selectNewThread()).toBe(true)
+        await owner.loadCatalog()
+        expect([owner.selectedChatId.value, owner.selectedProjectPath.value, owner.selectedThreadId.value]).toEqual(['', '', ''])
+    })
+
+    it('拒绝无激活、不可用、过期身份，保留旧选择', async () => {
+        /** 可在刷新间替换的目录快照。 */
+        let result = catalog()
+        vi.stubGlobal('$fetch', vi.fn(async (url: string) => url.endsWith('/catalog') ? result : { projects: [] }))
+        /** 当前目录 owner。 */
+        const owner = useBridgeCatalog()
+        hooks.mounted[0]!()
+        await owner.loadCatalog()
+        owner.selectThread('group', '/active', 'thread')
+        for (const invalid of ['missing', 'unavailable', 'stale', 'inactive']) {
+            result = catalog()
+            if (invalid === 'missing') result.groups[0]!.activeProject = null
+            if (invalid === 'unavailable') result.groups[0]!.projects[0]!.available = false
+            if (invalid === 'stale') result.groups[0]!.activeProject!.projectId = 'outdated'
+            if (invalid === 'inactive') result.groups[0]!.projects[0]!.active = false
+            await owner.loadCatalog()
+            expect(owner.selectNewThread('group')).toBe(false)
+            expect(owner.selectNewThread('deleted')).toBe(false)
+            expect([owner.selectedChatId.value, owner.selectedProjectPath.value, owner.selectedThreadId.value]).toEqual(['group', '/active', 'thread'])
+        }
+    })
+
+    it('草稿跟随激活项目并处理失效与删除，历史会话保持原项目', async () => {
+        /** 当前响应快照。 */
+        let result = catalog()
+        vi.stubGlobal('$fetch', vi.fn(async (url: string) => url.endsWith('/catalog') ? result : { projects: [] }))
+        /** 当前目录 owner。 */
+        const owner = useBridgeCatalog()
+        hooks.mounted[0]!()
+        await owner.loadCatalog()
+        owner.selectNewThread('group')
+        result = catalog()
+        result.groups[0]!.projects[0]!.active = false
+        result.groups[0]!.activeProject = project('/next')
+        result.groups[0]!.projects.push({ project: project('/next'), active: true, available: true, sessions: [] })
+        await owner.loadCatalog()
+        expect(owner.selectedProjectPath.value).toBe('/next')
+        owner.selectThread('group', '/active', 'thread')
+        await owner.loadCatalog()
+        expect([owner.selectedProjectPath.value, owner.selectedThreadId.value]).toEqual(['/active', 'thread'])
+        owner.selectNewThread('group')
+        result = structuredClone(result)
+        result.groups[0]!.activeProject = null
+        await owner.loadCatalog()
+        expect([owner.selectedChatId.value, owner.selectedProjectPath.value]).toEqual(['group', ''])
+        result = { revision: 4, groups: [] }
+        await owner.loadCatalog()
+        expect(owner.selectedChatId.value).toBe('')
+    })
+
+    it('同步观察选择不会出现混合的群项目与会话身份', async () => {
+        /** 两个独立群目录。 */
+        const result = catalog()
+        result.groups.push({ chatId: 'second', name: '第二群', activeProject: project('/second'), projects: [{ project: project('/second'), active: true, available: true, sessions: [] }] })
+        vi.stubGlobal('$fetch', vi.fn(async (url: string) => url.endsWith('/catalog') ? result : { projects: [] }))
+        /** 当前目录 owner。 */
+        const owner = useBridgeCatalog()
+        hooks.mounted[0]!()
+        await owner.loadCatalog()
+        owner.selectThread('group', '/active', 'thread')
+        /** 同步记录所有对外身份组合。 */
+        const observed: string[][] = []
+        /** 观察外部消费的三个只读身份。 */
+        const stop = watch(() => [owner.selectedChatId.value, owner.selectedProjectPath.value, owner.selectedThreadId.value], value => observed.push(value), { flush: 'sync' })
+        owner.selectNewThread('second')
+        stop()
+        expect(observed).toEqual([['second', '/second', '']])
     })
 
     it('卸载后不提交未完成的目录响应', async () => {

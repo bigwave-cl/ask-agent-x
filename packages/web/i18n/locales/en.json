@@ -793,6 +793,7 @@
     "transactional": "Transaction protected"
   },
   "bridge": {
+    "chooseGroupProject": "Choose group chat project",
     "showMoreProjects": "Show more projects in {name}",
     "showMoreThreads": "Show more conversations in {name}",
     "expandItem": "Expand {name}",
