@@ -4,6 +4,7 @@ import DemoButton from './DemoButton.vue'
 import DemoChoice from './DemoChoice.vue'
 import DemoCodeEditor from './DemoCodeEditor.vue'
 import DemoConfirm from './DemoConfirm.vue'
+import DemoDraggable from './DemoDraggable.vue'
 import DemoMdcRender from './DemoMdcRender.vue'
 import DemoLoading from './DemoLoading.vue'
 import DemoResponsiveOverlay from './DemoResponsiveOverlay.vue'
@@ -15,7 +16,7 @@ import DemoTooltip from './DemoTooltip.vue'
 defineOptions({ name: 'DemoComponentsModule' })
 
 /** 基础组件 Demo 各 Section 的展开状态。 */
-const openSections = reactive({ button: true, choice: false, confirm: false, loading: false, codeEditor: false, mdcRender: false, responsiveOverlay: false, scrollArea: false, select: false, tabs: false, tooltip: false })
+const openSections = reactive({ button: true, choice: false, confirm: false, draggable: false, loading: false, codeEditor: false, mdcRender: false, responsiveOverlay: false, scrollArea: false, select: false, tabs: false, tooltip: false })
 </script>
 
 <template>
@@ -42,7 +43,7 @@ const openSections = reactive({ button: true, choice: false, confirm: false, loa
                     <span class="flex items-center gap-2"><Icon
                         name="askx-objects:model"
                         class="size-3.5 text-primary"
-                    />Section：Button / Choice / Confirm / Loading / Select / Tabs / Tooltip / ScrollArea / CodeEditor / MDC / ResponsiveOverlay</span>
+                    />Section：Button / Choice / Confirm / Draggable / Loading / Select / Tabs / Tooltip / ScrollArea / CodeEditor / MDC / ResponsiveOverlay</span>
                 </div>
             </div>
         </article>
@@ -50,6 +51,7 @@ const openSections = reactive({ button: true, choice: false, confirm: false, loa
         <DemoButton v-model="openSections.button" />
         <DemoChoice v-model="openSections.choice" />
         <DemoConfirm v-model="openSections.confirm" />
+        <DemoDraggable v-model="openSections.draggable" />
         <DemoLoading v-model="openSections.loading" />
         <DemoSelect v-model="openSections.select" />
         <DemoTabs v-model="openSections.tabs" />
