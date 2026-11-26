@@ -1,5 +1,5 @@
 import { Client, AppType, Domain } from '@larksuiteoapi/node-sdk'
-import { BridgeRelationsConflictError, BridgeRelationsStore, bridgeRelationsInputSchema, type BridgeRelations, type BridgeRelationsInput } from '@askx/core/bridge-relations'
+import { BridgeRelationsConflictError, BridgeRelationsStore, bridgeRelationsInputSchema, type BridgeRelations, type BridgeRelationsInput, type BridgeSidebarPreferenceChange } from '@askx/core/bridge-relations'
 import { resolveFeishuCredentials, feishuCredentialsSchema } from '@askx/core/bridge-credentials'
 import type { BridgeFeishuConfig } from '@askx/core/config'
 import { BridgeProjectService, normalizeProjectPath } from './project-service.js'
@@ -50,6 +50,11 @@ export class BridgeGroupService {
 
   /** 返回包含空关联群的关系快照。 */
   read(): Promise<BridgeRelations> { return this.store.read() }
+
+  /** 侧栏显示偏好由关系存储持锁提交，不需要启动飞书或 Codex。 */
+  updateSidebarPreferences(change: BridgeSidebarPreferenceChange, revision: number): Promise<BridgeRelations> {
+    return this.store.updateSidebarPreferences(change, revision)
+  }
 
   /** 为群组当前项目创建会话，关联提交成功后才允许调用方发送首轮。 */
   async createThread(chatId: string, projectPath: string, create: (path: string) => Promise<BridgeThreadSummary>): Promise<BridgeThreadSummary> {

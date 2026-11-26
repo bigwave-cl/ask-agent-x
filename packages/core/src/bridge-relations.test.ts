@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { BridgeRelationsConflictError, BridgeRelationsStore, type BridgeRelationsInput } from './bridge-relations.js'
+import { BridgeRelationsConflictError, BridgeSidebarPreferenceValidationError, BridgeRelationsStore, type BridgeRelationsInput } from './bridge-relations.js'
 
 /** 各测试独占的临时目录。 */
 const directories: string[] = []
@@ -205,5 +205,78 @@ describe('BridgeRelationsStore', () => {
       await expect(store.replace(input, 1)).rejects.toThrow()
       expect(await readFile(store.path, 'utf8')).toBe(before)
     }
+  })
+})
+
+describe('群组侧栏共享偏好', () => {
+  it('旧文件保持未初始化，迁移过滤过期身份并由首个浏览器确定共享偏好', async () => {
+    /** 跨实例读取者与写入者。 */
+    const [writer, reader] = await stores()
+    /** 初始化旧版关系。 */
+    const initial = await writer.replace(shared(), 0)
+    expect(initial.sidebarPreferences).toBeUndefined()
+    /** 首个浏览器的历史排列。 */
+    const migrated = await writer.updateSidebarPreferences({ type: 'migrate', preferences: { order: ['obsolete', 'oc_B', 'oc_B', 'oc_A'], collapsed: ['oc_A', 'obsolete'] } }, initial.revision)
+    expect(migrated.sidebarPreferences).toEqual({ order: ['oc_B', 'oc_A'], collapsed: ['oc_A'] })
+    expect(migrated.groups).toEqual(initial.groups)
+    expect(await reader.read()).toEqual(migrated)
+    expect(await reader.updateSidebarPreferences({ type: 'migrate', preferences: { order: [], collapsed: [] } }, initial.revision)).toEqual(migrated)
+  })
+
+  it('全量关系往返保留已保存偏好，不能借关系写入覆盖偏好', async () => {
+    /** 独立写入者。 */
+    const [store] = await stores()
+    /** 基础关系。 */
+    const first = await store.replace(shared(), 0)
+    /** 显式折叠群组。 */
+    const folded = await store.updateSidebarPreferences({ type: 'open', chatId: 'oc_A', open: false }, first.revision)
+    /** 旧客户端不携带偏好，仍需保存共享值。 */
+    const replaced = await store.replace(shared(), folded.revision)
+    expect(replaced.sidebarPreferences).toEqual(folded.sidebarPreferences)
+    /** 新客户端原样展开快照，偏好字段也可以安全往返。 */
+    const { version: _version, revision: _revision, ...data } = replaced
+    expect((await store.replace({ ...data, sidebarPreferences: { order: [], collapsed: [] } }, replaced.revision)).sidebarPreferences).toEqual(folded.sidebarPreferences)
+  })
+
+  it('竞争写入要求重载版本，重试目标群意图保留其他群修改与顺序', async () => {
+    /** 两个浏览器共享存储。 */
+    const [a, b] = await stores()
+    /** 初始关系版本。 */
+    const first = await a.replace(shared(), 0)
+    /** 浏览器 A 改变顺序。 */
+    const ordered = await a.updateSidebarPreferences({ type: 'order', order: ['oc_B', 'oc_A'] }, first.revision)
+    await expect(b.updateSidebarPreferences({ type: 'open', chatId: 'oc_B', open: false }, first.revision)).rejects.toBeInstanceOf(BridgeRelationsConflictError)
+    /** 浏览器 B 重载后只提交自己的折叠意图。 */
+    const folded = await b.updateSidebarPreferences({ type: 'open', chatId: 'oc_B', open: false }, ordered.revision)
+    expect(folded.sidebarPreferences).toEqual({ order: ['oc_B', 'oc_A'], collapsed: ['oc_B'] })
+    expect(await a.updateSidebarPreferences({ type: 'open', chatId: 'oc_B', open: false }, folded.revision)).toEqual(folded)
+    expect(folded.groups).toEqual(first.groups)
+    await expect(a.updateSidebarPreferences({ type: 'order', order: ['oc_A'] }, folded.revision)).rejects.toBeInstanceOf(BridgeSidebarPreferenceValidationError)
+    await expect(a.updateSidebarPreferences({ type: 'order', order: ['oc_A', 'oc_A'] }, folded.revision)).rejects.toThrow('every current group')
+    expect(await a.read()).toEqual(folded)
+  })
+
+  it('重复折叠保持多个折叠项的顺序和版本，未知群组为语义错误', async () => {
+    /** 当前关系存储。 */
+    const [store] = await stores()
+    /** 初始化当前目录。 */
+    const initial = await store.replace(shared(), 0)
+    /** 依次折叠两个群组。 */
+    const first = await store.updateSidebarPreferences({ type: 'open', chatId: 'oc_A', open: false }, initial.revision)
+    /** 原顺序须在重复操作后仍保持。 */
+    const second = await store.updateSidebarPreferences({ type: 'open', chatId: 'oc_B', open: false }, first.revision)
+    expect(second.sidebarPreferences?.collapsed).toEqual(['oc_A', 'oc_B'])
+    expect(await store.updateSidebarPreferences({ type: 'open', chatId: 'oc_A', open: false }, second.revision)).toEqual(second)
+    await expect(store.updateSidebarPreferences({ type: 'open', chatId: 'oc_Missing', open: false }, second.revision)).rejects.toBeInstanceOf(BridgeSidebarPreferenceValidationError)
+    expect(await store.read()).toEqual(second)
+  })
+
+  it('空目录不消费迁移，首次同步后仍能迁移', async () => {
+    /** 尚未同步群组的存储。 */
+    const [store] = await stores()
+    expect((await store.updateSidebarPreferences({ type: 'migrate', preferences: { order: ['oc_B'], collapsed: [] } }, 0)).sidebarPreferences).toBeUndefined()
+    /** 首次同步关系。 */
+    const synced = await store.replace(shared(), 0)
+    expect((await store.updateSidebarPreferences({ type: 'migrate', preferences: { order: ['oc_B'], collapsed: [] } }, synced.revision)).sidebarPreferences?.order).toEqual(['oc_B'])
   })
 })

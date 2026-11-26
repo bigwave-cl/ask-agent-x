@@ -930,6 +930,7 @@
     "emptyMessages": "还没有消息",
     "local": "本地桥接",
     "outside": "非工作时间",
+    "sidebarPreferencesError": "群组侧栏偏好保存或加载失败，请重试",
     "loadError": "桥接数据加载失败",
     "newProject": "当前工作区",
     "sessionId": "会话 ID",

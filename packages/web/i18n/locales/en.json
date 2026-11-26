@@ -930,6 +930,7 @@
     "emptyMessages": "No messages yet",
     "local": "Local bridge",
     "outside": "Outside work hours",
+    "sidebarPreferencesError": "Could not load or save group sidebar preferences. Please try again.",
     "loadError": "Unable to load bridge data",
     "newProject": "Current workspace",
     "sessionId": "Session ID",

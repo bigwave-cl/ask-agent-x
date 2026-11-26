@@ -46,6 +46,19 @@ export const bridgeMigrationConflictSchema = z.object({
   projectPaths: z.array(projectPathSchema).min(2).max(100),
 })
 
+/** 群组侧栏的共享显示偏好。 */
+export const bridgeSidebarPreferencesSchema = z.object({ order: z.array(z.string().min(1)).max(2000), collapsed: z.array(z.string().min(1)).max(2000) }).strict()
+/** 侧栏偏好的公开数据契约。 */
+export type BridgeSidebarPreferences = z.infer<typeof bridgeSidebarPreferencesSchema>
+/** 群组侧栏偏好的增量变更。 */
+export const bridgeSidebarPreferenceChangeSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('migrate'), preferences: bridgeSidebarPreferencesSchema }).strict(),
+  z.object({ type: z.literal('order'), order: z.array(bridgeGroupSchema.shape.chatId).max(2000) }).strict(),
+  z.object({ type: z.literal('open'), chatId: bridgeGroupSchema.shape.chatId, open: z.boolean() }).strict(),
+])
+/** 侧栏增量变更的公开契约。 */
+export type BridgeSidebarPreferenceChange = z.infer<typeof bridgeSidebarPreferenceChangeSchema>
+
 /** 关系输入的原始结构；提交前统一归一化 active 和迁移冲突。 */
 const bridgeRelationsRawSchema = z.object({
   /** 已发现群组，包括尚未关联项目的群。 */
@@ -56,6 +69,8 @@ const bridgeRelationsRawSchema = z.object({
   threadGroups: z.array(threadGroupSchema).max(10000),
   /** v1 多项目关系迁移冲突。 */
   migrationConflicts: z.array(bridgeMigrationConflictSchema).max(2000).optional(),
+  /** 群组侧栏顺序与展开状态。 */
+  sidebarPreferences: bridgeSidebarPreferencesSchema.optional(),
 }).strict()
 
 /** 规范化后的关系结构，供所有业务模块消费。 */
@@ -64,6 +79,7 @@ const bridgeRelationsNormalizedSchema = z.object({
   projectGroups: z.array(projectGroupSchema).max(10000),
   threadGroups: z.array(threadGroupSchema).max(10000),
   migrationConflicts: z.array(bridgeMigrationConflictSchema).max(2000),
+  sidebarPreferences: bridgeSidebarPreferencesSchema.optional(),
 }).strict().superRefine((value, context) => {
   const groups = new Set(value.groups.map(group => group.chatId))
   if (groups.size !== value.groups.length) context.addIssue({ code: 'custom', message: 'Duplicate group' })
@@ -121,6 +137,7 @@ function normalizeRelations(input: BridgeRelationsInput): BridgeRelationsData {
     projectGroups,
     threadGroups: parsed.threadGroups,
     migrationConflicts,
+    ...(parsed.sidebarPreferences ? { sidebarPreferences: parsed.sidebarPreferences } : {}),
   })
 }
 
@@ -154,6 +171,9 @@ export class BridgeRelationsConflictError extends Error {
   constructor(readonly current: BridgeRelations) { super('Bridge relations changed; reload before saving') }
 }
 
+/** 群组显示意图与当前目录不一致，调用方可映射为输入错误。 */
+export class BridgeSidebarPreferenceValidationError extends Error {}
+
 /** 关系存储的唯一写入入口，提供跨进程锁、迁移和原子提交。 */
 export class BridgeRelationsStore {
   /** 内部固定存储路径。 */
@@ -167,7 +187,7 @@ export class BridgeRelationsStore {
       const raw = JSON.parse(await readFile(this.path, 'utf8')) as Record<string, unknown>
       if (!Number.isSafeInteger(raw.revision) || Number(raw.revision) < 0) throw new Error('Invalid bridge relations revision')
       if (raw.version !== 1 && raw.version !== 2) throw new Error('Invalid bridge relations version')
-      const data = normalizeRelations({ groups: raw.groups, projectGroups: raw.projectGroups, threadGroups: raw.threadGroups, migrationConflicts: raw.migrationConflicts } as BridgeRelationsInput)
+      const data = normalizeRelations({ groups: raw.groups, projectGroups: raw.projectGroups, threadGroups: raw.threadGroups, migrationConflicts: raw.migrationConflicts, sidebarPreferences: raw.sidebarPreferences } as BridgeRelationsInput)
       return { version: 2, revision: Number(raw.revision), ...data }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { version: 2, revision: 0, groups: [], projectGroups: [], threadGroups: [], migrationConflicts: [] }
@@ -178,6 +198,7 @@ export class BridgeRelationsStore {
   /** 持锁核对版本后一次性替换关系，验证失败不改变已有数据。 */
   async replace(input: BridgeRelationsInput, expectedRevision: number): Promise<BridgeRelations> {
     const data = normalizeRelations(input)
+    delete data.sidebarPreferences
     return this.withLock(async () => {
       /** 持锁读取的最新版本。 */
       const current = await this.read()
@@ -198,9 +219,53 @@ export class BridgeRelationsStore {
         return { ...group, updatedAt: changed ? updatedAt : previous.updatedAt ?? null }
       })
       /** 本次关系事务的唯一提交快照。 */
-      const next: BridgeRelations = { version: 2, revision: current.revision + 1, ...data, groups }
+      const next: BridgeRelations = { version: 2, revision: current.revision + 1, ...data, ...(current.sidebarPreferences ? { sidebarPreferences: current.sidebarPreferences } : {}), groups }
       await this.writeSnapshot(next)
       return next
+    })
+  }
+
+  /** 持锁提交单个显示意图，沿用关系版本与原子写入入口。 */
+  async updateSidebarPreferences(change: BridgeSidebarPreferenceChange, expectedRevision: number): Promise<BridgeRelations> {
+    /** 输入仅在存储边界解析一次。 */
+    const input = bridgeSidebarPreferenceChangeSchema.parse(change)
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new Error('Invalid bridge relations revision')
+    return this.withLock(async () => {
+      /** 与关系操作共享的最新快照。 */
+      const current = await this.read()
+      // 已迁移的共享状态优先，其他浏览器不能再次导入旧偏好。
+      if (input.type === 'migrate' && current.sidebarPreferences) return current
+      if (current.revision !== expectedRevision) throw new BridgeRelationsConflictError(current)
+      /** 当前已发现群组集合。 */
+      const ids = current.groups.map(group => group.chatId)
+      /** 持久化身份统一排除历史记录与重复值。 */
+      const valid = (values: string[]) => [...new Set(values.filter(id => ids.includes(id)))]
+      /** 尚未初始化时使用默认排列与展开状态。 */
+      const previous = current.sidebarPreferences ?? { order: [], collapsed: [] }
+      /** 本次准备提交的显示偏好。 */
+      let next: BridgeSidebarPreferences
+      if (input.type === 'migrate') {
+        // 空目录不能消费旧浏览器偏好，否则首次同步群组后会永久丢失。
+        if (!ids.length) return current
+        next = { order: valid(input.preferences.order), collapsed: valid(input.preferences.collapsed) }
+      }
+      else if (input.type === 'order') {
+        if (input.order.length !== ids.length || new Set(input.order).size !== ids.length || input.order.some(id => !ids.includes(id))) throw new BridgeSidebarPreferenceValidationError('Group order must contain every current group exactly once')
+        next = { order: [...input.order], collapsed: valid(previous.collapsed) }
+      }
+      else {
+        if (!ids.includes(input.chatId)) throw new BridgeSidebarPreferenceValidationError('Unknown sidebar group')
+        if (current.sidebarPreferences && previous.collapsed.includes(input.chatId) === !input.open) return current
+        /** 只改变目标群的展开状态，保留其他页面已保存的群状态。 */
+        const collapsed = valid(previous.collapsed).filter(id => id !== input.chatId)
+        if (!input.open) collapsed.push(input.chatId)
+        next = { order: valid(previous.order), collapsed }
+      }
+      if (current.sidebarPreferences && JSON.stringify(previous) === JSON.stringify(next)) return current
+      /** 群资料与项目授权保持当前快照，更新时间由关系管理入口维护。 */
+      const snapshot: BridgeRelations = { ...current, revision: current.revision + 1, sidebarPreferences: next }
+      await this.writeSnapshot(snapshot)
+      return snapshot
     })
   }
 
