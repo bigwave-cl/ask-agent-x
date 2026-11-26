@@ -2,6 +2,7 @@
 import { CollapsibleRoot, CollapsibleTrigger, CollapsibleContent } from 'reka-ui'
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import BusBridgeItemMenu from './BusBridgeItemMenu.vue'
+import BusBridgeNewSessionSelect from './BusBridgeNewSessionSelect.vue'
 import BusBridgeAgent from './agent/BusBridgeAgent.vue'
 import { provideAgentCore, useAgentCore } from './agent/core/useAgentCore'
 import type { BridgeCatalogChange } from './BusBridgeItemMenu.vue'
@@ -21,11 +22,11 @@ const { t } = useI18n()
 /** 群项目设置统一动态入口。 */
 const { openProjectSettings } = useBridgeProjectSettings()
 /** 统一目录与身份选择 owner。 */
-const { sidebarGroups, selectedChatId, selectedProjectPath, selectedThreadId, selectedGroup, selectedProjectEntry, selectedProject, selectedThread, loadCatalog, selectThread: selectCatalogThread, selectNewThread, archiveThread, updateThreadTitle, acceptThread: acceptCatalogThread } = useBridgeCatalog()
+const { sidebarGroups, newSessionGroups, selectedChatId, selectedProjectPath, selectedThreadId, selectedGroup, selectedProjectEntry, selectedProject, selectedThread, loadCatalog, selectThread: selectCatalogThread, selectNewThread, archiveThread, updateThreadTitle, acceptThread: acceptCatalogThread } = useBridgeCatalog()
 /** 操作反馈。 */
 const toast = useToast()
-/** 新会话输入态。 */
-const composingNewSession = ref(false)
+/** 显式新建重置草稿；选择群保留输入。 */
+const draftSessionKey = ref(0)
 /** 右侧聊天外壳的焦点入口。 */
 const conversationPanel = ref<{ focus: () => void } | null>(null)
 /** 会话页面生命周期。 */
@@ -46,18 +47,43 @@ async function selectThread(group: { chatId: string }, entry: Pick<BridgeCatalog
     if (!entry.available) { toast.error(t('bridge.projectUnavailableHint')); return }
     if (!await requireRunning() || !active || current !== navigationGeneration) return
     if (!selectCatalogThread(group.chatId, entry.project.path, thread.id)) return
-    composingNewSession.value = false
 }
 
-/** 新会话只打开输入态，真正发送时才创建 Codex thread。 */
-async function createThread(): Promise<void> {
-    /** 当前新会话选择意图。 */
-    const current = ++navigationGeneration
-    if (!await requireRunning() || !active || current !== navigationGeneration) return
-    selectNewThread()
-    composingNewSession.value = true
+/** 等待输入栏装配后聚焦，过期导航不能抢焦点。 */
+async function focusDraft(current: number): Promise<void> {
     await nextTick()
     if (active && current === navigationGeneration) conversationPanel.value?.focus()
+}
+/** 新建空会话或指定群会话，不在打开输入态时检查服务。 */
+function createThread(chatId?: string): void {
+    /** 用户本次明确的新建意图。 */
+    const current = ++navigationGeneration
+    if (!chatId) {
+        selectNewThread()
+        draftSessionKey.value++
+        void focusDraft(current)
+        return
+    }
+    ensureNewSessionGroup(chatId, current, true)
+}
+/** 选择群保留草稿，绑定完成前不改变现有导航。 */
+function selectNewSessionGroup(chatId: string): void { ensureNewSessionGroup(chatId, ++navigationGeneration, false) }
+/** 目录 owner 决定可用性，缺少有效项目时打开绑定入口。 */
+function ensureNewSessionGroup(chatId: string, current: number, resetDraft: boolean): void {
+    if (selectNewThread(chatId)) {
+        if (resetDraft) draftSessionKey.value++
+        void focusDraft(current)
+        return
+    }
+    /** 绑定回调需要当前打开会话的有效句柄。 */
+    const handle = openProjectSettings({ kind: 'group', chatId, onSaved: async () => {
+        await loadCatalog()
+        if (!active || current !== navigationGeneration || !handle.isOpen()) return
+        if (!selectNewThread(chatId)) return
+        if (resetDraft) draftSessionKey.value++
+        handle.close()
+        await focusDraft(current)
+    } })
 }
 
 /** 项目/会话菜单操作完成后刷新唯一目录。 */
@@ -65,7 +91,6 @@ function catalogChanged(change: BridgeCatalogChange): void {
     if (change.action === 'rename-thread' && change.name !== undefined) updateThreadTitle(change.id, change.name)
     if (change.action === 'archive-thread' && archiveThread(change.id)) {
         navigationGeneration++
-        composingNewSession.value = false
     }
     void loadCatalog()
 }
@@ -75,10 +100,9 @@ const conversationContext = computed(() => ({ chatId: selectedChatId.value, proj
 /** 新会话提交到目录 owner 后退出输入态。 */
 function acceptThread(thread: { id: string, title: string }): void {
     acceptCatalogThread(thread)
-    composingNewSession.value = false
 }
 /** 消息、实时事件及发送生命周期统一交给会话 Core。 */
-const agentCore = useAgentCore({ threadId: selectedThreadId, context: conversationContext, canCompose, requireRunning, onCreated: acceptThread, onCatalogChanged: () => { void loadCatalog() }, onTitle: updateThreadTitle })
+const agentCore = useAgentCore({ threadId: selectedThreadId, context: conversationContext, draftSessionKey, canCompose, requireRunning, onCreated: acceptThread, onCatalogChanged: () => { void loadCatalog() }, onTitle: updateThreadTitle })
 /** 整个右侧 Agent 共用一个 Core，目录层只提供导航和目录回调。 */
 provideAgentCore(agentCore)
 /** 标题行内编辑复用既有目录写入 API 与授权链路。 */
@@ -138,12 +162,11 @@ onUnmounted(() => { active = false; navigationGeneration++ })
                         <TooltipContent>{{ statusLabel }}</TooltipContent>
                     </Tooltip>
                     <Button
-                        :size="36"
-                        square
+                        size="icon"
                         shape="pill"
                         class="ml-auto"
                         :aria-label="t('bridge.newSession')"
-                        @click="createThread"
+                        @click="createThread()"
                     >
                         <Icon name="askx-actions:add" />
                     </Button>
@@ -160,11 +183,11 @@ onUnmounted(() => { active = false; navigationGeneration++ })
                             default-open
                             :unmount-on-hide="false"
                         >
-                            <div class="flex items-center gap-1">
+                            <div class="group/row flex items-center gap-1 rounded-lg transition-colors hover:bg-muted">
                                 <CollapsibleTrigger as-child>
                                     <button
                                         type="button"
-                                        class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm font-semibold transition-colors hover:bg-muted"
+                                        class="flex min-w-0 flex-1 items-center gap-2 bg-transparent px-2 py-1.5 text-left text-sm font-semibold"
                                         :class="group.chatId === selectedChatId ? 'text-primary' : ''"
                                         :aria-label="t(groupExpanded ? 'bridge.collapseItem' : 'bridge.expandItem', { name: group.name })"
                                     >
@@ -175,6 +198,15 @@ onUnmounted(() => { active = false; navigationGeneration++ })
                                         <span class="truncate">{{ group.name }}</span>
                                     </button>
                                 </CollapsibleTrigger>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    class="opacity-0 hover:bg-transparent hover:text-primary group-hover/row:opacity-100 group-focus-within/row:opacity-100 [@media(hover:none)]:opacity-100"
+                                    :aria-label="`${t('bridge.newSession')} · ${group.name}`"
+                                    @click.stop="createThread(group.chatId)"
+                                >
+                                    <Icon name="askx-actions:add" />
+                                </Button>
                             </div>
                             <CollapsibleContent class="overflow-hidden data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up motion-reduce:animate-none">
                                 <div class="ml-3 border-l pt-2 pl-3">
@@ -194,7 +226,7 @@ onUnmounted(() => { active = false; navigationGeneration++ })
                                             :unmount-on-hide="false"
                                         >
                                             <div
-                                                class="flex items-center gap-1 rounded-lg transition-colors hover:bg-muted"
+                                                class="group/row flex items-center gap-1 rounded-lg transition-colors hover:bg-muted"
                                                 :class="entry.project.path === selectedProjectPath && group.chatId === selectedChatId ? 'bg-muted' : ''"
                                             >
                                                 <CollapsibleTrigger as-child>
@@ -229,12 +261,23 @@ onUnmounted(() => { active = false; navigationGeneration++ })
 
                                                 <BusBridgeItemMenu
                                                     kind="project"
+                                                    hover-only
                                                     :mutations-disabled="!entry.available"
                                                     :item-id="entry.project.path"
                                                     :label="entry.project.name"
                                                     @settings="openProjectSettings({ kind: 'group', chatId: group.chatId, onSaved: loadCatalog })"
                                                     @changed="catalogChanged"
                                                 />
+                                                <Button
+                                                    v-if="entry.active"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    class="opacity-0 hover:bg-transparent hover:text-primary group-hover/row:opacity-100 group-focus-within/row:opacity-100 [@media(hover:none)]:opacity-100"
+                                                    :aria-label="`${t('bridge.newSession')} · ${entry.project.name}`"
+                                                    @click.stop="createThread(group.chatId)"
+                                                >
+                                                    <Icon name="askx-actions:add" />
+                                                </Button>
                                             </div>
                                             <CollapsibleContent class="overflow-hidden data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up motion-reduce:animate-none">
                                                 <div class="ml-2 border-l border-border/70 pt-1 pl-2">
@@ -321,7 +364,18 @@ onUnmounted(() => { active = false; navigationGeneration++ })
                 :read-only="readOnly"
                 :rename="renameConversation"
                 @settings="openSettings"
-            />
+            >
+                <template
+                    v-if="!selectedThreadId"
+                    #composer-context
+                >
+                    <BusBridgeNewSessionSelect
+                        :groups="newSessionGroups"
+                        :selected-chat-id="selectedChatId"
+                        @select="selectNewSessionGroup"
+                    />
+                </template>
+            </BusBridgeAgent>
         </section>
     </div>
 </template>

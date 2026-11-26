@@ -36,14 +36,16 @@ defineExpose({ focus: () => input.value?.focus() })
 <template>
     <div class="shrink-0 px-3 pb-3 pt-2 sm:px-6 sm:pb-5">
         <div class="mx-auto max-w-3xl">
-            <div class="mb-2 flex h-5 items-center justify-between gap-3 px-1 text-[11px] text-muted-foreground">
-                <span
-                    v-if="projectName"
-                    class="flex min-w-0 items-center gap-1.5 truncate"
-                ><Icon
-                    name="askx-objects:folder"
-                    class="shrink-0"
-                />{{ projectName }}</span><span v-else />
+            <div class="mb-2 flex min-h-5 items-center justify-between gap-3 px-1 text-[11px] text-muted-foreground">
+                <slot name="context">
+                    <span
+                        v-if="projectName"
+                        class="flex min-w-0 items-center gap-1.5 truncate"
+                    ><Icon
+                        name="askx-objects:folder"
+                        class="shrink-0"
+                    />{{ projectName }}</span><span v-else />
+                </slot>
                 <span
                     v-if="connection !== 'connected'"
                     class="flex items-center gap-1.5"

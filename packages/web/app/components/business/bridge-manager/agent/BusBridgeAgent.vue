@@ -34,6 +34,13 @@ defineExpose({ focus: () => composer.value?.focus() })
             :read-only="readOnly"
             :project-name="projectName"
             @settings="emit('settings')"
-        />
+        >
+            <template
+                v-if="$slots['composer-context']"
+                #context
+            >
+                <slot name="composer-context" />
+            </template>
+        </BusBridgeComposer>
     </section>
 </template>

@@ -24,7 +24,9 @@ const props = withDefaults(defineProps<{
     disabled?: boolean
     /** 仅禁用写操作，保留项目设置入口。 */
     mutationsDisabled?: boolean
-}>(), { projectPath: '', hideSettings: false, disabled: false, mutationsDisabled: false })
+    /** 桌面悬停或键盘进入行时才显示触发器，打开后保持可见。 */
+    hoverOnly?: boolean
+}>(), { projectPath: '', hideSettings: false, disabled: false, mutationsDisabled: false, hoverOnly: false })
 /** 成功操作的最小变更通知。 */
 export interface BridgeCatalogChange {
     /** 成功的操作。 */
@@ -167,9 +169,9 @@ onUnmounted(() => { active = false; generation += 1; confirmation?.destroy() })
                 >
                     <template #trigger><Button
                         variant="ghost"
-                        :size="36"
-                        square
+                        size="icon"
                         class="hover:bg-transparent hover:text-primary active:bg-transparent active:text-primary"
+                        :class="hoverOnly && !menuOpen ? 'opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 [@media(hover:none)]:opacity-100' : ''"
                         :aria-label="`${t('bridge.itemMenu')} · ${label}`"
                         :disabled="disabled"
                     ><Icon name="askx-actions:more" /></Button></template>
