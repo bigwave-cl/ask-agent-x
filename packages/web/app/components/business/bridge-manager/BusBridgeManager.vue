@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type Sortable from 'sortablejs'
 import { CollapsibleRoot, CollapsibleTrigger, CollapsibleContent } from 'reka-ui'
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import BusBridgeItemMenu from './BusBridgeItemMenu.vue'
@@ -11,6 +12,7 @@ import Tooltip from '@/components/ui/tooltip/Tooltip.vue'
 import TooltipTrigger from '@/components/ui/tooltip/TooltipTrigger.vue'
 import TooltipContent from '@/components/ui/tooltip/TooltipContent.vue'
 import ScrollArea from '@/components/ui/scroll-area/ScrollArea.vue'
+import { useBridgeSidebarGroupPreferences } from '@/composables/useBridgeSidebarGroupPreferences'
 import { useBridgeProjectSettings } from '@/composables/useBridgeProjectSettings'
 import { useBridgeServiceControl } from '@/composables/useBridgeServiceControl'
 import { useBridgeCatalog, type BridgeCatalogProjectView, type BridgeCatalogThreadView } from '@/composables/useBridgeCatalog'
@@ -23,6 +25,40 @@ const { t } = useI18n()
 const { openProjectSettings } = useBridgeProjectSettings()
 /** 统一目录与身份选择 owner。 */
 const { sidebarGroups, newSessionGroups, selectedChatId, selectedProjectPath, selectedThreadId, selectedGroup, selectedProjectEntry, selectedProject, selectedThread, loadCatalog, selectThread: selectCatalogThread, selectNewThread, archiveThread, updateThreadTitle, acceptThread: acceptCatalogThread } = useBridgeCatalog()
+/** 群组层的本地排序与展开偏好，不改变目录本身。 */
+const { orderedGroups, isGroupOpen, setGroupOpen } = useBridgeSidebarGroupPreferences(sidebarGroups)
+/** 一次性拦截拖拽合成点击；新的真实手势或键盘操作立即解除。 */
+let suppressGroupClick = false
+/** 仅群标题可发起排序，触屏保留短按展开与纵向滚动。 */
+const groupDragOptions: Sortable.Options = {
+    delay: 180,
+    delayOnTouchOnly: true,
+    touchStartThreshold: 4,
+    onStart: () => { suppressGroupClick = true },
+}
+/** 在 Reka 的点击处理前阻止拖拽附带点击。 */
+function guardGroupClick(event: MouseEvent): void {
+    if (!suppressGroupClick) return
+    suppressGroupClick = false
+    event.preventDefault()
+    event.stopPropagation()
+}
+/** 标题的键盘排序与拖拽共用同一偏好提交入口。 */
+function reorderGroup(event: KeyboardEvent, chatId: string): void {
+    suppressGroupClick = false
+    if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || !['ArrowUp', 'ArrowDown'].includes(event.key)) return
+    event.preventDefault()
+    event.stopPropagation()
+    /** 复制当前显示顺序，不修改目录 owner 的数组。 */
+    const groups = [...orderedGroups.value]
+    /** 当前群组与移动目标的位置。 */
+    const index = groups.findIndex(group => group.chatId === chatId)
+    /** 上下键只允许相邻群组交换。 */
+    const target = index + (event.key === 'ArrowUp' ? -1 : 1)
+    if (index < 0 || target < 0 || target >= groups.length) return
+    groups.splice(target, 0, ...groups.splice(index, 1))
+    orderedGroups.value = groups
+}
 /** 操作反馈。 */
 const toast = useToast()
 /** 显式新建重置草稿；选择群保留输入。 */
@@ -175,168 +211,191 @@ onUnmounted(() => { active = false; navigationGeneration++ })
                     class="min-h-0 flex-1"
                     viewport-class="px-3 py-4"
                 >
-                    <div class="space-y-5">
-                        <CollapsibleRoot
-                            v-for="group in sidebarGroups"
-                            :key="group.chatId"
-                            v-slot="{ open: groupExpanded }"
-                            default-open
-                            :unmount-on-hide="false"
+                    <div>
+                        <CsDraggable
+                            v-model="orderedGroups"
+                            item-key="chatId"
+                            insertion-indicator
+                            handle=".bridge-group-drag-handle"
+                            :options="groupDragOptions"
+                            class="space-y-5"
                         >
-                            <div class="group/row flex items-center gap-1 rounded-lg transition-colors hover:bg-muted">
-                                <CollapsibleTrigger as-child>
-                                    <button
-                                        type="button"
-                                        class="flex min-w-0 flex-1 items-center gap-2 bg-transparent px-2 py-1.5 text-left text-sm font-semibold"
-                                        :class="group.chatId === selectedChatId ? 'text-primary' : ''"
-                                        :aria-label="t(groupExpanded ? 'bridge.collapseItem' : 'bridge.expandItem', { name: group.name })"
-                                    >
-                                        <Icon
-                                            name="askx-objects:users"
-                                            class="size-4 shrink-0"
-                                        />
-                                        <span class="truncate">{{ group.name }}</span>
-                                    </button>
-                                </CollapsibleTrigger>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    class="opacity-0 hover:bg-transparent hover:text-primary group-hover/row:opacity-100 group-focus-within/row:opacity-100 [@media(hover:none)]:opacity-100"
-                                    :aria-label="`${t('bridge.newSession')} · ${group.name}`"
-                                    @click.stop="createThread(group.chatId)"
+                            <template #default="{ item: group }">
+                                <CollapsibleRoot
+                                    v-slot="{ open: groupExpanded }"
+                                    :open="isGroupOpen(group.chatId)"
+                                    :unmount-on-hide="false"
+                                    @update:open="setGroupOpen(group.chatId, $event)"
                                 >
-                                    <Icon name="askx-actions:add" />
-                                </Button>
-                            </div>
-                            <CollapsibleContent class="overflow-hidden data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up motion-reduce:animate-none">
-                                <div class="ml-3 border-l pt-2 pl-3">
-                                    <CsProgressiveList
-                                        v-slot="{ items: visibleProjects }"
-                                        :items="group.projects"
-                                        :expanded="groupExpanded"
-                                        :label="t('bridge.showMoreProjects', { name: group.name })"
-                                        chunk-class="space-y-2"
-                                        batch-class="pt-2"
-                                    >
-                                        <CollapsibleRoot
-                                            v-for="entry in visibleProjects"
-                                            :key="entry.project.path"
-                                            v-slot="{ open: projectExpanded }"
-                                            :default-open="entry.project.path === group.projects[0]?.project.path"
-                                            :unmount-on-hide="false"
-                                        >
-                                            <div
-                                                class="group/row flex items-center gap-1 rounded-lg transition-colors hover:bg-muted"
-                                                :class="entry.project.path === selectedProjectPath && group.chatId === selectedChatId ? 'bg-muted' : ''"
+                                    <div class="group/row flex items-center gap-1 rounded-lg transition-colors hover:bg-muted">
+                                        <CollapsibleTrigger as-child>
+                                            <button
+                                                type="button"
+                                                class="bridge-group-drag-handle flex min-w-0 flex-1 cursor-grab items-center gap-2 bg-transparent px-2 py-1.5 text-left text-sm font-semibold active:cursor-grabbing"
+                                                aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+                                                :class="group.chatId === selectedChatId ? 'text-primary' : ''"
+                                                :aria-label="t(groupExpanded ? 'bridge.collapseItem' : 'bridge.expandItem', { name: group.name })"
+                                                @pointerdown="suppressGroupClick = false"
+                                                @click.capture="guardGroupClick"
+                                                @keydown="reorderGroup($event, group.chatId)"
                                             >
-                                                <CollapsibleTrigger as-child>
-                                                    <Button
-                                                        variant="ghost"
-                                                        :size="36"
-                                                        class="min-w-0 flex-1 justify-start gap-2 px-2 hover:bg-transparent active:bg-transparent"
-                                                        :class="entry.project.path === selectedProjectPath && group.chatId === selectedChatId ? 'text-primary' : ''"
-                                                        :aria-label="t(projectExpanded ? 'bridge.collapseItem' : 'bridge.expandItem', { name: entry.project.name })"
-                                                    >
-                                                        <Icon
-                                                            name="askx-objects:folder"
-                                                            class="size-4 shrink-0"
-                                                        />
-                                                        <span class="truncate text-xs">{{ entry.project.name }}</span>
-                                                        <span
-                                                            v-if="!entry.available"
-                                                            class="inline-flex shrink-0 items-center gap-1 text-[10px] text-destructive"
-                                                            :title="t('bridge.projectUnavailableHint')"
-                                                        >
-                                                            <Icon
-                                                                name="askx-status:error"
-                                                                class="size-3"
-                                                            />{{ t('bridge.projectUnavailable') }}
-                                                        </span>
-                                                        <span
-                                                            v-else-if="!entry.active"
-                                                            class="shrink-0 text-[10px] text-muted-foreground"
-                                                        >{{ t('bridge.history') }}</span>
-                                                    </Button>
-                                                </CollapsibleTrigger>
-
-                                                <BusBridgeItemMenu
-                                                    kind="project"
-                                                    hover-only
-                                                    :mutations-disabled="!entry.available"
-                                                    :item-id="entry.project.path"
-                                                    :label="entry.project.name"
-                                                    @settings="openProjectSettings({ kind: 'group', chatId: group.chatId, onSaved: loadCatalog })"
-                                                    @changed="catalogChanged"
+                                                <Icon
+                                                    name="askx-objects:users"
+                                                    class="size-4 shrink-0"
                                                 />
-                                                <Button
-                                                    v-if="entry.active"
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    class="opacity-0 hover:bg-transparent hover:text-primary group-hover/row:opacity-100 group-focus-within/row:opacity-100 [@media(hover:none)]:opacity-100"
-                                                    :aria-label="`${t('bridge.newSession')} · ${entry.project.name}`"
-                                                    @click.stop="createThread(group.chatId)"
+                                                <span class="truncate">{{ group.name }}</span>
+                                            </button>
+                                        </CollapsibleTrigger>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            class="opacity-0 hover:bg-transparent hover:text-primary group-hover/row:opacity-100 group-focus-within/row:opacity-100 [@media(hover:none)]:opacity-100"
+                                            :aria-label="`${t('bridge.newSession')} · ${group.name}`"
+                                            @click.stop="createThread(group.chatId)"
+                                        >
+                                            <Icon name="askx-actions:add" />
+                                        </Button>
+                                    </div>
+                                    <CollapsibleContent class="overflow-hidden data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up motion-reduce:animate-none">
+                                        <div class="ml-3 border-l pt-2 pl-3">
+                                            <CsProgressiveList
+                                                v-slot="{ items: visibleProjects }"
+                                                :items="group.projects"
+                                                :expanded="groupExpanded"
+                                                :label="t('bridge.showMoreProjects', { name: group.name })"
+                                                chunk-class="space-y-2"
+                                                batch-class="pt-2"
+                                            >
+                                                <CollapsibleRoot
+                                                    v-for="entry in visibleProjects"
+                                                    :key="entry.project.path"
+                                                    v-slot="{ open: projectExpanded }"
+                                                    :default-open="entry.project.path === group.projects[0]?.project.path"
+                                                    :unmount-on-hide="false"
                                                 >
-                                                    <Icon name="askx-actions:add" />
-                                                </Button>
-                                            </div>
-                                            <CollapsibleContent class="overflow-hidden data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up motion-reduce:animate-none">
-                                                <div class="ml-2 border-l border-border/70 pt-1 pl-2">
-                                                    <CsProgressiveList
-                                                        v-slot="{ items: visibleThreads }"
-                                                        :items="entry.sessions"
-                                                        :expanded="projectExpanded"
-                                                        :label="t('bridge.showMoreThreads', { name: entry.project.name })"
-                                                        chunk-class="space-y-0.5"
-                                                        batch-class="pt-0.5"
+                                                    <div
+                                                        class="group/row flex items-center gap-1 rounded-lg transition-colors hover:bg-muted"
+                                                        :class="entry.project.path === selectedProjectPath && group.chatId === selectedChatId ? 'bg-muted' : ''"
                                                     >
-                                                        <div
-                                                            v-for="thread in visibleThreads"
-                                                            :key="thread.id"
-                                                            class="flex items-center gap-1 rounded-lg transition-colors hover:bg-muted"
-                                                            :class="thread.id === selectedThreadId ? 'bg-primary/10' : ''"
-                                                        >
+                                                        <CollapsibleTrigger as-child>
                                                             <Button
                                                                 variant="ghost"
                                                                 :size="36"
-                                                                class="min-w-0 flex-1 justify-start px-2 text-left hover:bg-transparent active:bg-transparent"
-                                                                :class="thread.id === selectedThreadId ? 'text-primary' : ''"
-                                                                @click="selectThread(group, entry, thread)"
+                                                                class="min-w-0 flex-1 justify-start gap-2 px-2 hover:bg-transparent active:bg-transparent"
+                                                                :class="entry.project.path === selectedProjectPath && group.chatId === selectedChatId ? 'text-primary' : ''"
+                                                                :aria-label="t(projectExpanded ? 'bridge.collapseItem' : 'bridge.expandItem', { name: entry.project.name })"
                                                             >
                                                                 <Icon
-                                                                    name="askx-objects:chat"
-                                                                    class="size-3.5 shrink-0"
-                                                                /><span class="truncate text-xs">{{ thread.title || thread.id }}</span>
+                                                                    name="askx-objects:folder"
+                                                                    class="size-4 shrink-0"
+                                                                />
+                                                                <span class="truncate text-xs">{{ entry.project.name }}</span>
+                                                                <span
+                                                                    v-if="!entry.available"
+                                                                    class="inline-flex shrink-0 items-center gap-1 text-[10px] text-destructive"
+                                                                    :title="t('bridge.projectUnavailableHint')"
+                                                                >
+                                                                    <Icon
+                                                                        name="askx-status:error"
+                                                                        class="size-3"
+                                                                    />{{ t('bridge.projectUnavailable') }}
+                                                                </span>
+                                                                <span
+                                                                    v-else-if="!entry.active"
+                                                                    class="shrink-0 text-[10px] text-muted-foreground"
+                                                                >{{ t('bridge.history') }}</span>
                                                             </Button>
-                                                            <BusBridgeItemMenu
-                                                                kind="thread"
-                                                                :disabled="!entry.available"
-                                                                :item-id="thread.id"
-                                                                :project-path="entry.project.path"
-                                                                :label="thread.title || thread.id"
-                                                                @changed="catalogChanged"
-                                                            />
+                                                        </CollapsibleTrigger>
+
+                                                        <BusBridgeItemMenu
+                                                            kind="project"
+                                                            hover-only
+                                                            :mutations-disabled="!entry.available"
+                                                            :item-id="entry.project.path"
+                                                            :label="entry.project.name"
+                                                            @settings="openProjectSettings({ kind: 'group', chatId: group.chatId, onSaved: loadCatalog })"
+                                                            @changed="catalogChanged"
+                                                        />
+                                                        <Button
+                                                            v-if="entry.active"
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            class="opacity-0 hover:bg-transparent hover:text-primary group-hover/row:opacity-100 group-focus-within/row:opacity-100 [@media(hover:none)]:opacity-100"
+                                                            :aria-label="`${t('bridge.newSession')} · ${entry.project.name}`"
+                                                            @click.stop="createThread(group.chatId)"
+                                                        >
+                                                            <Icon name="askx-actions:add" />
+                                                        </Button>
+                                                    </div>
+                                                    <CollapsibleContent class="overflow-hidden data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up motion-reduce:animate-none">
+                                                        <div class="ml-2 border-l border-border/70 pt-1 pl-2">
+                                                            <CsProgressiveList
+                                                                v-slot="{ items: visibleThreads }"
+                                                                :items="entry.sessions"
+                                                                :expanded="projectExpanded"
+                                                                :label="t('bridge.showMoreThreads', { name: entry.project.name })"
+                                                                chunk-class="space-y-0.5"
+                                                                batch-class="pt-0.5"
+                                                            >
+                                                                <div
+                                                                    v-for="thread in visibleThreads"
+                                                                    :key="thread.id"
+                                                                    class="flex items-center gap-1 rounded-lg transition-colors hover:bg-muted"
+                                                                    :class="thread.id === selectedThreadId ? 'bg-primary/10' : ''"
+                                                                >
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        :size="36"
+                                                                        class="min-w-0 flex-1 justify-start px-2 text-left hover:bg-transparent active:bg-transparent"
+                                                                        :class="thread.id === selectedThreadId ? 'text-primary' : ''"
+                                                                        @click="selectThread(group, entry, thread)"
+                                                                    >
+                                                                        <Icon
+                                                                            name="askx-objects:chat"
+                                                                            class="size-3.5 shrink-0"
+                                                                        /><span class="truncate text-xs">{{ thread.title || thread.id }}</span>
+                                                                    </Button>
+                                                                    <BusBridgeItemMenu
+                                                                        kind="thread"
+                                                                        :disabled="!entry.available"
+                                                                        :item-id="thread.id"
+                                                                        :project-path="entry.project.path"
+                                                                        :label="thread.title || thread.id"
+                                                                        @changed="catalogChanged"
+                                                                    />
+                                                                </div>
+                                                            </CsProgressiveList>
                                                         </div>
-                                                    </CsProgressiveList>
-                                                </div>
-                                            </CollapsibleContent>
-                                        </CollapsibleRoot>
-                                    </CsProgressiveList>
-                                    <div
-                                        v-if="!group.projects.length"
-                                        class="px-2 py-2 text-xs text-muted-foreground"
-                                    >
-                                        <Button
-                                            variant="ghost"
-                                            size="xs"
-                                            class="block font-normal"
-                                            @click="openProjectSettings({ kind: 'group', chatId: group.chatId, onSaved: loadCatalog })"
-                                        >
-                                            {{ t('bridge.linkProjects') }}
-                                        </Button>
-                                    </div>
+                                                    </CollapsibleContent>
+                                                </CollapsibleRoot>
+                                            </CsProgressiveList>
+                                            <div
+                                                v-if="!group.projects.length"
+                                                class="px-2 py-2 text-xs text-muted-foreground"
+                                            >
+                                                <Button
+                                                    variant="ghost"
+                                                    size="xs"
+                                                    class="block font-normal"
+                                                    @click="openProjectSettings({ kind: 'group', chatId: group.chatId, onSaved: loadCatalog })"
+                                                >
+                                                    {{ t('bridge.linkProjects') }}
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </CollapsibleContent>
+                                </CollapsibleRoot>
+                            </template>
+                            <template #preview="{ item }">
+                                <div class="flex min-w-0 items-center gap-2 text-sm font-semibold">
+                                    <Icon
+                                        name="askx-objects:users"
+                                        class="size-4 shrink-0"
+                                    />
+                                    <span class="truncate">{{ item.name }}</span>
                                 </div>
-                            </CollapsibleContent>
-                        </CollapsibleRoot>
+                            </template>
+                        </CsDraggable>
                         <div
                             v-if="!sidebarGroups.length"
                             class="rounded-xl border border-dashed p-5 text-center"
