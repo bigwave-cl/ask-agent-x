@@ -13,6 +13,8 @@ export interface BridgeAgentContext {
 export interface BridgeAgentOptions {
     /** 当前线程标识，空值代表尚未提交的新会话。 */
     threadId: Readonly<Ref<string>>
+    /** 显式新建草稿的生命周期；选择群组或项目时保持不变。 */
+    draftSessionKey?: Readonly<Ref<number>>
     /** 当前群组与项目上下文。 */
     context: Readonly<Ref<BridgeAgentContext>>
     /** 当前绑定是否允许发送。 */

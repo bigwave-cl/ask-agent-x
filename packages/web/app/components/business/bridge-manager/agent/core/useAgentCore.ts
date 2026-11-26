@@ -77,11 +77,17 @@ export function useAgentCore(options: BridgeAgentOptions): BridgeAgentCore {
             catch { toast.error(t('bridge.conversation.streamError'), { id: 'bridge-stream' }) }
         }
     }
-    /** 每次导航释放旧订阅和请求，草稿不会在不同群组之间串用。 */
-    watch([options.threadId, () => options.context.value.chatId, () => options.context.value.projectPath], () => {
+    /** 身份变化使旧请求失效；未提交会话内的上下文选择保留输入。 */
+    watch([options.threadId, () => options.context.value.chatId, () => options.context.value.projectPath, () => options.draftSessionKey?.value], ([threadId, , , key], previous) => {
+        /** 只有同一个未提交草稿内选择上下文才保留内容。 */
+        const preserveDraft = options.draftSessionKey !== undefined && !threadId && !previous[0] && key === previous[3]
         generation++
         historyHub.reset()
-        if (!adopting) { draft.value = ''; submission++; submitting.value = false }
+        if (!adopting) {
+            if (!preserveDraft) draft.value = ''
+            submission++
+            submitting.value = false
+        }
         connect()
         void historyHub.history.loadHistory()
     }, { immediate: true, flush: 'sync' })
@@ -90,8 +96,12 @@ export function useAgentCore(options: BridgeAgentOptions): BridgeAgentCore {
         if (submitting.value || running.value || !draft.value.trim() || !options.canCompose.value) return
         /** 固定本轮发送的群组与项目上下文。 */
         const context = { ...options.context.value }
+        /** 原始输入只用于提交时消费匹配的草稿，不覆盖等待期间的编辑。 */
+        const draftSnapshot = draft.value
         /** 冻结本次发送内容，后续草稿可继续编辑。 */
-        const content = draft.value.trim()
+        const content = draftSnapshot.trim()
+        /** 只有真正消费过草稿的失败请求才需要恢复输入。 */
+        let consumedDraft = false
         /** 本次提交的失效检查身份。 */
         const request = ++submission
         /** 创建线程前的导航生命周期。 */
@@ -99,16 +109,12 @@ export function useAgentCore(options: BridgeAgentOptions): BridgeAgentCore {
         /** 本地占位和服务端确认共用的稳定身份。 */
         const clientMessageId = crypto.randomUUID()
         submitting.value = true
-        draft.value = ''
         /** 新建会话后更新为服务端确认的线程标识。 */
         let threadId = options.threadId.value
         /** 本次消息提交绑定的 owner，新线程接纳后重新捕获。 */
         let owner: BridgeConversationState = historyHub.captureOwner()
         try {
-            if (!await options.requireRunning() || disposed || beforeCreate !== generation || !historyHub.isCurrent(owner)) {
-                if (!disposed && beforeCreate === generation && historyHub.isCurrent(owner) && !draft.value) draft.value = content
-                return
-            }
+            if (!await options.requireRunning() || !options.canCompose.value || disposed || beforeCreate !== generation || !historyHub.isCurrent(owner)) return
             if (!threadId) {
                 /** 服务端接受的新线程摘要。 */
                 const created = await $fetch<{ id: string, title: string }>('/api/bridge/threads', { method: 'POST', body: context, retry: 0 })
@@ -117,6 +123,11 @@ export function useAgentCore(options: BridgeAgentOptions): BridgeAgentCore {
                 adopting = true
                 try { options.onCreated(created) }
                 finally { adopting = false }
+            }
+            /** 到消息实际提交时才消费原草稿；预检或建线程期间可安全改选上下文。 */
+            if (draft.value === draftSnapshot) {
+                draft.value = ''
+                consumedDraft = true
             }
             owner = historyHub.captureOwner()
             historyHub.addPending(owner, { id: `client-${clientMessageId}`, clientMessageId, turnId: null, role: 'user', kind: 'message', content, status: 'inProgress', createdAt: new Date().toISOString(), source: { channel: 'web', senderName: 'Web', ...context } })
@@ -130,7 +141,7 @@ export function useAgentCore(options: BridgeAgentOptions): BridgeAgentCore {
         catch (error) {
             if (!disposed && request === submission && options.threadId.value === threadId && historyHub.isCurrent(owner)) {
                 historyHub.failPending(owner, clientMessageId)
-                if (!draft.value) draft.value = content
+                if (consumedDraft && !draft.value) draft.value = content
                 showError(error)
             }
         }

@@ -70,7 +70,7 @@ function turnEvent(status: 'inProgress' | 'completed', sequence = 1) {
     return { version: 1, namespace: 'home', threadId: 'thread', runId: 'run', sequence, createdAt: '', type: 'turn.status', turn: { id: 'turn', runId: 'run', channel: 'web', status, canInterrupt: true, updatedAt: '' } }
 }
 /** 初始化隔离页面，默认请求只返回本地固定快照。 */
-function setupCore(thread = 'thread', browser = true) {
+function setupCore(thread = 'thread', browser = true, withDraftSession = false) {
     TestEventSource.instances = []
     if (browser) vi.stubGlobal('window', {})
     vi.stubGlobal('EventSource', TestEventSource)
@@ -89,9 +89,15 @@ function setupCore(thread = 'thread', browser = true) {
     const onCatalogChanged = vi.fn()
     /** 预检默认允许提交。 */
     const requireRunning = vi.fn(async () => true)
+    /** 显式新建草稿的生命周期。 */
+    const draftSessionKey = ref(0)
+    /** 可由选择器更新的标准上下文。 */
+    const context = ref({ chatId: 'chat', projectPath: '/project' })
+    /** 当前 active 绑定的发送资格。 */
+    const canCompose = ref(true)
     /** 正式 Core 及其唯一历史接口。 */
-    const core = scope.run(() => useAgentCore({ threadId, context: ref({ chatId: 'chat', projectPath: '/project' }), canCompose: ref(true), requireRunning, onCreated: created => { threadId.value = created.id }, onCatalogChanged, onTitle: vi.fn() }))!
-    return { core, fetch, error, threadId, scope, onCatalogChanged, requireRunning }
+    const core = scope.run(() => useAgentCore({ threadId, context, canCompose, draftSessionKey: withDraftSession ? draftSessionKey : undefined, requireRunning, onCreated: created => { threadId.value = created.id }, onCatalogChanged, onTitle: vi.fn() }))!
+    return { core, fetch, error, threadId, scope, onCatalogChanged, requireRunning, draftSessionKey, context, canCompose }
 }
 
 // 各用例显式结束页面，连接不会依赖真实浏览器退出而释放。
@@ -141,7 +147,7 @@ test('send acceptance confirms pending identity and preserves the next draft', a
 })
 
 test('created thread adopts its owner while preserving continuing input', async () => {
-    const page = setupCore('')
+    const page = setupCore('', true, true)
     const created = deferred<{ id: string, title: string }>()
     page.fetch.mockImplementationOnce(() => created.promise)
     page.core.draft.value = 'first'
@@ -274,4 +280,152 @@ test.each(['create', 'send'] as const)('late %s acceptance after disposal create
     vi.runAllTimers()
     expect(page.onCatalogChanged).not.toHaveBeenCalled()
     expect(page.threadId.value).toBe(phase === 'create' ? '' : 'thread')
+})
+
+test('empty session selections preserve draft without creating a thread until sending', async () => {
+    /** 初始空上下文内的草稿由 Core 独占。 */
+    const page = setupCore('', true, true)
+    page.context.value = { chatId: '', projectPath: '' }
+    page.core.draft.value = 'typed before selection'
+    page.context.value = { chatId: 'selected', projectPath: '/active' }
+    expect(page.core.draft.value).toBe('typed before selection')
+    expect(page.fetch).not.toHaveBeenCalled()
+    page.fetch.mockResolvedValueOnce({ id: 'created', title: 'created' })
+    await page.core.send()
+    expect(page.fetch.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(2)
+    page.scope.stop()
+})
+
+test.each([true, false])('existing conversation navigation clears the draft with session key %s', withKey => {
+    /** 已有线程切换不沿用未提交草稿。 */
+    const page = setupCore('thread', true, withKey)
+    page.core.draft.value = 'old'
+    page.threadId.value = 'next'
+    expect(page.core.draft.value).toBe('')
+    page.scope.stop()
+})
+
+test('legacy empty session context changes still clear draft', () => {
+    /** 未启用新建生命周期的调用保留旧契约。 */
+    const page = setupCore('')
+    page.core.draft.value = 'old'
+    page.context.value = { chatId: 'other', projectPath: '/other' }
+    expect(page.core.draft.value).toBe('')
+    page.scope.stop()
+})
+
+test.each(['preflight', 'create', 'send'] as const)('explicit new session invalidates the same identity during %s', async phase => {
+    /** 新建前后导航身份相同，仅草稿生命周期不同。 */
+    const page = setupCore(phase === 'send' ? 'thread' : '', true, true)
+    await Promise.resolve()
+    /** 控制旧写意图停留的异步窗口。 */
+    const waiting = deferred<boolean | object>()
+    if (phase === 'preflight') page.requireRunning.mockImplementationOnce(async () => Boolean(await waiting.promise))
+    else page.fetch.mockImplementationOnce(() => waiting.promise)
+    page.core.draft.value = 'old message'
+    /** 旧请求开始后显式新建应立即清理输入并使请求失效。 */
+    const sending = page.core.send()
+    await Promise.resolve()
+    page.core.draft.value = 'old continuing input'
+    page.draftSessionKey.value++
+    expect(page.core.draft.value).toBe('')
+    page.core.draft.value = 'new draft'
+    waiting.resolve(phase === 'preflight' ? true : phase === 'create' ? { id: 'created', title: 'created' } : { ...snapshot(), messages: [{ ...itemEvent('stale').item }] })
+    await sending
+    expect(page.threadId.value).toBe(phase === 'send' ? 'thread' : '')
+    expect(page.core.draft.value).toBe('new draft')
+    expect(page.core.historyHub.messages.value).toHaveLength(0)
+    expect(page.core.submitting.value).toBe(false)
+    expect(page.fetch.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(phase === 'preflight' ? 0 : 1)
+    page.scope.stop()
+})
+
+test.each(['before', 'during'] as const)('inactive binding blocks writes %s service preflight', async phase => {
+    /** 发送资格可能在预检等待中失效，但身份保持不变。 */
+    const page = setupCore('', true, true)
+    /** 手动完成服务预检。 */
+    const waiting = deferred<boolean>()
+    page.requireRunning.mockImplementationOnce(() => waiting.promise)
+    page.core.draft.value = 'message'
+    if (phase === 'before') page.canCompose.value = false
+    /** 等待中的旧写意图不能越过 active 资格检查。 */
+    const sending = page.core.send()
+    page.canCompose.value = false
+    waiting.resolve(true)
+    await sending
+    expect(page.fetch).not.toHaveBeenCalled()
+    expect(page.core.draft.value).toBe('message')
+    page.scope.stop()
+})
+
+test.each(['preflight', 'create'] as const)('context selection during %s preserves unsubmitted input and invalidates old send', async phase => {
+    /** 同一个空草稿内改选上下文不代表显式新建。 */
+    const page = setupCore('', true, true)
+    /** 冻结当前发送所处的异步窗口。 */
+    const waiting = deferred<boolean | object>()
+    if (phase === 'preflight') page.requireRunning.mockImplementationOnce(async () => Boolean(await waiting.promise))
+    else page.fetch.mockImplementationOnce(() => waiting.promise)
+    page.core.draft.value = 'unsubmitted message'
+    /** 发送快照等待期间，输入仍由同一个草稿 owner 持有。 */
+    const sending = page.core.send()
+    await Promise.resolve()
+    expect(page.core.draft.value).toBe('unsubmitted message')
+    page.context.value = { chatId: 'second', projectPath: '/second' }
+    page.context.value = { chatId: 'third', projectPath: '/third' }
+    expect(page.core.draft.value).toBe('unsubmitted message')
+    waiting.resolve(phase === 'preflight' ? true : { id: 'stale-created', title: 'stale-created' })
+    await sending
+    expect(page.core.draft.value).toBe('unsubmitted message')
+    expect(page.threadId.value).toBe('')
+    expect(page.fetch.mock.calls.some(([url]) => url.endsWith('/turn'))).toBe(false)
+    expect(page.core.submitting.value).toBe(false)
+    page.scope.stop()
+})
+
+test('rapid context selections followed by explicit new session never revive unsubmitted input', async () => {
+    /** 原草稿预检未完成时进行连续选择并显式新建。 */
+    const page = setupCore('', true, true)
+    /** 旧预检由测试完成，禁止触发实际写请求。 */
+    const waiting = deferred<boolean>()
+    page.requireRunning.mockImplementationOnce(() => waiting.promise)
+    page.core.draft.value = 'old input'
+    /** 旧发送意图随生命周期变化失效。 */
+    const sending = page.core.send()
+    page.context.value = { chatId: 'second', projectPath: '/second' }
+    page.draftSessionKey.value++
+    page.context.value = { chatId: 'third', projectPath: '/third' }
+    expect(page.core.draft.value).toBe('')
+    waiting.resolve(true)
+    await sending
+    expect(page.core.draft.value).toBe('')
+    expect(page.fetch).not.toHaveBeenCalled()
+    page.scope.stop()
+})
+
+test.each(['preflight', 'create'] as const)('edits during %s survive turn submission and its failure', async phase => {
+    /** 等待时继续编辑的输入不能被旧发送快照消费或回滚覆盖。 */
+    const page = setupCore('', true, true)
+    /** 控制消息提交之前的等待窗口。 */
+    const waiting = deferred<boolean | object>()
+    if (phase === 'preflight') {
+        page.requireRunning.mockImplementationOnce(async () => Boolean(await waiting.promise))
+        page.fetch.mockResolvedValueOnce({ id: 'created', title: 'created' })
+    }
+    else page.fetch.mockImplementationOnce(() => waiting.promise)
+    page.core.draft.value = 'first'
+    /** 冻结 first 发送意图后继续输入下一条。 */
+    const sending = page.core.send()
+    await Promise.resolve()
+    page.core.draft.value = 'continuing input'
+    page.fetch.mockImplementation(async (url: string) => {
+        if (url.endsWith('/turn')) throw new Error('rejected')
+        return snapshot('created')
+    })
+    waiting.resolve(phase === 'preflight' ? true : { id: 'created', title: 'created' })
+    await sending
+    expect(page.threadId.value).toBe('created')
+    expect(page.core.draft.value).toBe('continuing input')
+    expect(page.fetch.mock.calls.find(([url]) => url.endsWith('/turn'))?.[1]?.body.prompt).toBe('first')
+    expect(page.error).toHaveBeenCalledOnce()
+    page.scope.stop()
 })
